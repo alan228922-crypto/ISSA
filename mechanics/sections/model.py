@@ -10,6 +10,7 @@ class Rectangle:
     density_g_per_mm3: float
     center_x_mm: float = 0.0
     center_y_mm: float = 0.0
+    angle_deg: float = 0.0  # 矩形局部 x 軸相對截面 x 軸逆時針角度。
 
 
 @dataclass(frozen=True)
