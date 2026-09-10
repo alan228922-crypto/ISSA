@@ -1,0 +1,15 @@
+# Local OS, Python and Django artifacts
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+*.sqlite3
+
+# Isolated implementation workspaces
+.worktrees/
+
+# Preserved original handoff; CURRENT specifications are in docs/specs/
+/architecture_round5_final_master_spec_v1/
