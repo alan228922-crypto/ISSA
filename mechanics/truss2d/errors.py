@@ -11,3 +11,10 @@ class ValidationIssue:
     entity_ids: tuple[str, ...] = ()
     field: str | None = None
     numeric_context: tuple[tuple[str, float], ...] = ()
+
+
+class MechanicsError(ValueError):
+    """預期的契約或數值失敗；上層可讀取 issues，不需解析例外字串。"""
+    def __init__(self, issues: tuple[ValidationIssue, ...]):
+        self.issues = tuple(issues)
+        super().__init__(','.join(issue.code for issue in self.issues))
