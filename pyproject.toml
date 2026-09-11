@@ -18,3 +18,4 @@ include = ["mechanics*", "idealization*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
+DJANGO_SETTINGS_MODULE = "config.settings"
