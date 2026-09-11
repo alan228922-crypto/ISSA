@@ -19,3 +19,4 @@
 | ADR-15 | Implementation sequencing | Current baseline | M0 complete → M1 Mechanics → M2 Secure Skeleton → M3 Analysis → M4 Teaching → M5 Purge/Research |
 | ADR-16 | Solver/postprocess authority | Confirmed | Solver kernel: u/R/N; pure postprocess: stress/mass/Euler; Teaching: explanation only |
 | ADR-17 | Payload schema distinction | Confirmed | Mutable authoring: physical-draft-v1; immutable ModelRevision canonical snapshot: physical-snapshot-v1 |
+| ADR-18 | Platform Language | Confirmed | Simplified Chinese (zh-CN) for user-facing copy and Chinese comments/docstrings; program identifiers and mechanics machine codes remain English; P0 has no i18n framework |

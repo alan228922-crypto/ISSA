@@ -5,7 +5,7 @@
 - 文件角色：Mechanics unit/benchmark、Django integration、permission、purge、contract 與 Future Frame regression 測試策略。
 - 階段：Truss-first P0。
 - 核心原則：**Mechanics correctness 必須先於 UI polish，Benchmark 是 gate，不是 demo。**
-- Source of Truth：`MASTER_SPEC.md v1.0`；本 Test Architecture 已完成 reconciliation。
+- Source of Truth：`MASTER_SPEC.md v1.1`；本 Test Architecture 已完成 reconciliation。
 
 ---
 
@@ -24,6 +24,8 @@ Mechanics unit tests + benchmark tests
 ```
 
 不為了「完整 E2E 自動化」導入大型 browser farm。P0 最重要的是 mechanics、permission、purge 可重現。
+
+【Confirmed】未来 UI、Teaching copy 与用户可见 validation message 的测试使用简体中文（zh-CN）。Mechanics machine-readable code 不中文化；例如 `ZERO_LENGTH_MEMBER` 与 `SINGULAR_GLOBAL_STIFFNESS` 保持英文稳定 identifier。
 
 ---
 

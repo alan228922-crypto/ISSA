@@ -6,7 +6,7 @@
 - 階段：Architecture Baseline / Truss-first P0
 - 狀態：可供後續規格細化與 Codex 實作規劃使用；**不是 production code**
 - 優先原則：最新確認之 Truss-first 決策 > 舊 Frame-first 研究描述
-- Source of Truth：`MASTER_SPEC.md v1.0`；本 Architecture Spec 已完成 reconciliation。
+- Source of Truth：`MASTER_SPEC.md v1.1`；本 Architecture Spec 已完成 reconciliation。
 
 ### 狀態標記
 
@@ -43,6 +43,8 @@
 3. Physical Model 與 Truss Analysis Model 不綁死。
 4. 未來可新增 Frame kernel，而不重做 Event/User/Project/Material/Section/Revision/Research 架構。
 5. 不需要 microservice、CQRS、event sourcing、message queue 等 P0 無收益複雜度。
+
+【Confirmed】Presentation 与 Teaching Layer 的用户可见文案默认使用简体中文（zh-CN）；P0 不引入多语言框架。Mechanics machine codes 与程序 identifier 继续使用英文。
 
 ---
 

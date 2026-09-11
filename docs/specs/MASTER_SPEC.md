@@ -4,7 +4,7 @@
 
 - 專案名稱：校內結構設計競賽互動式分析與學習平台
 - 文件角色：專案最高層級總規格（Current Source of Truth）
-- 版本：v1.0
+- 版本：v1.1
 - 狀態：**CURRENT / APPROVED BASELINE — 專案最高層級 Source of Truth**
 - 核准日期：2026-09-10
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
@@ -15,6 +15,31 @@
 > 本文件管理產品方向、力學邊界、資料治理、角色權限、研究需求與架構原則；不取代各專項規格的細節。所有專項 CURRENT Specs、Implementation Plan 與後續程式碼不得與本文件衝突。
 >
 > `Open Decision` / `MECHANICS REVIEW REQUIRED` 仍保持未決狀態。正式 MASTER_SPEC 的存在不代表這些項目已被默認核准。
+
+---
+
+# Platform Language
+
+【Confirmed】
+
+本平台面向用户的默认语言为**简体中文（zh-CN）**。所有用户可见文字原则上使用简体中文，包括：
+
+- 页面标题、导航、按钮和表单
+- Validation message、Model Check message、Teaching Insight、Concept Card 和结果说明
+- Prediction、Compare、Reflection 与 Calculation Report
+- 登录／账号、Event 管理、管理端页面和用户帮助文字
+
+P0 不要求多语言切换系统。除非未来明确确认 i18n，不建立 gettext、语言选择器、翻译数据结构或第三方翻译平台。
+
+代码中的 class、function、method、variable、field、API key 和 schema key 等 identifier 保持英文。中文 docstring、comments 和 developer explanation 统一使用简体中文；注释应解释力学含义、公式、单位、符号约定、DOF mapping、架构边界或非显而易见行为，不添加逐行翻译式低信息注释。
+
+Mechanics 的 machine-readable code 保持英文稳定 identifier，例如 `ZERO_LENGTH_MEMBER`、`INVALID_AREA` 与 `SINGULAR_GLOBAL_STIFFNESS`。Application / Teaching 层负责向学生提供简体中文解释。
+
+**Version record — v1.1 change summary**
+
+- Confirm platform default language as Simplified Chinese (zh-CN).
+- Confirm Simplified Chinese developer comments/docstrings.
+- Preserve English program identifiers and mechanics machine codes.
 
 ---
 

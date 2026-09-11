@@ -5,7 +5,7 @@
 - 文件角色：Django routes、普通 forms/pages、JSON endpoints、Application Services、save/check/analyze/revision/result flow。
 - 階段：Truss-first P0。
 - P0 採 server-rendered Django + 少量 JSON，不採 SPA/API-first。
-- Source of Truth：`MASTER_SPEC.md v1.0`；本文件已完成 reconciliation。
+- Source of Truth：`MASTER_SPEC.md v1.1`；本文件已完成 reconciliation。
 
 ---
 
@@ -35,6 +35,7 @@ Django Templates
 - 頁面 navigation、管理、簡單 CRUD 用 Django form/page。
 - 只有需要不整頁 reload 的建模/分析互動使用 JSON。
 - 不引入 DRF 作為 P0 必要依賴。
+- 用户可见 copy 默认使用简体中文（zh-CN）；validation 与 model-check 的 machine-readable code 保持英文，由 Application / Teaching Layer 提供简体中文解释。
 
 ---
 
