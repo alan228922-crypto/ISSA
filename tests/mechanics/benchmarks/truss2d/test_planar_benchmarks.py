@@ -1,4 +1,4 @@
-"""B/T02、B/T03：節點平衡與伸長相容的手算 reference；B/T04 尚無可信 fixture。"""
+"""B/T02、B/T03 与 B/T04：节点平衡、伸长相容和解析闭式参考。"""
 from dataclasses import replace
 from math import sqrt
 import pytest
@@ -58,6 +58,39 @@ def test_input_reordering_preserves_results():
             assert tuple(getattr(v,k) for k in value_fields) == pytest.approx(expected[getattr(v,id_field)],rel=1e-8,abs=1e-8)
 
 
-@pytest.mark.skip(reason='B/T04 BLOCKED — MISSING TRUSTED BENCHMARK REFERENCE')
-def test_indeterminate_truss_reference_pending():
-    """沒有可信 reference 時明確顯示 gate 未通過，不生成假的 expected fixture。"""
+def indeterminate_three_bar():
+    return TrussModel('truss2d-input-v1',
+        (Node('A',-1000,0),Node('B',0,1000),Node('C',1000,0),Node('D',0,0)),
+        (Member('AB','A','B',200000,100),Member('BC','B','C',200000,100),Member('DB','D','B',200000,100)),
+        (Support('A',True,True),Support('C',True,True),Support('D',True,True)),
+        (NodalLoad('B',0,-10000),))
+
+
+def test_indeterminate_three_bar_analytical_reference():
+    """B/T04：由对称性、相容条件和杆件刚度推导的三杆超静定桁架。"""
+    from mechanics.truss2d.solver import Truss2DSolver
+    load_N=10_000.0
+    h_mm=1_000.0
+    ea_N=20_000_000.0
+    root2=sqrt(2)
+    result=Truss2DSolver().solve(indeterminate_three_bar())
+    displacement={v.node_id:(v.ux_mm,v.uy_mm) for v in result.node_displacements}
+    axial_force={v.member_id:v.axial_force_N for v in result.member_axial_forces}
+    reaction={v.node_id:(v.rx_N,v.ry_N) for v in result.support_reactions}
+
+    # Ky=EA/h*(1+1/sqrt(2))，因此 uy=-P*h/(EA*(1+1/sqrt(2)))。
+    assert displacement['B'] == pytest.approx((0,-load_N*h_mm/(ea_N*(1+1/root2))),rel=1e-8,abs=1e-10)
+    assert axial_force == pytest.approx({
+        'AB':-load_N*(1-1/root2),
+        'BC':-load_N*(1-1/root2),
+        'DB':-load_N*(2-root2),
+    },rel=1e-8,abs=1e-8)
+    expected_reaction={
+        'A':(load_N*(1-1/root2)/sqrt(2),load_N*(1-1/root2)/sqrt(2)),
+        'C':(-load_N*(1-1/root2)/sqrt(2),load_N*(1-1/root2)/sqrt(2)),
+        'D':(0,load_N*(2-root2)),
+    }
+    for node_id,expected in expected_reaction.items():
+        assert reaction[node_id] == pytest.approx(expected,rel=1e-8,abs=1e-8)
+    assert sum(value[0] for value in reaction.values()) == pytest.approx(0,abs=1e-8)
+    assert sum(value[1] for value in reaction.values())-load_N == pytest.approx(0,abs=1e-8)

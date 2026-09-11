@@ -2,8 +2,10 @@
 
 ## 狀態與授權
 
-**M1 STATUS: PARTIAL**。Task 14 的 B/T04 為 **BLOCKED — MISSING TRUSTED BENCHMARK REFERENCE**。
-其他授權功能已實作並通過本次驗證；這不代表全部 mechanics benchmark gate 已關閉。
+**M1 STATUS: COMPLETE**。Task 14 的 B/T04 已使用 Product Owner 提供的解析闭式参考完成验证。
+全部已授权的 mechanics benchmark gate 均已关闭。
+
+**SPEC UPDATE REQUIRED — Platform Language = zh-CN**。本记录遵循当前产品指示：平台默认语言为简体中文；尚未修改 `docs/specs/MASTER_SPEC.md`，等待 Product Owner / System Architect 同步正式规格。
 
 工作目錄：`/Users/user/Documents/developement/ＩＳＡＡ/.worktrees/m1-truss-mechanics`
 分支：`feat/m1-truss-mechanics`
@@ -24,7 +26,7 @@
 | 11 | 已驗證 | Solver Contract §4–8/13；不可變純值模型、穩定 error code、無 ORM |
 | 12 | 已驗證 | Master §5；Solver Contract §9/11；4×4 剛度、方向餘弦、K/P/DOF mapping |
 | 13 | 已驗證 | Solver Contract §10/15/16；B/T01、u/R/N、支承載重、singular failure |
-| 14 | PARTIAL | B/T02/B/T03 與重排不變性通過；B/T04 沒有可信 fixture，不能關閉 gate |
+| 14 | 已验证 | B/T02/B/T03、重排不变性与 B/T04 三杆超静定解析基准均通过 |
 | 15 | 已驗證（formula only） | Solver Contract §17–19；N/A、ρAL、explicit E/I/L/K Euler；O-001 保持 open |
 
 ## 環境與重現
@@ -88,9 +90,9 @@ python3 -m venv .venv
 - RED：`python3 -m pytest tests/mechanics/benchmarks/truss2d -q --tb=short`
 - 10 failed：Task 13 的 7 個、Task 14 的 3 個，均缺少 solver module；1 skipped（B/T04），exit 1。
 - Task 13 GREEN：`python3 -m pytest tests/mechanics/benchmarks/truss2d/test_single_bar.py -v` → 7 passed，exit 0。
-- Task 14 GREEN：`python3 -m pytest tests/mechanics/benchmarks/truss2d/test_planar_benchmarks.py -v` → 3 passed、1 skipped，exit 0。
+- Task 14 GREEN（原始范围）：`python3 -m pytest tests/mechanics/benchmarks/truss2d/test_planar_benchmarks.py -v` → 3 passed、1 skipped，exit 0。
 - Regression：`python3 -m pytest -q` → 80 passed、1 skipped，exit 0。
-- B/T04 的 skip 不代表通過；未創造 expected value、未以 solver 自行產生 reference。
+- M1 correction：Product Owner 提供 B/T04 的闭式解析参考后，先新增测试。首次运行中，位移与杆力断言直接通过；反力断言因 `pytest.approx` 不支持字典内嵌元组而失败。改为逐支座比较，未改变生产代码或 tolerance；随后 `test_planar_benchmarks.py` → 4 passed，exit 0。
 
 ### Task 15
 
@@ -117,7 +119,7 @@ Review 沒有發現其他 Important/Critical solver 或 Task 15 公式問題；�
 | B/T01 | PASS | δ=PL/EA；1000 N、1000 mm、200000 MPa、100 mm² 得 .05 mm；N=P、R=-P，另測受壓 |
 | B/T02 | PASS | 三角桁架節點平衡：R=P/2、N斜=-P/√2、N底=P/2；伸長相容得頂點 (.025,-.025-.05√2) mm |
 | B/T03 | PASS | 幾何及節點載重鏡射對稱；總載重200 N→兩支座各100 N；對稱桿力、位移不變性 |
-| B/T04 | BLOCKED | MISSING TRUSTED BENCHMARK REFERENCE；repo/specs 沒有可採用的可信數值 fixture |
+| B/T04 | PASS | 对称三杆超静定桁架的闭式解析式：uy=-P·h/[EA(1+1/√2)]；N_DB=-P(2-√2)，N_AB=N_BC=-P(1-1/√2)；反力与全局平衡逐项验证 |
 | B/S01 | PASS | rectangle A=bh、Ix=bh³/12、Iy=hb³/12；對稱/非對稱面積重心與平行軸手算常數 |
 | B/E01 | PASS | EI/L²=2 N；K=1,2,.5 分別得 2π²、.5π²、8π² N |
 
@@ -125,15 +127,32 @@ Expected 沒有呼叫 production function 生成。解析/benchmark 註解直接
 截面/Euler 使用 rtol=1e-12、atol=1e-12；單桿位移 rtol=1e-10、atol=1e-12 mm，力 atol=1e-9 N；多桿 rtol=1e-8，位移 atol=1e-10 mm、力 atol=1e-8 N。
 沒有為通過測試而放寬上述 tolerance。
 
+## B/T04 correction result
+
+几何为 A(-1000,0)、B(0,1000)、C(1000,0)、D(0,0) mm；AB、BC、DB 的 E=200000 MPa、A=100 mm²，A/C/D 全约束，B 施加 Fy=-10000 N。解析期望值全部由提供的闭式方程计算，未调用 production solver 生成 fixture。
+
+| 项目 | 解析期望 | 实际观察 | 差值 |
+|---|---:|---:|---:|
+| B ux (mm) | 0 | 0 | 0 |
+| B uy (mm) | -0.2928932188134525 | -0.2928932188134525 | 0 |
+| N_AB / N_BC (N) | -2928.9321881345254 | -2928.932188134525 | < 1e-12 |
+| N_DB (N) | -5857.864376269049 | -5857.86437626905 | < 1e-12 |
+| A Rx / Ry (N) | 2071.0678118654755 / 2071.0678118654755 | 2071.0678118654746 / 2071.0678118654746 | < 1e-12 |
+| C Rx / Ry (N) | -2071.0678118654755 / 2071.0678118654755 | -2071.0678118654746 / 2071.0678118654746 | < 1e-12 |
+| D Rx / Ry (N) | 0 / 5857.864376269049 | 0 / 5857.86437626905 | < 1e-12 |
+| 全局平衡残差 (Fx, Fy) N | 0 / 0 | 0 / -9.094947017729282e-13 | < 1e-12 |
+
 ## Fresh Verification — 2026-09-11
 
-驗證 production commit `5eb87d2`，後續僅更新本紀錄。
+M1 correction 已完成完整回归验证。
 
 | Command | Collected | Passed | Failed | Skipped | Exit |
 |---|---:|---:|---:|---:|---:|
-| `python3 -m pytest tests/mechanics -v` | 131 | 130 | 0 | 1 | 0 |
+| `python3 -m pytest tests/mechanics/benchmarks/truss2d/test_planar_benchmarks.py -v` | 4 | 4 | 0 | 0 | 0 |
+| `python3 -m pytest tests/mechanics/benchmarks/truss2d -v` | 11 | 11 | 0 | 0 | 0 |
+| `python3 -m pytest tests/mechanics -v` | 131 | 131 | 0 | 0 | 0 |
 | `python3 -m pytest tests/contracts/test_architecture_boundaries.py -v` | 2 | 2 | 0 | 0 | 0 |
-| `python3 -m pytest -v` | 133 | 132 | 0 | 1 | 0 |
+| `python3 -m pytest -v` | 133 | 133 | 0 | 0 | 0 |
 
 `git diff --check` 通過。正式 `docs/specs/` 相對 documentation baseline 無變更。
 AST import 檢查 + `rg -n 'django|FRAME_2D|\brz\b|Fixed|UDL|bending|shear|moment' mechanics` 無命中（rg exit 1 表示 no matches）。
@@ -156,7 +175,7 @@ Architecture test 另以全新行程攔截 Django import，遞迴匯入所有 me
 - O-005：只計算非重疊矩形；重疊回 OVERLAP_UNSUPPORTED。
 - O-002：僅實作已指定 solver ux/uy flags；未決定 Roller UI/JSON 方向。
 - O-003/O-004 未進入 M1，維持不變。
-- SPEC CONFLICT：None。SPEC GAP：B/T04 缺可信 benchmark reference（不是新增 mechanics assumption）。
+- SPEC CONFLICT：None。B/T04 的可信解析基准已由 Product Owner 提供并验证，不再是 SPEC GAP。
 - 數值 singular 檢查使用 diagonal scaling + float64 rank/solve；近奇異病態模型可能拒絕，並非完整機構診斷。
 - M1 無 ModelRevision/AnalysisRun/Hash persistence；那些屬後續任務，不宣稱完整分析流程已完成。
 - 本次沒有獨立環境重新安裝驗證或大型模型效能測試。
@@ -165,5 +184,5 @@ Architecture test 另以全新行程攔截 Django import，遞迴匯入所有 me
 
 每一 task 與 review fix 有獨立 commit，沒有 merge/push/remote 操作。
 保留 `feat/m1-truss-mechanics` 與現有 worktree，main 留在文件基線。
-建議 **M1 needs correction / reference completion**：待提供 B/T04 可信 reference 後才可完成整個 M1 gate。
+M1 已验收：B/T04 解析基准已关闭唯一未完成 gate。
 本輪停止，不進入 M2。
