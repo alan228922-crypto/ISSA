@@ -5,7 +5,7 @@
 - 文件角色：Operational persistence、immutable revision snapshot、solver I/O、analysis result、research derived data 的資料契約。
 - 階段：Truss-first P0 Data Baseline。
 - 本文件不等同 Django migration；欄位名稱可在實作時微調，但語意、ownership、immutability、retention 與 versioning 不得被破壞。
-- Source of Truth：`MASTER_SPEC.md v1.0`；本 Data Contract 已完成 reconciliation。
+- Source of Truth：MASTER_SPEC.md v1.3；本 Data Contract 已完成 reconciliation。
 
 ### 狀態標記
 
@@ -335,12 +335,12 @@ Connection
 Support
 - id
 - project_id
-- target_geometry_node_id / connection_id
+- target_connection
 - support_type                     PINNED | ROLLER
-- orientation                      P0 contract to be finalized
+- restrained_axis                  null for PINNED; X | Y for ROLLER
 ```
 
-【Open Decision】Roller 是否只允許水平/垂直或任意方向，需在 UI/API freeze 前確認。
+【Confirmed】不支持 angle 或 local support coordinate system。
 
 ### 4.12 NodeLoad
 
@@ -906,9 +906,9 @@ Future migration 至 PostgreSQL 時，核心 mechanics 與 domain contract 不�
 
 ## 22. Open Decisions
 
-### OD-DATA-01 — Roller orientation representation
+### Resolved — Roller orientation representation（Master O-002）
 
-【Open Decision】在 Support schema freeze 前由 Product/Mechanics 確認是否僅水平/垂直 roller。
+PINNED 的 restrained_axis 必须为 null；ROLLER 必须为 X 或 Y。
 
 ### OD-DATA-02 — Event purge 後 User account lifecycle
 

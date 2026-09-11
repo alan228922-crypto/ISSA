@@ -5,7 +5,7 @@
 - 文件角色：核心 Entity、ownership、relationship、lifecycle、invariant 規格
 - 階段：Truss-first P0 Domain Baseline
 - 本文件描述 domain contract，不是 Django migration。
-- Source of Truth：`MASTER_SPEC.md v1.0`；本 Domain Model 已完成 reconciliation。
+- Source of Truth：MASTER_SPEC.md v1.3；本 Domain Model 已完成 reconciliation。
 
 ### 狀態標記
 
@@ -402,11 +402,9 @@ Physical Support 應綁定可 idealize 為 analysis node 的 connection/geometry
 P0 解析結果：
 
 - Pinned → restrain ux + uy
-- Roller → 依平台核定之 roller orientation / restraint rule 轉為 translational restraint
+- Roller → restrained_axis=X 限制 ux；restrained_axis=Y 限制 uy
 
-【Open Decision】
-
-若產品尚未正式定義 Roller 是否只支援水平/垂直、或允許任意方向，應在 API/Data Contract 前確認；P0 架構不需要泛化到 3D constraint。
+【Confirmed】P0 不支持任意角度 restraint。
 
 ---
 
@@ -854,11 +852,9 @@ Codex 後續實作至少要有 tests 保證：
 
 老師/Mechanics Reviewer 決定後才能鎖定。
 
-### OD-02 — Roller orientation capability
+### Resolved — Roller orientation capability（Master O-002）
 
-【Recommended to resolve before endpoint freeze】
-
-若產品只需常見水平/垂直 roller，應保持簡單；若要求任意角度，需在 Support contract 明確化。
+P0 Support contract 已冻结为 ROLLER + restrained_axis X/Y。
 
 ### OD-03 — Event purge 後 team account lifecycle
 

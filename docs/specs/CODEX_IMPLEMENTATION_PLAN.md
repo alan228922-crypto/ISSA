@@ -26,7 +26,8 @@
 - Authorization must be enforced server-side.
 - Every analysis must be traceable to immutable ModelRevision + SolverVersion + InputHash.
 - Event project operational data is purged after the 7-day grace policy; only approved anonymous derived research metrics may survive.
-- Euler automatic `K` behavior is blocked pending mechanics review.
+- Euler automatic K behavior is blocked pending mechanics review.
+- P0 ROLLER restrains global X or Y only; arbitrary-angle support is out of scope.
 - No Frame/3D/nonlinear/optimization/microservice/CQRS/event-sourcing scope in P0.
 
 ---
@@ -472,9 +473,9 @@ Do not create per-node REST CRUD.
 
 ---
 
-### Task 9: Resolve Roller orientation before support contract freeze
+### Task 9: Implement resolved Roller contract
 
-**Precondition:** Product/Mechanics decision on `O-ARCH-01`.
+**Precondition met:** Master O-002 confirms restrained global X/Y only.
 
 **Files:**
 - Update relevant spec/ADR first.
@@ -998,7 +999,6 @@ The following cannot be fully closed until decisions arrive:
 | Decision | Blocks |
 |---|---|
 | MASTER_SPEC reconciliation | **Resolved — no longer blocking** |
-| Roller orientation | Support editor/API final shape |
 | Euler K policy | automatic buckling screening UX/risk classification |
 | Master O-003: FINISHED_GRACE User access (Open; read-only recommended only) | final event UX permission matrix; no permanent allow/deny edit/analyze assertions before confirmation |
 | Account lifecycle after purge | account cleanup behavior |

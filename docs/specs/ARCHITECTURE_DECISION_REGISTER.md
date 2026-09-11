@@ -10,7 +10,7 @@
 | ADR-06 | Self Weight | Confirmed deferred | P0.x/P1 |
 | ADR-07 | Initial password | Confirmed | Captain student ID; hash only; forced change |
 | ADR-08 | Euler K + controlling I / weak-axis policy | MECHANICS REVIEW REQUIRED | Master O-001: no default/automatic K, controlling-axis selection, final risk bands or related wording until review; explicit-input formula only |
-| ADR-09 | Roller orientation | Open Decision | Resolve before Support UI/API final behavior |
+| ADR-09 | Roller orientation | Confirmed | Master O-002 resolved: P0 ROLLER restrains global X or Y only; arbitrary-angle support is out of scope |
 | ADR-10 | FINISHED_GRACE user access | Open Decision | Master O-003: read-only recommended only; edit/analyze allow/deny remains open |
 | ADR-11 | Account lifecycle after purge | Open Decision | Master O-004: do not auto-delete/disable until confirmed; Project Operational Data purge proceeds independently |
 | ADR-12 | Composite strip overlap | Open if feature requires | Define before overlap-capable free-composite implementation |

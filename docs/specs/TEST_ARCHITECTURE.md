@@ -5,7 +5,7 @@
 - 文件角色：Mechanics unit/benchmark、Django integration、permission、purge、contract 與 Future Frame regression 測試策略。
 - 階段：Truss-first P0。
 - 核心原則：**Mechanics correctness 必須先於 UI polish，Benchmark 是 gate，不是 demo。**
-- Source of Truth：MASTER_SPEC.md v1.2；本 Test Architecture 已完成 reconciliation。
+- Source of Truth：MASTER_SPEC.md v1.3；本 Test Architecture 已完成 reconciliation。
 
 ---
 
@@ -587,9 +587,9 @@ Login
 
 【MECHANICS REVIEW REQUIRED】explicit K formula可測；自動 screening acceptance test 等老師確認。
 
-### OD-TEST-02 — Roller orientation
+### Resolved — Roller orientation（Master O-002）
 
-Support fixtures 等產品/Mechanics contract freeze。
+Support fixture 必须覆盖 PINNED/null、ROLLER/X、ROLLER/Y 和无效组合。
 
 ### OD-TEST-03 — Composite strip overlap
 

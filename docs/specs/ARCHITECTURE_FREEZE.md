@@ -3,7 +3,7 @@
 ## 0. Freeze State
 
 **Architecture state:** `FINAL_FROZEN`\
-**Source of Truth:** `MASTER_SPEC.md v1.0`\
+**Source of Truth:** MASTER_SPEC.md v1.3\
 **Freeze date:** 2026-09-10
 
 Meaning:
@@ -157,12 +157,6 @@ Does not block:
 - Truss solver
 - section engine
 - other P0 workflow
-
-### G-02 — Roller orientation
-
-Blocks final Support editor/API schema behavior.
-
-Do not invent arbitrary-angle roller behavior.
 
 ### G-03 — FINISHED_GRACE access
 

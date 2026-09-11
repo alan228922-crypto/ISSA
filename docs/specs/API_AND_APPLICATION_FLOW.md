@@ -5,7 +5,7 @@
 - 文件角色：Django routes、普通 forms/pages、JSON endpoints、Application Services、save/check/analyze/revision/result flow。
 - 階段：Truss-first P0。
 - P0 採 server-rendered Django + 少量 JSON，不採 SPA/API-first。
-- Source of Truth：MASTER_SPEC.md v1.2；本文件已完成 reconciliation。
+- Source of Truth：MASTER_SPEC.md v1.3；本文件已完成 reconciliation。
 
 ---
 
@@ -683,6 +683,6 @@ P0 可安全延期：
 
 【Open Decision】read-only 僅為建議；view/edit/analyze 不得在 Master O-003 確認前定案。
 
-### OD-API-03 — Roller orientation UI
+### Resolved — Roller orientation UI（Master O-002）
 
-【Open Decision】會影響 Support JSON shape，應在實作 support editor 前確認。
+Support JSON 使用 restrained_axis；ROLLER 只允许 X/Y，PINNED 为 null。

@@ -4,7 +4,7 @@
 
 - 專案名稱：校內結構設計競賽互動式分析與學習平台
 - 文件角色：專案最高層級總規格（Current Source of Truth）
-- 版本：v1.2
+- 版本：v1.3
 - 狀態：**CURRENT / APPROVED BASELINE — 專案最高層級 Source of Truth**
 - 核准日期：2026-09-10
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
@@ -46,6 +46,12 @@ Mechanics 的 machine-readable code 保持英文稳定 identifier，例如 `ZERO
 - Register O-006 ACTIVE Event Team Provisioning Policy.
 - Preserve fail-closed behavior while the policy is unresolved.
 - Clarify that temporary security behavior is not a final product rule.
+
+**Version record — v1.3 change summary**
+
+- Resolve O-002.
+- Freeze P0 Roller restraint to global X/Y axis only.
+- Preserve arbitrary-angle support as out of P0 scope.
 
 ---
 
@@ -393,16 +399,9 @@ P0 不實作 rotational restraint。
 
 ## 7.3 Roller Orientation
 
-【Open Decision】
+【Confirmed】
 
-尚需確認：
-
-- P0 Roller 是否只允許水平 / 垂直方向
-- 或允許任意方向 restraint
-
-在正式確認前：
-
-> 不得由開發端自行泛化為任意角度 roller。
+P0 Roller 只支持 restrained global X 或 restrained global Y。不得实现任意角度 restraint。
 
 ---
 
@@ -1903,9 +1902,9 @@ Status：
 
 ## O-002 — Roller Orientation
 
-**Owner：Product Owner + Mechanics Reviewer**
+**Status：RESOLVED / Confirmed**
 
-需決定 P0 restraint capability。
+P0 Roller 仅支持被约束的全局 X 或全局 Y 平移轴。PINNED 固定 ux/uy；ROLLER + restrained_axis=X 固定 ux；ROLLER + restrained_axis=Y 固定 uy。P0 不支持任意角度 Roller、normal vector、local support coordinate system 或 constraint transformation。
 
 ---
 
@@ -2024,7 +2023,7 @@ Architecture 狀態：
 以下項目只阻擋其直接相關功能，不阻擋其他 P0 模組：
 
 - Euler automatic risk behavior → 等待 `O-001 / MRR-001`
-- Roller UI / Support JSON final shape → 等待 `O-002`
+- Roller UI / Support JSON final shape → 已由 O-002 冻结为 restrained_axis X/Y
 - FINISHED_GRACE final UX permission → 等待 `O-003`
 - post-purge User lifecycle → 等待 `O-004`
 - overlap-capable free composite geometry → 等待 `O-005`
@@ -2129,7 +2128,7 @@ CODEX_IMPLEMENTATION_PLAN.md
 仍需後續確認，但不阻擋 MASTER_SPEC v1.0 成立：
 
 - [ ] Euler effective length factor `K`
-- [ ] Roller orientation
+- [x] Roller orientation
 - [ ] FINISHED_GRACE user access
 - [ ] account lifecycle after purge
 - [ ] composite strip overlap policy（若 feature 需要）
