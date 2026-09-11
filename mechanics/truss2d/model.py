@@ -51,3 +51,48 @@ class TrussModel:
             if any(type(value) is not kind for value in values):
                 raise TypeError(f'{field} requires pure {kind.__name__} values')
             object.__setattr__(self,field,values)
+
+
+@dataclass(frozen=True)
+class NodeDisplacement:
+    """節點全域 ux/uy 位移（mm）；不經顯示位數四捨五入。"""
+    node_id: str
+    ux_mm: float
+    uy_mm: float
+
+
+@dataclass(frozen=True)
+class SupportReaction:
+    """全域支座反力（N）；自由方向明確回傳零。"""
+    node_id: str
+    rx_N: float
+    ry_N: float
+
+
+@dataclass(frozen=True)
+class MemberAxialForce:
+    """桿件軸力（N）：正值受拉，負值受壓。"""
+    member_id: str
+    axial_force_N: float
+
+
+@dataclass(frozen=True)
+class SolveDiagnostics:
+    """數值平衡誤差（N）與 DOF 數量；不是結構安全評等。"""
+    total_dof: int
+    free_dof: int
+    restrained_dof: int
+    free_residual_N: float
+    sum_fx_residual_N: float
+    sum_fy_residual_N: float
+
+
+@dataclass(frozen=True)
+class TrussSolveResult:
+    """核心權威輸出 u/R/N；stress、mass 與 Euler 留在獨立純計算層。"""
+    solver_version: str
+    input_schema_version: str
+    node_displacements: tuple[NodeDisplacement, ...]
+    support_reactions: tuple[SupportReaction, ...]
+    member_axial_forces: tuple[MemberAxialForce, ...]
+    diagnostics: SolveDiagnostics
