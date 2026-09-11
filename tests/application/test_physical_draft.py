@@ -116,8 +116,9 @@ def test_draft_save_rejects_stale_and_rolls_back_invalid_complete_payload(contex
     from modeling.services import DraftSaveError, save_physical_draft
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
-    with pytest.raises(DraftSaveError, match="STALE_DRAFT"):
+    with pytest.raises(DraftSaveError, match="STALE_DRAFT") as stale:
         save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section, version=0))
+    assert stale.value.status_code == 409
     invalid = valid_payload(material, section, version=1)
     invalid["connections"].append({"client_key": "bad", "geometry_node_client_key": "n1", "participating_member_client_keys": ["missing"]})
     with pytest.raises(DraftSaveError, match="UNKNOWN_MEMBER"):

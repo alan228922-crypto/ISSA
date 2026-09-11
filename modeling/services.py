@@ -12,6 +12,11 @@ from .models import Connection, GeometryNode, NodeLoad, PhysicalMember, Support
 class DraftSaveError(ValueError):
     """整稿保存失败的机器代码；调用方可映射到简体中文提示。"""
 
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+        self.status_code = 409 if code == "STALE_DRAFT" else 400
+
 
 def _items(payload, key):
     value = payload.get(key)
