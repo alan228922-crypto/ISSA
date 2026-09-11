@@ -1,5 +1,6 @@
 from competitions.authorization import can_modify_project as _can_modify_project
 from competitions.authorization import can_view_project as _can_view_project
+from competitions.models import CompetitionEvent
 
 
 def can_view_project(actor, project):
@@ -9,4 +10,6 @@ def can_view_project(actor, project):
 
 def can_modify_project(actor, project):
     """复用既有项目写入策略；经理只能查看学生项目。"""
+    if project.event.status == CompetitionEvent.Status.PURGED:
+        return False
     return _can_modify_project(actor, event_id=project.event_id, owner_user_id=project.owner_user_id)
