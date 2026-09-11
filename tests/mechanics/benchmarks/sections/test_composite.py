@@ -50,3 +50,14 @@ def test_nonfinite_orientation_rejected():
     from mechanics.sections.properties import composite_properties
     with pytest.raises(ValueError, match='INVALID_NUMERIC_VALUE'):
         composite_properties((Rectangle(2,2,0,angle_deg=float('nan')),))
+
+
+@pytest.mark.parametrize('angle',[4,30,45,90])
+def test_rotated_edge_contact_and_real_overlap(angle):
+    from math import cos,sin,radians
+    from mechanics.sections.properties import composite_properties
+    c,s=cos(radians(angle)),sin(radians(angle))
+    a=Rectangle(6,2,0,angle_deg=angle)
+    assert composite_properties((a,Rectangle(6,2,0,6*c,6*s,angle))).A_mm2 == 24
+    with pytest.raises(ValueError,match='OVERLAP_UNSUPPORTED'):
+        composite_properties((a,Rectangle(6,2,0,5.999*c,5.999*s,angle)))

@@ -30,3 +30,11 @@ def test_invalid_rectangle_input(field, value):
     kw[field] = value
     with pytest.raises(ValueError):
         rectangle_properties(Rectangle(**kw))
+
+
+@pytest.mark.parametrize('width,height',[(1e100,1e100),(1e308,1),(10**400,1)])
+def test_unrepresentable_section_rejected(width,height):
+    from mechanics.sections.model import Rectangle
+    from mechanics.sections.properties import rectangle_properties
+    with pytest.raises(ValueError,match='NUMERIC_RANGE'):
+        rectangle_properties(Rectangle(width,height,0))
