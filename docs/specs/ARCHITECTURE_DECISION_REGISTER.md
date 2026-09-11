@@ -20,3 +20,4 @@
 | ADR-16 | Solver/postprocess authority | Confirmed | Solver kernel: u/R/N; pure postprocess: stress/mass/Euler; Teaching: explanation only |
 | ADR-17 | Payload schema distinction | Confirmed | Mutable authoring: physical-draft-v1; immutable ModelRevision canonical snapshot: physical-snapshot-v1 |
 | ADR-18 | Platform Language | Confirmed | Simplified Chinese (zh-CN) for user-facing copy and Chinese comments/docstrings; program identifiers and mechanics machine codes remain English; P0 has no i18n framework |
+| ADR-19 | ACTIVE Event Team Provisioning | Open Decision | Master O-006. Current safe implementation is fail-closed with PROVISIONING_STATUS_POLICY_GAP; this temporary behavior is not final product policy |

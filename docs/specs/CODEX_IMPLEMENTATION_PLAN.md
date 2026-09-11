@@ -299,6 +299,8 @@ Do not add generic ACL framework.
 
 ### Task 4: Bulk team-account provisioning
 
+**状态：已在 M2 完成。** Event status policy 遵循 Master O-006：DRAFT 允许 provisioning，PURGED 拒绝，ACTIVE 在 Product Owner 确认最终政策前暂时 fail-closed 并返回 PROVISIONING_STATUS_POLICY_GAP。
+
 **Files:**
 - Create: `competitions/provisioning.py`
 - Create/modify: account import form/view/template

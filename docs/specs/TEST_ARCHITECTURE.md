@@ -5,7 +5,7 @@
 - 文件角色：Mechanics unit/benchmark、Django integration、permission、purge、contract 與 Future Frame regression 測試策略。
 - 階段：Truss-first P0。
 - 核心原則：**Mechanics correctness 必須先於 UI polish，Benchmark 是 gate，不是 demo。**
-- Source of Truth：`MASTER_SPEC.md v1.1`；本 Test Architecture 已完成 reconciliation。
+- Source of Truth：MASTER_SPEC.md v1.2；本 Test Architecture 已完成 reconciliation。
 
 ---
 
@@ -190,6 +190,16 @@ Reference：解析公式。
 【MECHANICS REVIEW REQUIRED】產品 K policy 未核定，但 explicit-K formula test 可先完成。
 
 ---
+
+### Event provisioning policy tests
+
+【Open Decision — Master O-006】测试必须区分产品政策与临时安全 fallback：
+
+- DRAFT provisioning 必须成功。
+- PURGED provisioning 必须拒绝。
+- ACTIVE provisioning 在 O-006 未关闭时，必须验证 fail-closed / PROVISIONING_STATUS_POLICY_GAP 行为。
+
+测试名称不得暗示 ACTIVE 的当前阻断是永久产品规则。Product Owner 决策 O-006 后，测试必须随最终政策更新。
 
 ## 6. Stage 2 Benchmarks
 

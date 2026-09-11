@@ -5,7 +5,7 @@
 - 文件角色：RBAC、Event scope、Project ownership、帳號 provisioning、密碼 lifecycle、Event lifecycle、Purge 與 audit 架構。
 - 階段：Truss-first P0。
 - 不包含 production code / migration。
-- Source of Truth：`MASTER_SPEC.md v1.0`；本文件已完成 reconciliation。
+- Source of Truth：MASTER_SPEC.md v1.2；本文件已完成 reconciliation。
 
 ---
 
@@ -362,6 +362,7 @@ PURGED
 
 - User 可使用 own Project。
 - Analyze enabled if Project valid。
+- Team provisioning 由 Master O-006 决定；当前服务端 fail-closed 并返回 PROVISIONING_STATUS_POLICY_GAP，不是永久禁止规则。
 
 #### FINISHED_GRACE
 
@@ -545,6 +546,10 @@ Master O-004 確認前，不由 PurgeService 自動刪除或停用 team User。P
 ### OD-AUTH-02 — FINISHED_GRACE User access（authoritative gate: Master O-003）
 
 【Open Decision】建議 read-only，但需 Product Owner 確認。
+
+### OD-AUTH-03 — ACTIVE Event Team Provisioning（authoritative gate: Master O-006）
+
+【Open Decision】DRAFT 已确认允许 provisioning，PURGED 已确认拒绝。ACTIVE 期间当前安全 fallback 为 fail-closed + PROVISIONING_STATUS_POLICY_GAP；这不是最终业务政策，也不与 FINISHED_GRACE 的 O-003 混用。
 
 ---
 

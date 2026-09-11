@@ -5,7 +5,7 @@
 - 文件角色：Django routes、普通 forms/pages、JSON endpoints、Application Services、save/check/analyze/revision/result flow。
 - 階段：Truss-first P0。
 - P0 採 server-rendered Django + 少量 JSON，不採 SPA/API-first。
-- Source of Truth：`MASTER_SPEC.md v1.1`；本文件已完成 reconciliation。
+- Source of Truth：MASTER_SPEC.md v1.2；本文件已完成 reconciliation。
 
 ---
 
@@ -586,6 +586,8 @@ transactional provisioning
   ↓
 result page
 ```
+
+Confirm 必须在服务端重新验证 Event status：DRAFT 允许，PURGED 拒绝；ACTIVE 在 Master O-006 未关闭前 fail-closed 并返回 PROVISIONING_STATUS_POLICY_GAP。前端不得决定该政策。
 
 不要把 plaintext password 放進 hidden HTML field 往返多次。
 

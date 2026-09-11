@@ -4,7 +4,7 @@
 
 - 專案名稱：校內結構設計競賽互動式分析與學習平台
 - 文件角色：專案最高層級總規格（Current Source of Truth）
-- 版本：v1.1
+- 版本：v1.2
 - 狀態：**CURRENT / APPROVED BASELINE — 專案最高層級 Source of Truth**
 - 核准日期：2026-09-10
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
@@ -40,6 +40,12 @@ Mechanics 的 machine-readable code 保持英文稳定 identifier，例如 `ZERO
 - Confirm platform default language as Simplified Chinese (zh-CN).
 - Confirm Simplified Chinese developer comments/docstrings.
 - Preserve English program identifiers and mechanics machine codes.
+
+**Version record — v1.2 change summary**
+
+- Register O-006 ACTIVE Event Team Provisioning Policy.
+- Preserve fail-closed behavior while the policy is unresolved.
+- Clarify that temporary security behavior is not a final product rule.
 
 ---
 
@@ -1932,6 +1938,24 @@ read-only。
 **Owner：Product Owner + Mechanics Reviewer**
 
 只有在 free-composite 允許重疊時需要決定。
+
+---
+
+## O-006 — ACTIVE Event Team Provisioning Policy
+
+**Owner：Product Owner**
+
+【Open Decision】
+
+CompetitionEvent.status == ACTIVE 时是否允许新增参赛队伍账号尚未确认。未来决策应明确以下之一，或提供另一条明确规则：
+
+- ACTIVE 后完全禁止 provisioning。
+- ACTIVE 后仅 Developer 可 provisioning。
+- ACTIVE 后 Developer 与 assigned Manager 均可 provisioning。
+
+当前服务端采用 temporary fail-closed behavior：拒绝 provisioning 并返回稳定 machine-readable code PROVISIONING_STATUS_POLICY_GAP。涉及账号创建、Event membership 与竞赛参与资格的未决政策，在没有明确授权时不得自行放开。
+
+此安全 fallback **不是最终产品政策**。O-006 关闭后，必须先更新 MASTER_SPEC、ADR 与 tests，再修改 implementation。
 
 ---
 
