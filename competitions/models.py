@@ -45,3 +45,14 @@ class EventMembership(models.Model):
 
     class Meta:
         constraints=[models.UniqueConstraint(fields=['user','event','membership_type'],name='unique_event_membership_type')]
+
+
+class BulkImportBatch(models.Model):
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    event=models.ForeignKey(CompetitionEvent,on_delete=models.PROTECT)
+    source_filename=models.CharField(max_length=255)
+    row_count=models.PositiveIntegerField()
+    success=models.BooleanField()
+    created_account_count=models.PositiveIntegerField(default=0)
+    validation_error_codes=models.JSONField(default=list)
+    created_at=models.DateTimeField(auto_now_add=True)
