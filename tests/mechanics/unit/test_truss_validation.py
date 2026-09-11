@@ -98,3 +98,18 @@ def test_orm_like_objects_are_not_solver_nodes():
     bar = make_bar(api)
     with pytest.raises(TypeError,match='Node'):
         replace(bar,nodes=(object(),))
+
+
+@pytest.mark.parametrize('target,code',[('E_MPa','INVALID_YOUNGS_MODULUS'),('A_mm2','INVALID_AREA'),
+                                       ('coordinate','INVALID_NUMERIC_VALUE'),('load','INVALID_NUMERIC_VALUE')])
+def test_unrepresentable_integer_is_machine_readable(target,code):
+    api=get_api()
+    model=make_bar(api)
+    huge=10**400
+    if target=='coordinate':
+        model=replace(model,nodes=(replace(model.nodes[0],x_mm=huge),model.nodes[1]))
+    elif target=='load':
+        model=replace(model,nodal_loads=(replace(model.nodal_loads[0],fx_N=huge),))
+    else:
+        model=replace(model,members=(replace(model.members[0],**{target:huge}),))
+    assert code in {i.code for i in api[-1](model)}

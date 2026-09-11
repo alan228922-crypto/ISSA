@@ -10,7 +10,11 @@ LENGTH_ATOL_MM = 1e-9
 
 
 def _finite(value: object) -> bool:
-    return isinstance(value, Real) and not isinstance(value, bool) and isfinite(value)
+    # Python int 可超出 float64 表示範圍；驗證必須回 issue，不洩漏轉型例外。
+    try:
+        return isinstance(value, Real) and not isinstance(value, bool) and isfinite(value)
+    except OverflowError:
+        return False
 
 
 def validate_truss_model(model: TrussModel) -> tuple[ValidationIssue, ...]:
