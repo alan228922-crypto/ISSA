@@ -28,6 +28,15 @@ def test_material_rejects_invalid_engineering_values(owner,field,value):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('value',[Decimal('NaN'),Decimal('Infinity')])
+def test_material_rejects_nonfinite_engineering_values(owner,value):
+    from materials.models import Material
+    material=Material(owner_user=owner,name='竹材',E_MPa=value,density_g_per_mm3=0,source_type='MEASURED')
+    with pytest.raises(ValidationError):
+        material.full_clean()
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize('field,value',[('width_mm',0),('thickness_mm',0),('width_mm',-1)])
 def test_strip_rejects_nonpositive_dimensions(owner,field,value):
     from materials.models import Material,Strip
