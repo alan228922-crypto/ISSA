@@ -30,3 +30,17 @@ class Strip(models.Model):
         super().clean()
         if self.material_id and self.owner_user_id and self.material.owner_user_id!=self.owner_user_id:
             raise ValidationError({'material':'条材只能引用所属用户自己的材料。'})
+
+
+class Section(models.Model):
+    """持久化截面定义和由纯 Python 引擎计算出的性质。"""
+    owner_user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='sections')
+    name=models.CharField(max_length=200)
+    section_type=models.CharField(max_length=32)
+    definition_schema_version=models.CharField(max_length=64)
+    definition_json=models.JSONField()
+    properties_schema_version=models.CharField(max_length=64)
+    properties_json=models.JSONField()
+    definition_hash=models.CharField(max_length=64,db_index=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
