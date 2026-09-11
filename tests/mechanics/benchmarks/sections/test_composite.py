@@ -61,3 +61,10 @@ def test_rotated_edge_contact_and_real_overlap(angle):
     assert composite_properties((a,Rectangle(6,2,0,6*c,6*s,angle))).A_mm2 == 24
     with pytest.raises(ValueError,match='OVERLAP_UNSUPPORTED'):
         composite_properties((a,Rectangle(6,2,0,5.999*c,5.999*s,angle)))
+
+
+@pytest.mark.parametrize('distance',[1e154,1e200])
+def test_unrepresentable_parallel_axis_term_rejected(distance):
+    from mechanics.sections.properties import composite_properties
+    with pytest.raises(ValueError,match='NUMERIC_RANGE'):
+        composite_properties((Rectangle(6,2,0),Rectangle(6,2,0,distance,0)))

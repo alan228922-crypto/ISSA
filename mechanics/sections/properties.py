@@ -59,13 +59,19 @@ def composite_properties(components: Sequence[Rectangle]) -> SectionProperties:
     for i,a in enumerate(components):
         if any(_overlaps(a,b) for b in components[i+1:]):
             raise ValueError('OVERLAP_UNSUPPORTED')
-    area = fsum(p.A_mm2 for p in parts)
-    # 重心由面積加權，不由密度加權。以第一個中心為參考可減少大座標下的消去誤差。
-    x0, y0 = parts[0].centroid_x_mm, parts[0].centroid_y_mm
-    cx = x0 + fsum(p.A_mm2*(p.centroid_x_mm-x0) for p in parts)/area
-    cy = y0 + fsum(p.A_mm2*(p.centroid_y_mm-y0) for p in parts)/area
-    # Ix = Σ(Ix_local + A*dy²)，Iy = Σ(Iy_local + A*dx²)，單位均為 mm⁴。
-    ix = fsum(p.Ix_mm4+p.A_mm2*(p.centroid_y_mm-cy)**2 for p in parts)
-    iy = fsum(p.Iy_mm4+p.A_mm2*(p.centroid_x_mm-cx)**2 for p in parts)
-    return SectionProperties(area,cx,cy,ix,iy,
-                             fsum(p.mass_per_length_g_per_mm for p in parts), *_axes(ix,iy))
+    try:
+        area = fsum(p.A_mm2 for p in parts)
+        # 重心由面積加權，不由密度加權。以首中心為參考減少大座標消去誤差。
+        x0, y0 = parts[0].centroid_x_mm, parts[0].centroid_y_mm
+        cx = x0 + fsum(p.A_mm2*(p.centroid_x_mm-x0) for p in parts)/area
+        cy = y0 + fsum(p.A_mm2*(p.centroid_y_mm-y0) for p in parts)/area
+        # Ix=Σ(Ix_local+A*dy²)，Iy=Σ(Iy_local+A*dx²)，單位 mm⁴。
+        ix = fsum(p.Ix_mm4+p.A_mm2*(p.centroid_y_mm-cy)**2 for p in parts)
+        iy = fsum(p.Iy_mm4+p.A_mm2*(p.centroid_x_mm-cx)**2 for p in parts)
+        mass = fsum(p.mass_per_length_g_per_mm for p in parts)
+    except (OverflowError, ZeroDivisionError) as exc:
+        raise ValueError('NUMERIC_RANGE') from exc
+    # 各子截面可表示，並不保證平行軸項或總和可表示。
+    if not all(isfinite(v) for v in (area,cx,cy,ix,iy,mass)) or min(area,ix,iy)<=0:
+        raise ValueError('NUMERIC_RANGE')
+    return SectionProperties(area,cx,cy,ix,iy,mass,*_axes(ix,iy))
