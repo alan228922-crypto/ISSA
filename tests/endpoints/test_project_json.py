@@ -79,6 +79,8 @@ def test_model_save_adapts_success_stale_validation_and_malformed_json(context, 
     assert stale.status_code == 409 and stale.json()['error']['code'] == 'STALE_DRAFT'
     assert blocked.status_code == 422 and blocked.json()['error']['code'] == 'INVALID_DRAFT'
     assert malformed.status_code == 400 and malformed.json()['error']['code'] == 'MALFORMED_JSON'
+    project.refresh_from_db()
+    assert project.draft_version == 1
 
 
 @pytest.mark.django_db
