@@ -3,7 +3,6 @@ import json
 
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 
 from analysis.models import AnalysisRun
@@ -23,6 +22,7 @@ MESSAGES = {
     'PROJECT_ANALYZE_DENIED': '您没有分析该项目的权限。',
     'PROJECT_CHECK_DENIED': '您没有检查该项目的权限。',
     'PROJECT_READ_DENIED': '您没有查看该项目的权限。',
+    'PROJECT_NOT_FOUND': '未找到指定的项目或分析记录。',
     'INVALID_DRAFT': '模型数据未通过验证，请检查输入。',
     'INVALID_SECTION_DEFINITION': '截面定义格式不正确。',
     'OVERLAP_UNSUPPORTED': '当前不支持包含重叠区域的组合截面。',
@@ -44,13 +44,15 @@ def _json_body(request):
 
 
 def _project(project_id):
-    return get_object_or_404(Project.objects.select_related('event', 'owner_user'), pk=project_id)
+    return Project.objects.select_related('event', 'owner_user').filter(pk=project_id).first()
 
 
 @login_required
 @require_POST
 def model_save(request, project_id):
     project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
     payload = _json_body(request)
     if payload is None:
         return _error('MALFORMED_JSON', 400)
@@ -66,6 +68,8 @@ def model_save(request, project_id):
 @require_POST
 def model_check(request, project_id):
     project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
     payload = _json_body(request)
     if payload is None:
         return _error('MALFORMED_JSON', 400)
@@ -82,6 +86,8 @@ def model_check(request, project_id):
 @require_POST
 def analyze(request, project_id):
     project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
     payload = _json_body(request)
     if payload is None:
         return _error('MALFORMED_JSON', 400)
@@ -102,9 +108,13 @@ def analyze(request, project_id):
 @require_GET
 def analysis_data(request, project_id, run_id):
     project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
     if not can_view_project(request.user, project):
         return _error('PROJECT_READ_DENIED', 403)
-    run = get_object_or_404(AnalysisRun.objects.select_related('model_revision', 'solver_version'), pk=run_id, project_id=project.id)
+    run = AnalysisRun.objects.select_related('model_revision', 'solver_version').filter(pk=run_id, project_id=project.id).first()
+    if run is None:
+        return _error('PROJECT_NOT_FOUND', 404)
     return JsonResponse({'ok': True, 'analysis_run_id': run.id, 'model_revision_id': run.model_revision_id, 'model_hash': run.model_revision.model_hash, 'solver_version': run.solver_version.solver_version, 'input_hash': run.input_hash, 'input_schema_version': run.input_schema_version, 'result_schema_version': run.result_schema_version, 'status': run.status, 'failure_code': run.failure_code, 'diagnostics': run.diagnostics_json, 'result_json': run.result_json})
 
 
@@ -112,6 +122,8 @@ def analysis_data(request, project_id, run_id):
 @require_POST
 def section_preview(request, project_id):
     project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
     definition = _json_body(request)
     if definition is None:
         return _error('MALFORMED_JSON', 400)

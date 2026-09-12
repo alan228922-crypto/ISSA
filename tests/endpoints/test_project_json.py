@@ -153,6 +153,7 @@ def test_result_data_enforces_read_scope_and_preserves_failed_metadata(context, 
     assert data.json()['input_hash'] == run.input_hash
     assert denied.status_code == 403
     assert cross_project.status_code == 404
+    assert cross_project.json()['error']['code'] == 'PROJECT_NOT_FOUND'
 
 
 @pytest.mark.django_db
