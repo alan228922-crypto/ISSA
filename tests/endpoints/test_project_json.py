@@ -45,6 +45,23 @@ def test_post_endpoints_require_csrf_after_authentication(context):
 
 
 @pytest.mark.django_db
+def test_all_project_json_endpoints_require_authenticated_user(context, client):
+    _, project, material, section = context
+    urls = [
+        ('post', reverse('projects:model_save', kwargs={'project_id': project.id}), valid_payload(material, section)),
+        ('post', reverse('projects:model_check', kwargs={'project_id': project.id}), {'expected_draft_version': 0}),
+        ('post', reverse('projects:analyze', kwargs={'project_id': project.id}), {'expected_draft_version': 0}),
+        ('get', reverse('projects:analysis_data', kwargs={'project_id': project.id, 'run_id': 999}), None),
+        ('post', reverse('projects:section_preview', kwargs={'project_id': project.id}), {'schema_version': 'section-definition-v1'}),
+    ]
+
+    for method, url, payload in urls:
+        response = getattr(client, method)(url, data=json.dumps(payload) if payload is not None else None, content_type='application/json')
+        assert response.status_code == 302
+        assert response.url.startswith('/accounts/login/')
+
+
+@pytest.mark.django_db
 def test_model_save_adapts_success_stale_validation_and_malformed_json(context, client):
     owner, project, material, section = context
     client.force_login(owner)
