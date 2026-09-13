@@ -1,6 +1,13 @@
-"""Validation for student prediction evidence; deliberately independent of mechanics."""
+"""Prediction evidence validation and lifecycle; deliberately independent of mechanics."""
 
+from django.db import transaction
+from django.utils import timezone
+
+from competitions.models import CompetitionEvent, EventMembership
 from modeling.models import Connection, PhysicalMember
+from projects.models import Project
+
+from .models import Prediction, StudentResultReveal
 
 
 class PredictionError(ValueError):
@@ -160,3 +167,68 @@ def validate_prediction_payload(project, payload):
     _physical_point(payload.get("max_displacement_location"), members, connections)
     _load_path(payload.get("representative_load_path"), members, connections)
     return payload
+
+
+def _authorize_student_owner(project, actor):
+    """Prediction evidence belongs only to the active participant who owns the Project."""
+    if (
+        project.event.status == CompetitionEvent.Status.PURGED
+        or actor.id != project.owner_user_id
+        or not EventMembership.objects.filter(
+            user=actor,
+            event_id=project.event_id,
+            membership_type=EventMembership.Type.PARTICIPANT,
+            is_active=True,
+        ).exists()
+    ):
+        raise PredictionError("PROJECT_WRITE_DENIED", 403)
+
+
+def create_prediction(*, project, actor, expected_draft_version):
+    """Create a server-bound DRAFT for the Project's current draft version."""
+    with transaction.atomic():
+        project = Project.objects.select_for_update().select_related("event").get(pk=project.pk)
+        _authorize_student_owner(project, actor)
+        if project.draft_version != expected_draft_version:
+            raise PredictionError("PREDICTION_STALE_DRAFT", 409)
+        return Prediction.objects.create(
+            project=project,
+            source_draft_version=project.draft_version,
+            created_by=actor,
+            prediction_schema_version="prediction-v1",
+            payload_json={},
+        )
+
+
+def complete_prediction(*, prediction, actor, expected_draft_version, payload):
+    """Atomically validate and complete a current, unrevealed prediction draft."""
+    error_code = None
+    with transaction.atomic():
+        project = Project.objects.select_for_update().select_related("event").get(pk=prediction.project_id)
+        prediction = Prediction.objects.select_for_update().get(pk=prediction.pk, project=project)
+        _authorize_student_owner(project, actor)
+
+        if prediction.status == Prediction.Status.COMPLETED:
+            raise PredictionError("PREDICTION_ALREADY_COMPLETED", 409)
+        if prediction.status == Prediction.Status.INVALIDATED:
+            raise PredictionError("PREDICTION_INVALIDATED", 409)
+        if prediction.source_draft_version != project.draft_version:
+            prediction.status = Prediction.Status.INVALIDATED
+            prediction.invalidated_at = timezone.now()
+            prediction.invalidation_code = "PREDICTION_STALE_DRAFT"
+            prediction.save(update_fields=["status", "invalidated_at", "invalidation_code"])
+            error_code = "PREDICTION_STALE_DRAFT"
+        elif expected_draft_version != project.draft_version:
+            raise PredictionError("PREDICTION_STALE_DRAFT", 409)
+        elif StudentResultReveal.objects.filter(
+            project=project, source_draft_version=prediction.source_draft_version
+        ).exists():
+            raise PredictionError("PREDICTION_AFTER_RESULT_REVEAL", 409)
+        else:
+            prediction.payload_json = validate_prediction_payload(project, payload)
+            prediction.status = Prediction.Status.COMPLETED
+            prediction.completed_at = timezone.now()
+            prediction.save(update_fields=["payload_json", "status", "completed_at"])
+    if error_code:
+        raise PredictionError(error_code, 409)
+    return prediction

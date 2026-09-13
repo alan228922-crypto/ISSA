@@ -419,3 +419,203 @@ def test_payload_rejects_unexpected_history_display_fields(project_with_two_memb
 
     with pytest.raises(PredictionError, match="PREDICTION_INVALID_SCHEMA"):
         validate_prediction_payload(project_with_two_members, payload)
+
+
+@pytest.mark.django_db
+def test_owner_completes_current_draft_once(project_with_two_members, owner):
+    """A completed prediction is immutable evidence for its source draft."""
+    from learning.services import PredictionError, complete_prediction, create_prediction
+
+    project_with_two_members.refresh_from_db()
+    prediction = create_prediction(
+        project=project_with_two_members,
+        actor=owner,
+        expected_draft_version=project_with_two_members.draft_version,
+    )
+    assert prediction.status == prediction.Status.DRAFT
+    assert prediction.source_draft_version == project_with_two_members.draft_version
+    assert prediction.created_by == owner
+    complete_prediction(
+        prediction=prediction,
+        actor=owner,
+        expected_draft_version=project_with_two_members.draft_version,
+        payload=complete_payload(),
+    )
+    prediction.refresh_from_db()
+
+    assert prediction.status == prediction.Status.COMPLETED
+    assert prediction.completed_at is not None
+    from learning.models import StudentResultReveal
+    assert not StudentResultReveal.objects.filter(project=project_with_two_members).exists()
+    with pytest.raises(PredictionError, match="PREDICTION_ALREADY_COMPLETED"):
+        complete_prediction(
+            prediction=prediction,
+            actor=owner,
+            expected_draft_version=project_with_two_members.draft_version,
+            payload=complete_payload(),
+        )
+
+
+@pytest.mark.django_db
+def test_only_active_participant_owner_may_create_prediction(project_with_two_members, owner):
+    """Replacing owner-participant authorization with broad project writes leaks evidence to Developers."""
+    from learning.services import PredictionError, create_prediction
+
+    project_with_two_members.refresh_from_db()
+    other = User.objects.create_user("prediction-other")
+    manager = User.objects.create_user("prediction-manager", role=User.Role.MANAGER)
+    developer = User.objects.create_user("prediction-developer", role=User.Role.DEVELOPER)
+    EventMembership.objects.create(
+        user=manager, event=project_with_two_members.event, membership_type=EventMembership.Type.MANAGER
+    )
+
+    for actor in (other, manager, developer):
+        with pytest.raises(PredictionError, match="PROJECT_WRITE_DENIED"):
+            create_prediction(
+                project=project_with_two_members,
+                actor=actor,
+                expected_draft_version=project_with_two_members.draft_version,
+            )
+    EventMembership.objects.filter(
+        user=owner,
+        event=project_with_two_members.event,
+        membership_type=EventMembership.Type.PARTICIPANT,
+    ).update(is_active=False)
+    with pytest.raises(PredictionError, match="PROJECT_WRITE_DENIED"):
+        create_prediction(
+            project=project_with_two_members,
+            actor=owner,
+            expected_draft_version=project_with_two_members.draft_version,
+        )
+
+
+@pytest.mark.django_db
+def test_non_owner_cannot_complete_owner_prediction(project_with_two_members, owner):
+    from learning.services import PredictionError, complete_prediction, create_prediction
+
+    project_with_two_members.refresh_from_db()
+    prediction = create_prediction(
+        project=project_with_two_members, actor=owner, expected_draft_version=project_with_two_members.draft_version
+    )
+    developer = User.objects.create_user("prediction-complete-developer", role=User.Role.DEVELOPER)
+
+    with pytest.raises(PredictionError, match="PROJECT_WRITE_DENIED"):
+        complete_prediction(
+            prediction=prediction,
+            actor=developer,
+            expected_draft_version=project_with_two_members.draft_version,
+            payload=complete_payload(),
+        )
+    prediction.refresh_from_db()
+    assert prediction.status == prediction.Status.DRAFT
+
+
+@pytest.mark.django_db
+def test_prediction_lifecycle_blocks_purged_projects(project_with_two_members, owner):
+    from learning.services import PredictionError, create_prediction
+
+    project_with_two_members.event.status = CompetitionEvent.Status.PURGED
+    project_with_two_members.event.save(update_fields=["status"])
+    project_with_two_members.refresh_from_db()
+
+    with pytest.raises(PredictionError, match="PROJECT_WRITE_DENIED"):
+        create_prediction(
+            project=project_with_two_members,
+            actor=owner,
+            expected_draft_version=project_with_two_members.draft_version,
+        )
+
+
+@pytest.mark.django_db
+def test_changed_draft_invalidates_draft_but_preserves_completed_history(project_with_two_members, owner):
+    from learning.models import Prediction
+    from learning.services import PredictionError, complete_prediction, create_prediction
+
+    project_with_two_members.refresh_from_db()
+    old_completed = Prediction.objects.create(
+        project=project_with_two_members,
+        source_draft_version=0,
+        status=Prediction.Status.COMPLETED,
+        created_by=owner,
+        payload_json={"historical": True},
+        completed_at=timezone.now(),
+    )
+    draft = create_prediction(
+        project=project_with_two_members,
+        actor=owner,
+        expected_draft_version=project_with_two_members.draft_version,
+    )
+    project_with_two_members.draft_version += 1
+    project_with_two_members.save(update_fields=["draft_version"])
+
+    with pytest.raises(PredictionError, match="PREDICTION_STALE_DRAFT"):
+        complete_prediction(
+            prediction=draft,
+            actor=owner,
+            expected_draft_version=project_with_two_members.draft_version,
+            payload=complete_payload(),
+        )
+    draft.refresh_from_db()
+    old_completed.refresh_from_db()
+    assert draft.status == Prediction.Status.INVALIDATED
+    assert draft.invalidation_code == "PREDICTION_STALE_DRAFT"
+    assert old_completed.status == Prediction.Status.COMPLETED
+
+
+@pytest.mark.django_db
+def test_invalid_completion_keeps_prediction_draft(project_with_two_members, owner):
+    from learning.models import Prediction
+    from learning.services import PredictionError, complete_prediction, create_prediction
+
+    project_with_two_members.refresh_from_db()
+    prediction = create_prediction(
+        project=project_with_two_members, actor=owner, expected_draft_version=project_with_two_members.draft_version
+    )
+    incomplete = complete_payload()
+    incomplete["member_judgments"] = incomplete["member_judgments"][:1]
+
+    with pytest.raises(PredictionError, match="PREDICTION_INCOMPLETE"):
+        complete_prediction(
+            prediction=prediction,
+            actor=owner,
+            expected_draft_version=project_with_two_members.draft_version,
+            payload=incomplete,
+        )
+    with pytest.raises(PredictionError, match="PREDICTION_INVALID_SCHEMA"):
+        complete_prediction(
+            prediction=prediction,
+            actor=owner,
+            expected_draft_version=project_with_two_members.draft_version,
+            payload={"schema_version": "prediction-v2"},
+        )
+    prediction.refresh_from_db()
+    assert prediction.status == Prediction.Status.DRAFT
+    assert prediction.completed_at is None
+
+
+@pytest.mark.django_db
+def test_result_reveal_blocks_completion_without_creating_another_reveal(project_with_two_members, owner, success_run):
+    from learning.models import StudentResultReveal
+    from learning.services import PredictionError, complete_prediction, create_prediction
+
+    project_with_two_members.refresh_from_db()
+    prediction = create_prediction(
+        project=project_with_two_members, actor=owner, expected_draft_version=project_with_two_members.draft_version
+    )
+    StudentResultReveal.objects.create(
+        project=project_with_two_members,
+        source_draft_version=project_with_two_members.draft_version,
+        first_analysis_run=success_run,
+        revealed_to_user=owner,
+    )
+
+    with pytest.raises(PredictionError, match="PREDICTION_AFTER_RESULT_REVEAL"):
+        complete_prediction(
+            prediction=prediction,
+            actor=owner,
+            expected_draft_version=project_with_two_members.draft_version,
+            payload=complete_payload(),
+        )
+    prediction.refresh_from_db()
+    assert prediction.status == prediction.Status.DRAFT
+    assert StudentResultReveal.objects.filter(project=project_with_two_members).count() == 1
