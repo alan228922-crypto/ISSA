@@ -357,6 +357,15 @@ Tests：
 
 ## 15. Application Flow Integration Tests
 
+### M4A Prediction / reveal
+
+- owner-only Prediction DRAFT/create/complete, CSRF and JSON error mapping;
+- exact all-member `TENSION|COMPRESSION|ZERO_FORCE|UNSURE` coverage, `prediction-v1`, PhysicalPointRef and alternating-path topology;
+- completed immutability, stale-draft history, nullable Analyze and same-draft repeated Run link;
+- owner SUCCESS result read creates one reveal record; Manager/Developer and failed Run reads do not;
+- completion/reveal race serializes on Project and cannot accept a late pre-result Prediction;
+- mechanics, idealization and `truss2d-result-v1` remain unchanged; O-007 is not implemented.
+
 ### Save
 
 - valid own project draft saves and increments version。

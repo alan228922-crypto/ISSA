@@ -520,6 +520,7 @@ AnalysisRun
 - result_json
 - diagnostics_json
 - failure_code
+- prediction_id                     nullable; completed same-project/same-draft evidence only
 ```
 
 Recommended status：
@@ -607,8 +608,22 @@ Prediction
 - created_by
 - source_draft_version
 - created_at
-- structured_prediction_json
-- rationale_text
+- status                            DRAFT | COMPLETED | INVALIDATED
+- completed_at / invalidated_at
+- invalidation_code                 nullable stable code
+- prediction_schema_version         prediction-v1
+- payload_json                      immutable after completion
+
+StudentResultReveal
+- id
+- project_id
+- source_draft_version
+- first_analysis_run_id
+- revealed_to_user_id
+- first_revealed_at
+- unique(project_id, source_draft_version)
+
+`prediction-v1` contains exact member judgments, one restricted PhysicalPointRef, and an alternating representative load-path hypothesis. It contains no coordinates, model snapshot, material/section data, or solver result. `ZERO_FORCE` is a Prediction choice only; analysis-side policy remains O-007 Open.
 ```
 
 ### DesignRationale
@@ -882,6 +897,7 @@ write final counts/status
 - `section-properties-v1`
 - `truss2d-input-v1`
 - `truss2d-result-v1`
+- `prediction-v1`
 - `research-metric-v1`
 
 不建立複雜 API version namespace。

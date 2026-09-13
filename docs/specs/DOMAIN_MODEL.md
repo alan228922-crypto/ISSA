@@ -516,26 +516,17 @@ ModelRevision 為 immutable analysis checkpoint。
 
 【Confirmed】
 
-Prediction 位於 Analyze 之前的教學循環。
+Prediction 位於 Analyze 之前的 Soft Gate 教學循環，綁定 `Project + source_draft_version`，而非 Analyze 後才存在的 ModelRevision。`DRAFT → COMPLETED|INVALIDATED`；COMPLETED immutable，舊 completed draft 為 derived stale historical evidence，不是 stored status。Prediction 不被 Solver 讀取。
 
-【Recommended】
+P0 使用一個 versioned JSON aggregate，不建立 member/displacement/path 子表：所有 PhysicalMember 的 `TENSION|COMPRESSION|ZERO_FORCE|UNSURE`、一個 restricted PhysicalPointRef、和一條代表性 Connection/PhysicalMember alternating load-path hypothesis。`ZERO_FORCE` 是學生選項，不是 analysis classification。
 
-Prediction 應關聯：
+`AnalysisRun.prediction` nullable FK 表示一個 Run 至多使用一個 completed Prediction；同一 Prediction 可連到同 draft 的多個 Run。完整 contract 見 `PREDICTION_AND_REVEAL_ARCHITECTURE.md`。
 
-- Project
-- target draft state / pending revision context
-- created_by
-- created_at
-- structured prediction fields + optional text
+## 15.1 StudentResultReveal
 
-至少可表達：
+【Confirmed】
 
-- 預期主要受拉區/杆
-- 預期主要受壓區/杆
-- 預期最大位移位置
-- optional rationale
-
-不要求 Prediction 被 Solver 讀取。
+`StudentResultReveal(Project, source_draft_version)` 以唯一約束記錄 student owner 首次獲得 SUCCESS numerical/classified result 的時間、Run 與 actor。它不保存結果資料。它阻止同 draft 的晚完成 Prediction；Manager/Developer read 不觸發。Prediction completion 和 reveal 共享 Project-row transaction lock。
 
 ---
 
@@ -550,6 +541,7 @@ AnalysisRun 是一次實際 mechanics execution 記錄。
 ```text
 ModelRevision 1 ── * AnalysisRun
 SolverVersion 1 ── * AnalysisRun
+Prediction 1 ── * AnalysisRun (nullable on Run)
 ```
 
 概念欄位：

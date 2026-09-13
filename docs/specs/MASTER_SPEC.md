@@ -4,7 +4,7 @@
 
 - 專案名稱：校內結構設計競賽互動式分析與學習平台
 - 文件角色：專案最高層級總規格（Current Source of Truth）
-- 版本：v1.3
+- 版本：v1.4
 - 狀態：**CURRENT / APPROVED BASELINE — 專案最高層級 Source of Truth**
 - 核准日期：2026-09-10
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
@@ -52,6 +52,11 @@ Mechanics 的 machine-readable code 保持英文稳定 identifier，例如 `ZERO
 - Resolve O-002.
 - Freeze P0 Roller restraint to global X/Y axis only.
 - Preserve arbitrary-angle support as out of P0 scope.
+
+**Version record — v1.4 change summary**
+
+- Confirm M4A Prediction Soft Gate, immutable `prediction-v1`, PhysicalPointRef, nullable AnalysisRun link, and server-authoritative student result reveal evidence.
+- Register O-007 Engineering Zero-Force Classification Policy as `MECHANICS REVIEW REQUIRED`; Prediction `ZERO_FORCE` remains a student choice only.
 
 ---
 
@@ -1363,6 +1368,18 @@ Prediction 不作為 Solver input。是否「沒有 Prediction 就禁止 Analyze
 
 ---
 
+# 28.1 M4A Prediction integrity
+
+【Confirmed】
+
+Prediction is a Soft Gate: `prediction_id=None` remains analyzable. A Prediction binds `Project + source_draft_version`, is completed only with all PhysicalMember choices, one PhysicalPointRef and one representative load-path hypothesis, and becomes immutable at completion. It is not Solver input.
+
+After the student owner receives a successful numerical/classified result for that Project/draft, no new or incomplete Prediction for that draft may become completed. The server records minimal reveal evidence keyed by `(Project, source_draft_version)`; Manager/Developer reads do not trigger it. A changed draft version has independent eligibility. Details live in `PREDICTION_AND_REVEAL_ARCHITECTURE.md`.
+
+`ZERO_FORCE` is confirmed as a student choice. It is not the current mechanics `ZERO` numerical cleanup; analysis-side engineering classification remains O-007 Open.
+
+---
+
 # 29. Compare / DesignRationale / Reflection
 
 ## 29.1 Compare
@@ -1958,6 +1975,16 @@ CompetitionEvent.status == ACTIVE 时是否允许新增参赛队伍账号尚未�
 
 ---
 
+## O-007 — Engineering Zero-Force Classification Policy
+
+**Owner：Mechanics Reviewer**
+
+**Status：MECHANICS REVIEW REQUIRED**
+
+Prediction may record student choice `ZERO_FORCE`. The existing mechanics `ZERO` label is only numerical cleanup (`abs(N) <= 1e-9 N`) and must not be treated as engineering/teaching zero-force. Any absolute floor, relative factor, reference force, result schema classification, or Compare verdict awaits mechanics review.
+
+---
+
 # 42. Mechanics Review Required
 
 目前至少：
@@ -2143,6 +2170,6 @@ CODEX_IMPLEMENTATION_PLAN.md
 
 本文件目前為：
 
-> **`MASTER_SPEC.md v1.0` — CURRENT / APPROVED BASELINE**
+> **`MASTER_SPEC.md v1.4` — CURRENT / APPROVED BASELINE**
 
 後續 Architecture Specs、Implementation Plan、Codex implementation 與測試均必須以本文件為最高層級依據。若需求或 mechanics assumptions 需要改變，應先更新 MASTER_SPEC / Decision Register，再修改 implementation。

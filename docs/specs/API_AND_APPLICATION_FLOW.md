@@ -224,6 +224,18 @@ GET /projects/<project_id>/analyses/<run_id>/data/
 
 用途：SVG visualization / deeper numeric panels。
 
+For M4A, an owner read of a SUCCESS numerical result must record the server-side `(Project, source_draft_version)` StudentResultReveal before returning the payload. Manager/Developer reads do not record student reveal.
+
+### 4.4.1 Prediction JSON minimum
+
+```text
+POST /projects/<project_id>/predictions/                         create DRAFT
+POST /projects/<project_id>/predictions/<prediction_id>/complete/ complete prediction-v1
+GET  /projects/<project_id>/predictions/<prediction_id>/          read own/historical Prediction
+```
+
+All POST endpoints retain CSRF and use thin views. There is no generic CRUD API and no client “mark revealed” endpoint.
+
 ### 4.5 Section property preview
 
 ```text
@@ -432,9 +444,7 @@ P0 最簡單也可每次 Analyze 都建立 revision；但若大量重按 Analyze
 
 Analyze service 可檢查是否已有針對 current draft/version 的 Prediction。
 
-是否「沒有 Prediction 就禁止 Analyze」屬 Product/Teaching policy；架構支援但不在 service hard-code 未核定規則。
-
-P0 可先把 Prediction 作 strongly encouraged step，而是否 blocking 在 UX spec 決定。
+Prediction is confirmed Soft Gate: absence never blocks Analyze. If supplied, the service verifies completed status, same Project, owner, and exact current source draft version before creating the Run link.
 
 ---
 
@@ -452,6 +462,8 @@ P0 可先把 Prediction 作 strongly encouraged step，而是否 blocking 在 UX
 【Recommended】
 
 HTML first render 可帶 summary，SVG/詳細數值再讀 result-data endpoint。
+
+Any future student-owner response that exposes numerical/classified answers must pass through the same server reveal boundary before content is returned; SUCCESS metadata alone is not reveal.
 
 ```text
 GET result page

@@ -2,7 +2,7 @@
 
 ## Current Status
 
-- Source of Truth: `MASTER_SPEC.md v1.0`
+- Source of Truth: `MASTER_SPEC.md v1.4`
 - Architecture: `FINAL_FROZEN`
 - Implementation Plan: ready
 - Production code: not started in this handoff
@@ -26,6 +26,7 @@
 13. `ARCHITECTURE_DECISION_REGISTER.md`
 14. `CODEX_IMPLEMENTATION_PLAN.md`
 15. `IMPLEMENTATION_HANDOFF_CHECKLIST.md`
+16. `PREDICTION_AND_REVEAL_ARCHITECTURE.md`
 
 ## Frozen P0 Direction
 

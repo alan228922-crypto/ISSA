@@ -21,3 +21,5 @@
 | ADR-17 | Payload schema distinction | Confirmed | Mutable authoring: physical-draft-v1; immutable ModelRevision canonical snapshot: physical-snapshot-v1 |
 | ADR-18 | Platform Language | Confirmed | Simplified Chinese (zh-CN) for user-facing copy and Chinese comments/docstrings; program identifiers and mechanics machine codes remain English; P0 has no i18n framework |
 | ADR-19 | ACTIVE Event Team Provisioning | Open Decision | Master O-006. Current safe implementation is fail-closed with PROVISIONING_STATUS_POLICY_GAP; this temporary behavior is not final product policy |
+| ADR-20 | Prediction and result reveal evidence | Confirmed | M4A hybrid `prediction-v1`, Project+draft binding, immutable completed records, nullable Run FK, PhysicalPointRef, and unique owner-only StudentResultReveal; no Prediction UI/Compare in M4A |
+| ADR-21 | Engineering zero-force classification | MECHANICS REVIEW REQUIRED | Master O-007: Prediction `ZERO_FORCE` is allowed, but existing numerical `ZERO` must not become a teaching classification; threshold/reference policy is unapproved |
