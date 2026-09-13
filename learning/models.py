@@ -22,6 +22,14 @@ class Prediction(models.Model):
     prediction_schema_version = models.CharField(max_length=64, default="prediction-v1")
     payload_json = models.JSONField()
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=["DRAFT", "COMPLETED", "INVALIDATED"]),
+                name="prediction_status_is_valid",
+            ),
+        ]
+
 
 class StudentResultReveal(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="student_result_reveals")

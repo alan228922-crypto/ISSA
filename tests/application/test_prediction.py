@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from django.db import IntegrityError
@@ -122,8 +122,40 @@ def project_with_connection_and_free_endpoint(project_with_two_members):
 
 
 @pytest.mark.django_db
-def test_prediction_defaults_draft_and_reveal_is_unique(project, owner, success_run):
-    from learning.models import Prediction, StudentResultReveal
+def test_prediction_persists_its_full_draft_contract(project, owner):
+    from learning.models import Prediction
+
+    completed_at = timezone.now()
+    invalidated_at = completed_at + timedelta(minutes=1)
+    payload = {"member_judgments": [{"physical_member_client_key": "m1"}]}
+    prediction = Prediction.objects.create(
+        project=project,
+        source_draft_version=7,
+        created_by=owner,
+        prediction_schema_version="prediction-v1",
+        payload_json=payload,
+        completed_at=completed_at,
+        invalidated_at=invalidated_at,
+        invalidation_code="SOURCE_DRAFT_CHANGED",
+    )
+    prediction.refresh_from_db()
+
+    assert prediction.status == Prediction.Status.DRAFT
+    assert prediction.project == project
+    assert prediction.source_draft_version == 7
+    assert prediction.prediction_schema_version == "prediction-v1"
+    assert prediction.payload_json == payload
+    assert prediction.created_by == owner
+    assert prediction.created_at is not None
+    assert prediction.completed_at == completed_at
+    assert prediction.invalidated_at == invalidated_at
+    assert prediction.invalidation_code == "SOURCE_DRAFT_CHANGED"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", ["DRAFT", "COMPLETED", "INVALIDATED"])
+def test_prediction_persists_each_allowed_status(project, owner, status):
+    from learning.models import Prediction
 
     prediction = Prediction.objects.create(
         project=project,
@@ -131,9 +163,30 @@ def test_prediction_defaults_draft_and_reveal_is_unique(project, owner, success_
         created_by=owner,
         prediction_schema_version="prediction-v1",
         payload_json={},
+        status=status,
     )
 
-    assert prediction.status == Prediction.Status.DRAFT
+    assert prediction.status == status
+
+
+@pytest.mark.django_db
+def test_prediction_rejects_an_arbitrary_status_at_the_database(project, owner):
+    from learning.models import Prediction
+
+    with pytest.raises(IntegrityError):
+        Prediction.objects.create(
+            project=project,
+            source_draft_version=7,
+            created_by=owner,
+            prediction_schema_version="prediction-v1",
+            payload_json={},
+            status="NOT_A_PREDICTION_STATUS",
+        )
+
+
+@pytest.mark.django_db
+def test_result_reveal_is_unique_per_project_draft(project, owner, success_run):
+    from learning.models import StudentResultReveal
 
     StudentResultReveal.objects.create(
         project=project,
@@ -149,6 +202,22 @@ def test_prediction_defaults_draft_and_reveal_is_unique(project, owner, success_
             first_analysis_run=success_run,
             revealed_to_user=owner,
         )
+
+
+@pytest.mark.django_db
+def test_project_deletion_removes_prediction(project, owner):
+    from learning.models import Prediction
+
+    prediction = Prediction.objects.create(
+        project=project,
+        source_draft_version=7,
+        created_by=owner,
+        prediction_schema_version="prediction-v1",
+        payload_json={},
+    )
+    project.delete()
+
+    assert not Prediction.objects.filter(pk=prediction.pk).exists()
 
 
 @pytest.mark.django_db
