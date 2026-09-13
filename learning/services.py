@@ -3,6 +3,7 @@
 from django.db import transaction
 from django.utils import timezone
 
+from accounts.models import User
 from competitions.models import CompetitionEvent, EventMembership
 from modeling.models import Connection, PhysicalMember
 from projects.models import Project
@@ -173,6 +174,7 @@ def _authorize_student_owner(project, actor):
     """Prediction evidence belongs only to the active participant who owns the Project."""
     if (
         project.event.status == CompetitionEvent.Status.PURGED
+        or actor.role in {User.Role.MANAGER, User.Role.DEVELOPER}
         or actor.id != project.owner_user_id
         or not EventMembership.objects.filter(
             user=actor,

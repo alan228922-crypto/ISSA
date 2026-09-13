@@ -40,3 +40,24 @@ Results: focused command passed (`1 passed`); prediction suite passed (`31 passe
 ## Scope exclusions
 
 No runtime reveal service, endpoints, Task4 `AnalysisRun.prediction` foreign key, compare/UI behavior, mechanics behavior, zero-force classification policy, or FINISHED_GRACE policy was added.
+
+## Follow-up review fix — privileged owner-participants
+
+Review found that a Manager or Developer account which was itself the Project owner and held an active PARTICIPANT membership could pass the original owner-membership predicate. `_authorize_student_owner` now explicitly denies `MANAGER` and `DEVELOPER` roles before allowing either lifecycle operation.
+
+### Follow-up RED
+
+```sh
+python3 -m pytest tests/application/test_prediction.py -k 'privileged_owner_participant' -v
+```
+
+Result: all four new real lifecycle cases failed as expected (`DID NOT RAISE PredictionError`): Manager and Developer owner-participants could both create and complete predictions before the role check existed.
+
+### Follow-up GREEN
+
+```sh
+python3 -m pytest tests/application/test_prediction.py -k 'privileged_owner_participant' -v
+python3 -m pytest tests/application/test_prediction.py -v
+```
+
+Results: privileged-owner focused tests passed (`4 passed`); full prediction suite passed (`35 passed`). The create tests assert no Prediction is created; the complete tests assert the existing Prediction remains DRAFT with empty payload and no completion timestamp.

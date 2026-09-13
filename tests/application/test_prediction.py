@@ -619,3 +619,51 @@ def test_result_reveal_blocks_completion_without_creating_another_reveal(project
     prediction.refresh_from_db()
     assert prediction.status == prediction.Status.DRAFT
     assert StudentResultReveal.objects.filter(project=project_with_two_members).count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", [User.Role.MANAGER, User.Role.DEVELOPER])
+def test_privileged_owner_participant_cannot_create_prediction(project_with_two_members, owner, role):
+    """Privileged roles cannot create student learning evidence, even as owner-participants."""
+    from learning.models import Prediction
+    from learning.services import PredictionError, create_prediction
+
+    project_with_two_members.refresh_from_db()
+    owner.role = role
+    owner.save(update_fields=["role"])
+
+    with pytest.raises(PredictionError, match="PROJECT_WRITE_DENIED"):
+        create_prediction(
+            project=project_with_two_members,
+            actor=owner,
+            expected_draft_version=project_with_two_members.draft_version,
+        )
+    assert not Prediction.objects.filter(project=project_with_two_members).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", [User.Role.MANAGER, User.Role.DEVELOPER])
+def test_privileged_owner_participant_cannot_complete_prediction(project_with_two_members, owner, role):
+    """A privileged role change cannot mutate the owner's existing DRAFT evidence."""
+    from learning.services import PredictionError, complete_prediction, create_prediction
+
+    project_with_two_members.refresh_from_db()
+    prediction = create_prediction(
+        project=project_with_two_members,
+        actor=owner,
+        expected_draft_version=project_with_two_members.draft_version,
+    )
+    owner.role = role
+    owner.save(update_fields=["role"])
+
+    with pytest.raises(PredictionError, match="PROJECT_WRITE_DENIED"):
+        complete_prediction(
+            prediction=prediction,
+            actor=owner,
+            expected_draft_version=project_with_two_members.draft_version,
+            payload=complete_payload(),
+        )
+    prediction.refresh_from_db()
+    assert prediction.status == prediction.Status.DRAFT
+    assert prediction.payload_json == {}
+    assert prediction.completed_at is None
