@@ -238,6 +238,21 @@ def test_payload_requires_every_active_member_once(project_with_two_members):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("student_predicted_state", ["TENSION", "COMPRESSION", "ZERO_FORCE", "UNSURE"])
+def test_payload_accepts_each_documented_student_predicted_state(
+    project_with_two_members, student_predicted_state
+):
+    """Regression guard: removing any allowed student state must reject that payload."""
+    from learning.services import validate_prediction_payload
+
+    payload = complete_payload(state=student_predicted_state)
+
+    assert validate_prediction_payload(project_with_two_members, payload)["member_judgments"][0][
+        "predicted_state"
+    ] == student_predicted_state
+
+
+@pytest.mark.django_db
 def test_point_and_path_are_physical_not_solver_rules(project_with_connection_and_free_endpoint):
     from learning.services import PredictionError, validate_prediction_payload
 
@@ -294,6 +309,28 @@ def test_payload_rejects_unknown_cross_project_and_invalid_schema_references(pro
     with pytest.raises(PredictionError, match="PREDICTION_INVALID_SCHEMA") as error:
         validate_prediction_payload(project_with_two_members, invalid_schema)
     assert error.value.status_code == 400
+
+
+@pytest.mark.django_db
+def test_load_path_rejects_cross_project_connection_reference(project_with_two_members, owner):
+    """Regression guard: path references must remain scoped to the current project."""
+    from learning.services import PredictionError, validate_prediction_payload
+    from modeling.models import Connection
+
+    foreign_project = Project.objects.create(
+        event=project_with_two_members.event, owner_user=owner, name="路径外部项目",
+    )
+    local_connection = Connection.objects.get(project=project_with_two_members, client_key="c1")
+    Connection.objects.create(
+        project=foreign_project,
+        client_key="foreign-c1",
+        geometry_node=local_connection.geometry_node,
+    )
+    payload = complete_payload()
+    payload["representative_load_path"][0]["connection_client_key"] = "foreign-c1"
+
+    with pytest.raises(PredictionError, match="INVALID_LOAD_PATH"):
+        validate_prediction_payload(project_with_two_members, payload)
 
 
 @pytest.mark.django_db
