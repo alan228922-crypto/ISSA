@@ -30,9 +30,19 @@ def _result(model, solved, mapping, snapshot):
 def analyze_project(*,project,actor,expected_draft_version,prediction_id=None,solver=None):
     if not can_modify_project(actor,project): raise AnalysisError('PROJECT_ANALYZE_DENIED',403)
     if expected_draft_version!=project.draft_version: raise AnalysisError('STALE_DRAFT',409)
+    prediction=None
+    if prediction_id is not None:
+        from learning.models import Prediction
+        try:
+            prediction=Prediction.objects.filter(pk=prediction_id,project=project).first()
+        except (TypeError,ValueError):
+            prediction=None
+        if prediction is None: raise AnalysisError('PREDICTION_NOT_FOUND',404)
+        if prediction.status!=Prediction.Status.COMPLETED or prediction.created_by_id!=project.owner_user_id or prediction.prediction_schema_version!='prediction-v1': raise AnalysisError('PREDICTION_NOT_ELIGIBLE',409)
+        if prediction.source_draft_version!=expected_draft_version or prediction.source_draft_version!=project.draft_version: raise AnalysisError('PREDICTION_STALE_DRAFT',409)
     revision,_=get_or_create_revision(project=project,actor=actor); version=_solver_version(); run=None
     try:
-        ideal=idealize(revision.physical_snapshot_json); input_json=canonical_solver_input(ideal.model,ideal.analysis_member_to_physical); run=AnalysisRun.objects.create(project=project,model_revision=revision,analysis_type='TRUSS_2D',solver_version=version,input_schema_version=ideal.model.schema_version,input_hash=model_hash(input_json),solver_input_json=input_json,created_by=actor)
+        ideal=idealize(revision.physical_snapshot_json); input_json=canonical_solver_input(ideal.model,ideal.analysis_member_to_physical); run=AnalysisRun.objects.create(project=project,prediction=prediction,model_revision=revision,analysis_type='TRUSS_2D',solver_version=version,input_schema_version=ideal.model.schema_version,input_hash=model_hash(input_json),solver_input_json=input_json,created_by=actor)
         issues=validate_truss_model(ideal.model)
         if issues: raise MechanicsError(issues)
         solved=(solver or Truss2DSolver()).solve(ideal.model); run.result_schema_version='truss2d-result-v1'; run.result_json=_result(ideal.model,solved,ideal.analysis_member_to_physical,revision.physical_snapshot_json); run.diagnostics_json=solved.diagnostics.__dict__; run.status=AnalysisRun.Status.SUCCESS

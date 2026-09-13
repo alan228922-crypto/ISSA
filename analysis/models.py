@@ -27,6 +27,7 @@ class AnalysisRun(models.Model):
     class Status(models.TextChoices):
         PENDING='PENDING'; SUCCESS='SUCCESS'; VALIDATION_FAILED='VALIDATION_FAILED'; SOLVER_FAILED='SOLVER_FAILED'
     project=models.ForeignKey(Project,on_delete=models.CASCADE,related_name='analysis_runs')
+    prediction=models.ForeignKey('learning.Prediction',on_delete=models.PROTECT,related_name='analysis_runs',null=True,blank=True)
     model_revision=models.ForeignKey(ModelRevision,on_delete=models.PROTECT,related_name='analysis_runs')
     analysis_type=models.CharField(max_length=20,default='TRUSS_2D')
     solver_version=models.ForeignKey(SolverVersion,on_delete=models.PROTECT,related_name='analysis_runs')

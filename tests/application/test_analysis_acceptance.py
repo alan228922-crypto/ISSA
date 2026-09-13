@@ -2,6 +2,22 @@ import pytest
 from tests.application.test_physical_draft import context, valid_payload
 
 
+def completed_prediction_for(project, owner, source_draft_version, **overrides):
+    """Create immutable learning evidence without involving analysis behavior."""
+    from learning.models import Prediction
+
+    values = {
+        "project": project,
+        "source_draft_version": source_draft_version,
+        "status": Prediction.Status.COMPLETED,
+        "created_by": owner,
+        "prediction_schema_version": "prediction-v1",
+        "payload_json": {},
+    }
+    values.update(overrides)
+    return Prediction.objects.create(**values)
+
+
 def save_bt01_draft(owner, project, material, section, *, fx_N=100.0):
     """建立手算 B/T01 水平轴向杆，期望值不依赖生产 Solver。"""
     from modeling.services import save_physical_draft
@@ -70,6 +86,110 @@ def test_bt01_real_analysis_chain_and_prediction_is_optional(context):
     assert result['support_reactions'][0]['ry_N'] == pytest.approx(0, abs=1e-10)
     assert result['total_mass_g'] == pytest.approx(0.0007 * 6 * 1000, abs=1e-10)
     assert result['member_results'][0]['buckling'] is None
+
+
+@pytest.mark.django_db
+def test_analyze_accepts_none_reuses_completed_prediction_and_preserves_solver_artifacts(context):
+    """A completed learning record is linked as evidence, never solver input."""
+    from analysis.orchestration import analyze_project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    plain = analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=None)
+    prediction = completed_prediction_for(project, owner, 1)
+    first = analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
+    second = analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
+
+    assert plain.prediction_id is None
+    assert first.prediction_id == second.prediction_id == prediction.id
+    for run in (first, second):
+        assert run.solver_input_json == plain.solver_input_json
+        assert run.input_hash == plain.input_hash
+        assert run.model_revision.model_hash == plain.model_revision.model_hash
+        assert run.result_json == plain.result_json
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", ["DRAFT", "INVALIDATED"])
+def test_analyze_rejects_non_completed_prediction_before_creating_history(context, status):
+    """Changing the completed-status check must reject explicit ineligible evidence."""
+    from analysis.models import AnalysisRun, ModelRevision
+    from analysis.orchestration import AnalysisError, analyze_project
+    from learning.models import Prediction
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    prediction = completed_prediction_for(project, owner, 1, status=status)
+    before = (ModelRevision.objects.count(), AnalysisRun.objects.count())
+
+    with pytest.raises(AnalysisError, match="PREDICTION_NOT_ELIGIBLE") as error:
+        analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
+
+    assert error.value.status_code == 409
+    assert (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
+
+
+@pytest.mark.django_db
+def test_analyze_rejects_stale_completed_prediction_before_creating_history(context):
+    """Changing the prediction source-version check must reject old evidence."""
+    from analysis.models import AnalysisRun, ModelRevision
+    from analysis.orchestration import AnalysisError, analyze_project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    prediction = completed_prediction_for(project, owner, 0)
+    before = (ModelRevision.objects.count(), AnalysisRun.objects.count())
+
+    with pytest.raises(AnalysisError, match="PREDICTION_STALE_DRAFT") as error:
+        analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
+
+    assert error.value.status_code == 409
+    assert (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
+
+
+@pytest.mark.django_db
+def test_analyze_hides_cross_project_or_missing_prediction_before_creating_history(context):
+    """Changing project scoping must not turn another project's evidence into a usable ID."""
+    from analysis.models import AnalysisRun, ModelRevision
+    from analysis.orchestration import AnalysisError, analyze_project
+    from projects.models import Project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    other_project = Project.objects.create(event=project.event, owner_user=owner, name="其他分析项目")
+    foreign = completed_prediction_for(other_project, owner, 1)
+    before = (ModelRevision.objects.count(), AnalysisRun.objects.count())
+
+    for prediction_id in (foreign.id, foreign.id + 1000):
+        with pytest.raises(AnalysisError, match="PREDICTION_NOT_FOUND") as error:
+            analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction_id)
+        assert error.value.status_code == 404
+
+    assert (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
+
+
+@pytest.mark.django_db
+def test_analyze_rejects_foreign_prediction_owner_or_unsupported_schema_before_creating_history(context):
+    """Changing owner or schema eligibility must fail closed rather than ignore explicit evidence."""
+    from accounts.models import User
+    from analysis.models import AnalysisRun, ModelRevision
+    from analysis.orchestration import AnalysisError, analyze_project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    foreign_owner = User.objects.create_user("foreign-prediction-author")
+    foreign_owner_prediction = completed_prediction_for(project, foreign_owner, 1)
+    unsupported_schema_prediction = completed_prediction_for(
+        project, owner, 1, prediction_schema_version="prediction-v2"
+    )
+    before = (ModelRevision.objects.count(), AnalysisRun.objects.count())
+
+    for prediction in (foreign_owner_prediction, unsupported_schema_prediction):
+        with pytest.raises(AnalysisError, match="PREDICTION_NOT_ELIGIBLE") as error:
+            analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
+        assert error.value.status_code == 409
+
+    assert (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
 
 
 @pytest.mark.django_db
@@ -267,7 +387,12 @@ def test_server_side_authorization_and_purged_lifecycle_do_not_create_history(co
             analyze_project(project=project, actor=actor, expected_draft_version=1)
         with pytest.raises(AnalysisError, match='PROJECT_(ANALYZE|CHECK)_DENIED'):
             check_project(project=project, actor=actor, expected_draft_version=1)
-    assert analyze_project(project=project, actor=developer, expected_draft_version=1).status == 'SUCCESS'
+    prediction = completed_prediction_for(project, owner, 1)
+    developer_run = analyze_project(
+        project=project, actor=developer, expected_draft_version=1, prediction_id=prediction.id
+    )
+    assert developer_run.status == 'SUCCESS'
+    assert developer_run.prediction_id == prediction.id
     project.event.status = CompetitionEvent.Status.PURGED
     project.event.save(update_fields=['status'])
     with pytest.raises(AnalysisError, match='PROJECT_ANALYZE_DENIED'):
