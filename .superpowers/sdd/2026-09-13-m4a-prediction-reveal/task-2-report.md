@@ -32,6 +32,19 @@
 - Regression check: `python3 -m pytest tests/application/test_prediction.py -v`
   - Result: 9 passed.
 
-The follow-up commit strictly whitelists the root, judgment, physical-point, and path-item variants. It intentionally rejects unsupported `display` fields along with ORM, geometry, coordinate, analysis-node, solver, result, and snapshot metadata.
+The follow-up commit strictly whitelists the root, judgment, physical-point, and path-item variants. It rejects unsupported ORM, geometry, coordinate, analysis-node, solver, result, and snapshot metadata.
 
 - Follow-up commit: `fix: strictly whitelist prediction payload fields`
+
+## Display-schema follow-up TDD evidence
+
+- RED: `python3 -m pytest tests/application/test_prediction.py -k 'documented_history or unexpected_history' -v`
+  - Result: 1 failed because documented `display` was rejected; 3 malformed nested-display cases remained rejected.
+- GREEN: `python3 -m pytest tests/application/test_prediction.py -k 'documented_history or unexpected_history' -v`
+  - Result: 4 passed, 9 deselected.
+- Regression check: `python3 -m pytest tests/application/test_prediction.py -v`
+  - Result: 13 passed.
+
+Only documented optional display forms are allowed: a member judgment's string `member_label`; a Connection point's string GeometryNode key/label; and a MEMBER_ENDPOINT point's string member label plus GeometryNode key/label. All unexpected display fields remain schema errors.
+
+- Follow-up commit: `fix: allow documented prediction display fields`

@@ -268,3 +268,48 @@ def test_load_path_rejects_wrong_alternating_position_and_duplicate_entity(proje
     ]
     with pytest.raises(PredictionError, match="INVALID_LOAD_PATH"):
         validate_prediction_payload(project_with_two_members, duplicate)
+
+
+@pytest.mark.django_db
+def test_payload_accepts_documented_history_display_shapes(project_with_two_members):
+    from learning.services import validate_prediction_payload
+
+    connection_point = complete_payload()
+    connection_point["member_judgments"][0]["display"] = {"member_label": "主杆"}
+    connection_point["max_displacement_location"]["display"] = {
+        "geometry_node_client_key": "n1",
+        "geometry_node_label": "荷载点",
+    }
+    validate_prediction_payload(project_with_two_members, connection_point)
+
+    endpoint_point = complete_payload()
+    endpoint_point["max_displacement_location"] = {
+        "kind": "MEMBER_ENDPOINT",
+        "physical_member_client_key": "m2",
+        "endpoint": "END",
+        "display": {
+            "member_label": "副杆",
+            "geometry_node_client_key": "n3",
+            "geometry_node_label": "同坐标自由端",
+        },
+    }
+    validate_prediction_payload(project_with_two_members, endpoint_point)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload["member_judgments"][0].update({"display": {"member_label": "主杆", "member_id": 1}}),
+        lambda payload: payload["max_displacement_location"].update({"display": {"geometry_node_client_key": "n1", "x_mm": 0}}),
+        lambda payload: payload.update({"max_displacement_location": {"kind": "MEMBER_ENDPOINT", "physical_member_client_key": "m2", "endpoint": "END", "display": {"member_label": "副杆", "analysis_node_id": "a1"}}}),
+    ],
+)
+def test_payload_rejects_unexpected_history_display_fields(project_with_two_members, mutate):
+    from learning.services import PredictionError, validate_prediction_payload
+
+    payload = deepcopy(complete_payload())
+    mutate(payload)
+
+    with pytest.raises(PredictionError, match="PREDICTION_INVALID_SCHEMA"):
+        validate_prediction_payload(project_with_two_members, payload)

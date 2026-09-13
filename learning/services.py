@@ -26,13 +26,25 @@ def _only_keys(value, allowed, error):
         raise PredictionError(error, 400)
 
 
+def _display(value, allowed):
+    _only_keys(value, allowed, "PREDICTION_INVALID_SCHEMA")
+    if any(not _string(item) for item in value.values()):
+        _schema_error()
+
+
 def _member_judgments(project, payload):
     judgments = payload.get("member_judgments")
     if not isinstance(judgments, list):
         _schema_error()
     keys = []
     for judgment in judgments:
-        _only_keys(judgment, {"physical_member_client_key", "predicted_state"}, "PREDICTION_INVALID_SCHEMA")
+        _only_keys(
+            judgment,
+            {"physical_member_client_key", "predicted_state", "display"},
+            "PREDICTION_INVALID_SCHEMA",
+        )
+        if "display" in judgment:
+            _display(judgment["display"], {"member_label"})
         key = judgment.get("physical_member_client_key")
         if not _string(key) or judgment.get("predicted_state") not in _STATES:
             _schema_error()
@@ -74,7 +86,9 @@ def _physical_point(point, members, connections):
         _schema_error()
     kind = point.get("kind")
     if kind == "CONNECTION":
-        _only_keys(point, {"kind", "connection_client_key"}, "PREDICTION_INVALID_SCHEMA")
+        _only_keys(point, {"kind", "connection_client_key", "display"}, "PREDICTION_INVALID_SCHEMA")
+        if "display" in point:
+            _display(point["display"], {"geometry_node_client_key", "geometry_node_label"})
         key = point.get("connection_client_key")
         if not _string(key) or key not in connections:
             raise PredictionError("INVALID_PHYSICAL_POINT_REF", 400)
@@ -84,9 +98,14 @@ def _physical_point(point, members, connections):
 
     _only_keys(
         point,
-        {"kind", "physical_member_client_key", "endpoint"},
+        {"kind", "physical_member_client_key", "endpoint", "display"},
         "PREDICTION_INVALID_SCHEMA",
     )
+    if "display" in point:
+        _display(
+            point["display"],
+            {"member_label", "geometry_node_client_key", "geometry_node_label"},
+        )
     key, endpoint = point.get("physical_member_client_key"), point.get("endpoint")
     if not _string(key) or endpoint not in {"START", "END"} or key not in members:
         raise PredictionError("INVALID_PHYSICAL_POINT_REF", 400)
