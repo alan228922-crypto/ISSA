@@ -21,14 +21,18 @@ def _string(value):
     return isinstance(value, str) and bool(value)
 
 
+def _only_keys(value, allowed, error):
+    if not isinstance(value, dict) or set(value) - allowed:
+        raise PredictionError(error, 400)
+
+
 def _member_judgments(project, payload):
     judgments = payload.get("member_judgments")
     if not isinstance(judgments, list):
         _schema_error()
     keys = []
     for judgment in judgments:
-        if not isinstance(judgment, dict):
-            _schema_error()
+        _only_keys(judgment, {"physical_member_client_key", "predicted_state"}, "PREDICTION_INVALID_SCHEMA")
         key = judgment.get("physical_member_client_key")
         if not _string(key) or judgment.get("predicted_state") not in _STATES:
             _schema_error()
@@ -65,11 +69,12 @@ def _is_incident(connection, member):
     )
 
 
-def _physical_point(project, point, members, connections):
+def _physical_point(point, members, connections):
     if not isinstance(point, dict):
         _schema_error()
     kind = point.get("kind")
     if kind == "CONNECTION":
+        _only_keys(point, {"kind", "connection_client_key"}, "PREDICTION_INVALID_SCHEMA")
         key = point.get("connection_client_key")
         if not _string(key) or key not in connections:
             raise PredictionError("INVALID_PHYSICAL_POINT_REF", 400)
@@ -77,6 +82,11 @@ def _physical_point(project, point, members, connections):
     if kind != "MEMBER_ENDPOINT":
         _schema_error()
 
+    _only_keys(
+        point,
+        {"kind", "physical_member_client_key", "endpoint"},
+        "PREDICTION_INVALID_SCHEMA",
+    )
     key, endpoint = point.get("physical_member_client_key"), point.get("endpoint")
     if not _string(key) or endpoint not in {"START", "END"} or key not in members:
         raise PredictionError("INVALID_PHYSICAL_POINT_REF", 400)
@@ -92,12 +102,11 @@ def _load_path(path, members, connections):
         raise PredictionError("INVALID_LOAD_PATH", 400)
     entities = []
     for index, item in enumerate(path):
-        if not isinstance(item, dict):
-            raise PredictionError("INVALID_LOAD_PATH", 400)
         expected_kind = "CONNECTION" if index % 2 == 0 else "PHYSICAL_MEMBER"
+        key_name = "connection_client_key" if expected_kind == "CONNECTION" else "physical_member_client_key"
+        _only_keys(item, {"kind", key_name}, "INVALID_LOAD_PATH")
         if item.get("kind") != expected_kind:
             raise PredictionError("INVALID_LOAD_PATH", 400)
-        key_name = "connection_client_key" if expected_kind == "CONNECTION" else "physical_member_client_key"
         key = item.get(key_name)
         lookup = connections if expected_kind == "CONNECTION" else members
         if not _string(key) or key not in lookup:
@@ -117,8 +126,18 @@ def validate_prediction_payload(project, payload):
     """Validate only stored prediction-v1 shape and physical topology."""
     if not isinstance(payload, dict) or payload.get("schema_version") != "prediction-v1":
         _schema_error()
+    _only_keys(
+        payload,
+        {
+            "schema_version",
+            "member_judgments",
+            "max_displacement_location",
+            "representative_load_path",
+        },
+        "PREDICTION_INVALID_SCHEMA",
+    )
     _member_judgments(project, payload)
     members, connections = _topology(project)
-    _physical_point(project, payload.get("max_displacement_location"), members, connections)
+    _physical_point(payload.get("max_displacement_location"), members, connections)
     _load_path(payload.get("representative_load_path"), members, connections)
     return payload

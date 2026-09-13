@@ -22,3 +22,16 @@
 ## Commit
 
 - `feat: validate prediction payload topology`
+
+## Review follow-up TDD evidence
+
+- RED: `python3 -m pytest tests/application/test_prediction.py -k 'forbidden_metadata or wrong_alternating' -v`
+  - Result: 4 failed (forbidden root, judgment, physical-point, and path metadata was accepted); 1 passed (the already-implemented alternating/duplicate path behavior).
+- GREEN: `python3 -m pytest tests/application/test_prediction.py -k 'forbidden_metadata or wrong_alternating' -v`
+  - Result: 5 passed, 4 deselected.
+- Regression check: `python3 -m pytest tests/application/test_prediction.py -v`
+  - Result: 9 passed.
+
+The follow-up commit strictly whitelists the root, judgment, physical-point, and path-item variants. It intentionally rejects unsupported `display` fields along with ORM, geometry, coordinate, analysis-node, solver, result, and snapshot metadata.
+
+- Follow-up commit: `fix: strictly whitelist prediction payload fields`

@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import date, datetime
 
 import pytest
@@ -224,3 +225,46 @@ def test_payload_rejects_unknown_cross_project_and_invalid_schema_references(pro
     with pytest.raises(PredictionError, match="PREDICTION_INVALID_SCHEMA") as error:
         validate_prediction_payload(project_with_two_members, invalid_schema)
     assert error.value.status_code == 400
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("mutate", "error_code"),
+    [
+        (lambda payload: payload.update({"solver_result": {"stress": 1}}), "PREDICTION_INVALID_SCHEMA"),
+        (lambda payload: payload["member_judgments"][0].update({"physical_member_id": 1}), "PREDICTION_INVALID_SCHEMA"),
+        (lambda payload: payload["max_displacement_location"].update({"geometry_node_id": 1, "x_mm": 0}), "PREDICTION_INVALID_SCHEMA"),
+        (lambda payload: payload["representative_load_path"][1].update({"analysis_node_id": "a1"}), "INVALID_LOAD_PATH"),
+    ],
+)
+def test_payload_rejects_forbidden_metadata(project_with_two_members, mutate, error_code):
+    from learning.services import PredictionError, validate_prediction_payload
+
+    payload = deepcopy(complete_payload())
+    mutate(payload)
+
+    with pytest.raises(PredictionError, match=error_code):
+        validate_prediction_payload(project_with_two_members, payload)
+
+
+@pytest.mark.django_db
+def test_load_path_rejects_wrong_alternating_position_and_duplicate_entity(project_with_two_members):
+    from learning.services import PredictionError, validate_prediction_payload
+
+    wrong_position = complete_payload()
+    wrong_position["representative_load_path"][1] = {
+        "kind": "CONNECTION", "connection_client_key": "c2",
+    }
+    with pytest.raises(PredictionError, match="INVALID_LOAD_PATH"):
+        validate_prediction_payload(project_with_two_members, wrong_position)
+
+    duplicate = complete_payload()
+    duplicate["representative_load_path"] = [
+        {"kind": "CONNECTION", "connection_client_key": "c1"},
+        {"kind": "PHYSICAL_MEMBER", "physical_member_client_key": "m1"},
+        {"kind": "CONNECTION", "connection_client_key": "c2"},
+        {"kind": "PHYSICAL_MEMBER", "physical_member_client_key": "m1"},
+        {"kind": "CONNECTION", "connection_client_key": "c1"},
+    ]
+    with pytest.raises(PredictionError, match="INVALID_LOAD_PATH"):
+        validate_prediction_payload(project_with_two_members, duplicate)
