@@ -46,7 +46,7 @@ def test_prediction_defaults_draft_and_reveal_is_unique(project, owner, success_
 
 - [ ] **Step 2: Verify RED**
 
-Run: `python3 -m pytest tests/application/test_prediction.py::test_prediction_defaults_draft_and_reveal_is_unique -v`  
+Run: `python3 -m pytest tests/application/test_prediction.py::test_prediction_defaults_draft_and_reveal_is_unique -v`
 Expected: FAIL because `learning.models` and tables are missing.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -55,7 +55,7 @@ Create the exact spec fields: Project-owned `CASCADE`, evidence actor/run `PROTE
 
 - [ ] **Step 4: Verify GREEN**
 
-Run: `python3 -m pytest tests/application/test_prediction.py::test_prediction_defaults_draft_and_reveal_is_unique -v && python3 manage.py makemigrations --check --dry-run`  
+Run: `python3 -m pytest tests/application/test_prediction.py::test_prediction_defaults_draft_and_reveal_is_unique -v && python3 manage.py makemigrations --check --dry-run`
 Expected: PASS and no migration drift.
 
 - [ ] **Step 5: Commit**
@@ -86,7 +86,7 @@ def test_point_and_path_are_physical_not_solver_rules(project_with_connection_an
 
 - [ ] **Step 2: Verify RED**
 
-Run: `python3 -m pytest tests/application/test_prediction.py -k 'payload_requires or point_and_path' -v`  
+Run: `python3 -m pytest tests/application/test_prediction.py -k 'payload_requires or point_and_path' -v`
 Expected: FAIL because validator is missing.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -95,7 +95,7 @@ Validate only `prediction-v1`, exact active-member keys and four states, Connect
 
 - [ ] **Step 4: Verify GREEN**
 
-Run: `python3 -m pytest tests/application/test_prediction.py -k 'payload_requires or point_and_path' -v`  
+Run: `python3 -m pytest tests/application/test_prediction.py -k 'payload_requires or point_and_path' -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -122,7 +122,7 @@ def test_owner_completes_current_draft_once(project, owner):
 
 - [ ] **Step 2: Verify RED**
 
-Run: `python3 -m pytest tests/application/test_prediction.py::test_owner_completes_current_draft_once -v`  
+Run: `python3 -m pytest tests/application/test_prediction.py::test_owner_completes_current_draft_once -v`
 Expected: FAIL because lifecycle functions are missing.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -131,7 +131,7 @@ Authorize only owner participant; in an atomic Project lock re-read version, che
 
 - [ ] **Step 4: Verify GREEN**
 
-Run: `python3 -m pytest tests/application/test_prediction.py -k 'owner_completes or immutable or stale or manager or developer or other_user' -v`  
+Run: `python3 -m pytest tests/application/test_prediction.py -k 'owner_completes or immutable or stale or manager or developer or other_user' -v`
 Expected: PASS for all authorization, completeness, immutability and changed-draft cases.
 
 - [ ] **Step 5: Commit**
@@ -158,7 +158,7 @@ def test_analyze_accepts_none_and_reuses_completed_prediction(context):
 
 - [ ] **Step 2: Verify RED**
 
-Run: `python3 -m pytest tests/application/test_analysis_acceptance.py -k 'reuses_completed_prediction' -v`  
+Run: `python3 -m pytest tests/application/test_analysis_acceptance.py -k 'reuses_completed_prediction' -v`
 Expected: FAIL because AnalysisRun has no relation.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -167,7 +167,7 @@ Add nullable `PROTECT` FK; reject cross-project/not-found as `PREDICTION_NOT_FOU
 
 - [ ] **Step 4: Verify GREEN**
 
-Run: `python3 -m pytest tests/application/test_analysis_acceptance.py -k prediction -v && python3 manage.py makemigrations --check --dry-run`  
+Run: `python3 -m pytest tests/application/test_analysis_acceptance.py -k prediction -v && python3 manage.py makemigrations --check --dry-run`
 Expected: PASS, no migration drift.
 
 - [ ] **Step 5: Commit**
@@ -193,7 +193,7 @@ def test_owner_success_reveal_is_idempotent_and_blocks_late_completion(success_r
 
 - [ ] **Step 2: Verify RED**
 
-Run: `python3 -m pytest tests/application/test_prediction.py::test_owner_success_reveal_is_idempotent_and_blocks_late_completion -v`  
+Run: `python3 -m pytest tests/application/test_prediction.py::test_owner_success_reveal_is_idempotent_and_blocks_late_completion -v`
 Expected: FAIL because reveal service is absent.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -202,7 +202,7 @@ Return `None` for non-owner/non-SUCCESS; otherwise share completion’s Project 
 
 - [ ] **Step 4: Verify GREEN**
 
-Run: `python3 -m pytest tests/application/test_prediction.py -k reveal -v`  
+Run: `python3 -m pytest tests/application/test_prediction.py -k reveal -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -228,7 +228,7 @@ def test_owner_prediction_flow_uses_csrf_and_result_read_reveals(client, owner, 
 
 - [ ] **Step 2: Verify RED**
 
-Run: `python3 -m pytest tests/endpoints/test_prediction_json.py::test_owner_prediction_flow_uses_csrf_and_result_read_reveals -v`  
+Run: `python3 -m pytest tests/endpoints/test_prediction_json.py::test_owner_prediction_flow_uses_csrf_and_result_read_reveals -v`
 Expected: FAIL with missing URLs/views.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -237,7 +237,7 @@ Use thin session/CSRF JSON views. Map malformed 400, authorization/no-IDOR 403/4
 
 - [ ] **Step 4: Verify GREEN**
 
-Run: `python3 -m pytest tests/endpoints/test_prediction_json.py tests/endpoints/test_project_json.py -v`  
+Run: `python3 -m pytest tests/endpoints/test_prediction_json.py tests/endpoints/test_project_json.py -v`
 Expected: PASS for CSRF, malformed JSON, owner/other/Manager/Developer policy, null/valid/stale Analyze, owner-only successful reveal and all non-reveal boundaries.
 
 - [ ] **Step 5: Commit**
@@ -250,17 +250,17 @@ Expected: PASS for CSRF, malformed JSON, owner/other/Manager/Developer policy, n
 
 - [ ] **Step 1: Run focused suites**
 
-Run: `python3 -m pytest tests/application/test_prediction.py tests/endpoints/test_prediction_json.py tests/application/test_analysis_acceptance.py tests/endpoints/test_project_json.py -v`  
+Run: `python3 -m pytest tests/application/test_prediction.py tests/endpoints/test_prediction_json.py tests/application/test_analysis_acceptance.py tests/endpoints/test_project_json.py -v`
 Expected: PASS.
 
 - [ ] **Step 2: Run boundaries and migration checks**
 
-Run: `python3 manage.py check && python3 manage.py makemigrations --check --dry-run && python3 -m pytest tests/contracts tests/idealization tests/mechanics -v`  
+Run: `python3 manage.py check && python3 manage.py makemigrations --check --dry-run && python3 -m pytest tests/contracts tests/idealization tests/mechanics -v`
 Expected: no Django/migration error; mechanics/idealization unchanged.
 
 - [ ] **Step 3: Run fresh full verification**
 
-Run: `python3 -m pytest -v && git diff --check && git status --short`  
+Run: `python3 -m pytest -v && git diff --check && git status --short`
 Expected: full green suite, no whitespace errors, intended tracked changes only.
 
 - [ ] **Step 4: Commit**
