@@ -10,6 +10,25 @@ from competitions.models import CompetitionEvent, EventMembership
 from projects.models import Project
 
 
+def complete_payload(*, state="TENSION"):
+    return {
+        "schema_version": "prediction-v1",
+        "member_judgments": [
+            {"physical_member_client_key": "m1", "predicted_state": state},
+            {"physical_member_client_key": "m2", "predicted_state": "UNSURE"},
+        ],
+        "max_displacement_location": {
+            "kind": "CONNECTION",
+            "connection_client_key": "c1",
+        },
+        "representative_load_path": [
+            {"kind": "CONNECTION", "connection_client_key": "c1"},
+            {"kind": "PHYSICAL_MEMBER", "physical_member_client_key": "m1"},
+            {"kind": "CONNECTION", "connection_client_key": "c2"},
+        ],
+    }
+
+
 @pytest.fixture
 def owner(db):
     user = User.objects.create_user("prediction-owner")
@@ -62,6 +81,45 @@ def success_run(project, owner):
     )
 
 
+@pytest.fixture
+def project_with_two_members(project, owner):
+    from materials.models import Material
+    from materials.services import create_section
+    from modeling.services import save_physical_draft
+
+    material = Material.objects.create(
+        owner_user=owner, name="预测竹材", E_MPa=2000, density_g_per_mm3=0.0007,
+        source_type="MEASURED",
+    )
+    section = create_section(
+        owner=owner, name="预测矩形",
+        definition={"schema_version": "section-definition-v1", "type": "rectangle", "width_mm": 1, "height_mm": 6, "density_g_per_mm3": 0.0007},
+    )
+    save_physical_draft(actor=owner, project=project, payload={
+        "schema_version": "physical-draft-v1", "expected_draft_version": 0,
+        "nodes": [
+            {"client_key": "n1", "x_mm": 0, "y_mm": 0, "label": "左"},
+            {"client_key": "n2", "x_mm": 100, "y_mm": 0, "label": "中"},
+            {"client_key": "n3", "x_mm": 0, "y_mm": 0, "label": "同坐标自由端"},
+        ],
+        "physical_members": [
+            {"client_key": "m1", "start_node_client_key": "n1", "end_node_client_key": "n2", "material_id": material.id, "section_id": section.id, "label": "主杆", "is_active": True},
+            {"client_key": "m2", "start_node_client_key": "n2", "end_node_client_key": "n3", "material_id": material.id, "section_id": section.id, "label": "副杆", "is_active": True},
+        ],
+        "connections": [
+            {"client_key": "c1", "geometry_node_client_key": "n1", "participating_member_client_keys": ["m1"]},
+            {"client_key": "c2", "geometry_node_client_key": "n2", "participating_member_client_keys": ["m1", "m2"]},
+        ],
+        "supports": [], "node_loads": [],
+    })
+    return project
+
+
+@pytest.fixture
+def project_with_connection_and_free_endpoint(project_with_two_members):
+    return project_with_two_members
+
+
 @pytest.mark.django_db
 def test_prediction_defaults_draft_and_reveal_is_unique(project, owner, success_run):
     from learning.models import Prediction, StudentResultReveal
@@ -90,3 +148,79 @@ def test_prediction_defaults_draft_and_reveal_is_unique(project, owner, success_
             first_analysis_run=success_run,
             revealed_to_user=owner,
         )
+
+
+@pytest.mark.django_db
+def test_payload_requires_every_active_member_once(project_with_two_members):
+    from learning.services import PredictionError, validate_prediction_payload
+
+    assert validate_prediction_payload(project_with_two_members, complete_payload())["schema_version"] == "prediction-v1"
+
+    missing = complete_payload()
+    missing["member_judgments"] = missing["member_judgments"][:1]
+    with pytest.raises(PredictionError, match="PREDICTION_INCOMPLETE"):
+        validate_prediction_payload(project_with_two_members, missing)
+
+    duplicate = complete_payload()
+    duplicate["member_judgments"][1]["physical_member_client_key"] = "m1"
+    with pytest.raises(PredictionError, match="PREDICTION_INCOMPLETE"):
+        validate_prediction_payload(project_with_two_members, duplicate)
+
+
+@pytest.mark.django_db
+def test_point_and_path_are_physical_not_solver_rules(project_with_connection_and_free_endpoint):
+    from learning.services import PredictionError, validate_prediction_payload
+
+    free_endpoint = complete_payload(state="COMPRESSION")
+    free_endpoint["max_displacement_location"] = {
+        "kind": "MEMBER_ENDPOINT", "physical_member_client_key": "m2", "endpoint": "END",
+    }
+    validate_prediction_payload(project_with_connection_and_free_endpoint, free_endpoint)
+
+    connected_endpoint_as_free = complete_payload()
+    connected_endpoint_as_free["max_displacement_location"] = {
+        "kind": "MEMBER_ENDPOINT", "physical_member_client_key": "m1", "endpoint": "START",
+    }
+    with pytest.raises(PredictionError, match="INVALID_PHYSICAL_POINT_REF"):
+        validate_prediction_payload(project_with_connection_and_free_endpoint, connected_endpoint_as_free)
+
+    broken_path = complete_payload()
+    broken_path["representative_load_path"] = [
+        {"kind": "CONNECTION", "connection_client_key": "c1"},
+        {"kind": "PHYSICAL_MEMBER", "physical_member_client_key": "m2"},
+        {"kind": "CONNECTION", "connection_client_key": "c2"},
+    ]
+    with pytest.raises(PredictionError, match="INVALID_LOAD_PATH"):
+        validate_prediction_payload(project_with_connection_and_free_endpoint, broken_path)
+
+
+@pytest.mark.django_db
+def test_payload_rejects_unknown_cross_project_and_invalid_schema_references(project_with_two_members, owner):
+    from learning.services import PredictionError, validate_prediction_payload
+    from modeling.models import Connection
+
+    foreign_project = Project.objects.create(
+        event=project_with_two_members.event, owner_user=owner, name="其他预测",
+    )
+    foreign_connection = Connection.objects.get(project=project_with_two_members, client_key="c1")
+    Connection.objects.create(
+        project=foreign_project,
+        client_key="foreign-c1",
+        geometry_node=foreign_connection.geometry_node,
+    )
+
+    unknown_member = complete_payload()
+    unknown_member["member_judgments"][1]["physical_member_client_key"] = "missing"
+    with pytest.raises(PredictionError, match="PREDICTION_INCOMPLETE"):
+        validate_prediction_payload(project_with_two_members, unknown_member)
+
+    foreign_point = complete_payload()
+    foreign_point["max_displacement_location"] = {"kind": "CONNECTION", "connection_client_key": "foreign-c1"}
+    with pytest.raises(PredictionError, match="INVALID_PHYSICAL_POINT_REF"):
+        validate_prediction_payload(project_with_two_members, foreign_point)
+
+    invalid_schema = complete_payload()
+    invalid_schema["schema_version"] = "prediction-v2"
+    with pytest.raises(PredictionError, match="PREDICTION_INVALID_SCHEMA") as error:
+        validate_prediction_payload(project_with_two_members, invalid_schema)
+    assert error.value.status_code == 400

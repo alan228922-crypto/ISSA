@@ -1,0 +1,124 @@
+"""Validation for student prediction evidence; deliberately independent of mechanics."""
+
+from modeling.models import Connection, PhysicalMember
+
+
+class PredictionError(ValueError):
+    def __init__(self, code, status_code=400):
+        super().__init__(code)
+        self.code = code
+        self.status_code = status_code
+
+
+_STATES = {"TENSION", "COMPRESSION", "ZERO_FORCE", "UNSURE"}
+
+
+def _schema_error():
+    raise PredictionError("PREDICTION_INVALID_SCHEMA", 400)
+
+
+def _string(value):
+    return isinstance(value, str) and bool(value)
+
+
+def _member_judgments(project, payload):
+    judgments = payload.get("member_judgments")
+    if not isinstance(judgments, list):
+        _schema_error()
+    keys = []
+    for judgment in judgments:
+        if not isinstance(judgment, dict):
+            _schema_error()
+        key = judgment.get("physical_member_client_key")
+        if not _string(key) or judgment.get("predicted_state") not in _STATES:
+            _schema_error()
+        keys.append(key)
+
+    active_keys = set(
+        PhysicalMember.objects.filter(project=project, is_active=True).values_list("client_key", flat=True)
+    )
+    if len(keys) != len(set(keys)) or set(keys) != active_keys:
+        raise PredictionError("PREDICTION_INCOMPLETE", 400)
+
+
+def _topology(project):
+    members = {
+        member.client_key: member
+        for member in PhysicalMember.objects.filter(project=project).select_related(
+            "start_geometry_node", "end_geometry_node"
+        )
+    }
+    connections = {
+        connection.client_key: connection
+        for connection in Connection.objects.filter(project=project).prefetch_related("participating_members")
+    }
+    return members, connections
+
+
+def _is_incident(connection, member):
+    return (
+        member in connection.participating_members.all()
+        and connection.geometry_node_id in {
+            member.start_geometry_node_id,
+            member.end_geometry_node_id,
+        }
+    )
+
+
+def _physical_point(project, point, members, connections):
+    if not isinstance(point, dict):
+        _schema_error()
+    kind = point.get("kind")
+    if kind == "CONNECTION":
+        key = point.get("connection_client_key")
+        if not _string(key) or key not in connections:
+            raise PredictionError("INVALID_PHYSICAL_POINT_REF", 400)
+        return ("connection", key)
+    if kind != "MEMBER_ENDPOINT":
+        _schema_error()
+
+    key, endpoint = point.get("physical_member_client_key"), point.get("endpoint")
+    if not _string(key) or endpoint not in {"START", "END"} or key not in members:
+        raise PredictionError("INVALID_PHYSICAL_POINT_REF", 400)
+    member = members[key]
+    node_id = member.start_geometry_node_id if endpoint == "START" else member.end_geometry_node_id
+    if any(_is_incident(connection, member) and connection.geometry_node_id == node_id for connection in connections.values()):
+        raise PredictionError("INVALID_PHYSICAL_POINT_REF", 400)
+    return ("free", key, endpoint)
+
+
+def _load_path(path, members, connections):
+    if not isinstance(path, list) or len(path) < 3 or len(path) % 2 == 0:
+        raise PredictionError("INVALID_LOAD_PATH", 400)
+    entities = []
+    for index, item in enumerate(path):
+        if not isinstance(item, dict):
+            raise PredictionError("INVALID_LOAD_PATH", 400)
+        expected_kind = "CONNECTION" if index % 2 == 0 else "PHYSICAL_MEMBER"
+        if item.get("kind") != expected_kind:
+            raise PredictionError("INVALID_LOAD_PATH", 400)
+        key_name = "connection_client_key" if expected_kind == "CONNECTION" else "physical_member_client_key"
+        key = item.get(key_name)
+        lookup = connections if expected_kind == "CONNECTION" else members
+        if not _string(key) or key not in lookup:
+            raise PredictionError("INVALID_LOAD_PATH", 400)
+        entities.append((expected_kind, key))
+    if len(entities) != len(set(entities)):
+        raise PredictionError("INVALID_LOAD_PATH", 400)
+    for index in range(1, len(entities), 2):
+        member = members[entities[index][1]]
+        if not _is_incident(connections[entities[index - 1][1]], member):
+            raise PredictionError("INVALID_LOAD_PATH", 400)
+        if not _is_incident(connections[entities[index + 1][1]], member):
+            raise PredictionError("INVALID_LOAD_PATH", 400)
+
+
+def validate_prediction_payload(project, payload):
+    """Validate only stored prediction-v1 shape and physical topology."""
+    if not isinstance(payload, dict) or payload.get("schema_version") != "prediction-v1":
+        _schema_error()
+    _member_judgments(project, payload)
+    members, connections = _topology(project)
+    _physical_point(project, payload.get("max_displacement_location"), members, connections)
+    _load_path(payload.get("representative_load_path"), members, connections)
+    return payload
