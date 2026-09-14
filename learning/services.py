@@ -4,9 +4,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import User
+from analysis.models import AnalysisRun
 from competitions.models import CompetitionEvent, EventMembership
 from modeling.models import Connection, PhysicalMember
 from projects.models import Project
+from projects.services import can_view_project
 
 from .models import Prediction, StudentResultReveal
 
@@ -234,3 +236,28 @@ def complete_prediction(*, prediction, actor, expected_draft_version, payload):
     if error_code:
         raise PredictionError(error_code, 409)
     return prediction
+
+
+def record_student_result_reveal(*, project, run, actor) -> StudentResultReveal | None:
+    """Record first owner disclosure for the successful Run's source draft."""
+    with transaction.atomic():
+        project = Project.objects.select_for_update().select_related("event").get(pk=project.pk)
+        if not can_view_project(actor, project):
+            raise PredictionError("PROJECT_READ_DENIED", 403)
+        try:
+            run = AnalysisRun.objects.select_related("model_revision").get(
+                pk=run.pk, project=project, model_revision__project=project,
+            )
+        except AnalysisRun.DoesNotExist as exc:
+            raise PredictionError("PROJECT_NOT_FOUND", 404) from exc
+        if actor.role in {User.Role.MANAGER, User.Role.DEVELOPER}:
+            return None
+        _authorize_student_owner(project, actor)
+        if run.status != AnalysisRun.Status.SUCCESS:
+            return None
+        reveal, _ = StudentResultReveal.objects.get_or_create(
+            project=project,
+            source_draft_version=run.model_revision.source_draft_version,
+            defaults={"first_analysis_run": run, "revealed_to_user": actor},
+        )
+        return reveal

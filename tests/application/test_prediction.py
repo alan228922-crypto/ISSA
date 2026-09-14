@@ -320,20 +320,22 @@ def test_supported_project_purge_is_ordered_audited_and_idempotent(operational_g
 
 
 @pytest.mark.django_db
-def test_supported_project_purge_rolls_back_every_deletion_on_failure(operational_graph):
-    """A failure after real deletions must restore the entire graph and leave no success audit."""
-    from django.db.models.signals import post_delete
+@pytest.mark.parametrize("failure_stage", ["run_deletion", "audit_persistence"])
+def test_supported_project_purge_rolls_back_every_deletion_on_failure(operational_graph, failure_stage):
+    """Deletion and audit persistence share one atomic success/failure boundary."""
+    from django.db.models.signals import post_delete, post_save
     from projects.models import ProjectOperationalPurgeAudit
     from projects.services import purge_project_operational_data
 
-    def fail_after_run_delete(sender, instance, **kwargs):
+    def fail_after_write(sender, instance, **kwargs):
         raise RuntimeError("artificial mid-purge failure")
-    post_delete.connect(fail_after_run_delete, sender=AnalysisRun, weak=False)
+    signal, model = (post_delete, AnalysisRun) if failure_stage == "run_deletion" else (post_save, ProjectOperationalPurgeAudit)
+    signal.connect(fail_after_write, sender=model, weak=False)
     try:
         with pytest.raises(RuntimeError, match="artificial mid-purge failure"):
             purge_project_operational_data(project_id=operational_graph["project"].pk)
     finally:
-        post_delete.disconnect(fail_after_run_delete, sender=AnalysisRun)
+        signal.disconnect(fail_after_write, sender=model)
     for model, ids in operational_graph["owned"].items():
         assert model.objects.filter(pk__in=ids).count() == len(ids)
     assert not ProjectOperationalPurgeAudit.objects.exists()
@@ -801,3 +803,224 @@ def test_privileged_owner_participant_cannot_complete_prediction(project_with_tw
     assert prediction.status == prediction.Status.DRAFT
     assert prediction.payload_json == {}
     assert prediction.completed_at is None
+
+
+@pytest.fixture
+def reveal_project(project_with_two_members, success_run):
+    project_with_two_members.draft_version = 7
+    project_with_two_members.save(update_fields=["draft_version"])
+    return project_with_two_members
+
+
+def another_success_run(run, *, revision=None):
+    return AnalysisRun.objects.create(
+        project=run.project, model_revision=revision or run.model_revision,
+        solver_version=run.solver_version, input_schema_version=run.input_schema_version,
+        input_hash=run.input_hash, status=AnalysisRun.Status.SUCCESS,
+        solver_input_json={}, created_by=run.created_by,
+    )
+
+
+@pytest.mark.django_db
+def test_owner_success_reveal_is_idempotent_and_blocks_late_completion(reveal_project, success_run, owner):
+    """Duplicate tabs preserve the first evidence and forbid a late prediction completion."""
+    from learning.models import Prediction, StudentResultReveal
+    from learning.services import PredictionError, complete_prediction, create_prediction, record_student_result_reveal
+
+    first = record_student_result_reveal(project=reveal_project, run=success_run, actor=owner)
+    first_record = StudentResultReveal.objects.values().get(pk=first.pk)
+    assert first.project_id == reveal_project.pk
+    assert first.source_draft_version == 7
+    assert first.first_analysis_run_id == success_run.pk
+    assert first.revealed_to_user_id == owner.pk
+    assert first.first_revealed_at is not None
+    assert record_student_result_reveal(project=reveal_project, run=success_run, actor=owner).pk == first.pk
+    assert StudentResultReveal.objects.values().get(pk=first.pk) == first_record
+    assert not Prediction.objects.exists()
+    prediction = create_prediction(project=reveal_project, actor=owner, expected_draft_version=7)
+    with pytest.raises(PredictionError, match="PREDICTION_AFTER_RESULT_REVEAL"):
+        complete_prediction(prediction=prediction, actor=owner, expected_draft_version=7, payload=complete_payload())
+    prediction.refresh_from_db()
+    assert prediction.status == Prediction.Status.DRAFT
+    assert prediction.completed_at is None
+    assert StudentResultReveal.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_reveal_two_runs_preserve_first_run_user_and_time(reveal_project, success_run, owner):
+    from learning.models import StudentResultReveal
+    from learning.services import record_student_result_reveal
+
+    first = record_student_result_reveal(project=reveal_project, run=success_run, actor=owner)
+    original = StudentResultReveal.objects.values().get(pk=first.pk)
+    second_run = another_success_run(success_run)
+    next_owner = User.objects.create_user("next-reveal-owner")
+    EventMembership.objects.create(user=next_owner, event=reveal_project.event, membership_type=EventMembership.Type.PARTICIPANT)
+    reveal_project.owner_user = next_owner
+    reveal_project.save(update_fields=["owner_user"])
+    second = record_student_result_reveal(project=reveal_project, run=second_run, actor=next_owner)
+    assert second.pk == first.pk
+    assert StudentResultReveal.objects.values().get(pk=second.pk) == original
+    assert StudentResultReveal.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_old_reveal_leaves_changed_draft_eligible_and_new_reveal_is_separate(reveal_project, success_run, owner):
+    from learning.models import StudentResultReveal
+    from learning.services import complete_prediction, create_prediction, record_student_result_reveal
+
+    old = record_student_result_reveal(project=reveal_project, run=success_run, actor=owner)
+    reveal_project.draft_version = 8
+    reveal_project.save(update_fields=["draft_version"])
+    prediction = create_prediction(project=reveal_project, actor=owner, expected_draft_version=8)
+    complete_prediction(prediction=prediction, actor=owner, expected_draft_version=8, payload=complete_payload())
+    revision = ModelRevision.objects.create(
+        project=reveal_project, revision_number=2, source_draft_version=8,
+        analysis_type="TRUSS_2D", physical_snapshot_schema_version="physical-snapshot-v1",
+        physical_snapshot_json={}, model_hash=success_run.model_revision.model_hash, created_by=owner,
+    )
+    current = record_student_result_reveal(
+        project=reveal_project, run=another_success_run(success_run, revision=revision), actor=owner,
+    )
+    assert current.pk != old.pk
+    assert set(StudentResultReveal.objects.values_list("source_draft_version", flat=True)) == {7, 8}
+    assert record_student_result_reveal(project=reveal_project, run=success_run, actor=owner).pk == old.pk
+
+
+@pytest.mark.django_db
+def test_completion_first_reveal_preserves_completed_prediction(reveal_project, success_run, owner):
+    from learning.models import Prediction
+    from learning.services import complete_prediction, create_prediction, record_student_result_reveal
+
+    prediction = create_prediction(project=reveal_project, actor=owner, expected_draft_version=7)
+    complete_prediction(prediction=prediction, actor=owner, expected_draft_version=7, payload=complete_payload())
+    original = Prediction.objects.values().get(pk=prediction.pk)
+    success_run.prediction = prediction
+    success_run.save(update_fields=["prediction"])
+    record_student_result_reveal(project=reveal_project, run=success_run, actor=owner)
+    assert Prediction.objects.values().get(pk=prediction.pk) == original
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", [AnalysisRun.Status.PENDING, AnalysisRun.Status.VALIDATION_FAILED, AnalysisRun.Status.SOLVER_FAILED])
+def test_non_success_run_does_not_reveal(project, success_run, owner, status):
+    from learning.models import StudentResultReveal
+    from learning.services import record_student_result_reveal
+
+    # Persisted state governs even when the caller's Run object still says SUCCESS.
+    AnalysisRun.objects.filter(pk=success_run.pk).update(status=status)
+    assert record_student_result_reveal(project=project, run=success_run, actor=owner) is None
+    assert not StudentResultReveal.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", [User.Role.MANAGER, User.Role.DEVELOPER])
+@pytest.mark.parametrize("is_owner", [False, True])
+def test_privileged_reader_does_not_reveal(project, success_run, owner, role, is_owner):
+    from learning.models import StudentResultReveal
+    from learning.services import record_student_result_reveal
+
+    actor = owner if is_owner else User.objects.create_user("reveal-reader", role=role)
+    if is_owner:
+        actor.role = role
+        actor.save(update_fields=["role"])
+    if role == User.Role.MANAGER:
+        EventMembership.objects.create(user=actor, event=project.event, membership_type=EventMembership.Type.MANAGER)
+    assert record_student_result_reveal(project=project, run=success_run, actor=actor) is None
+    assert not StudentResultReveal.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("kind", ["other", "participant_other", "inactive_owner", "inactive_manager", "unentitled_manager", "purged"])
+def test_unentitled_reveal_is_denied_without_evidence(project, success_run, owner, kind):
+    from learning.models import StudentResultReveal
+    from learning.services import PredictionError, record_student_result_reveal
+
+    actor = owner
+    if kind in {"other", "participant_other"}:
+        actor = User.objects.create_user("reveal-other")
+        if kind == "participant_other":
+            EventMembership.objects.create(user=actor, event=project.event, membership_type=EventMembership.Type.PARTICIPANT)
+    elif kind == "inactive_owner":
+        EventMembership.objects.filter(user=owner).update(is_active=False)
+    elif kind in {"inactive_manager", "unentitled_manager"}:
+        actor = User.objects.create_user("reveal-unentitled-manager", role=User.Role.MANAGER)
+        if kind == "inactive_manager":
+            EventMembership.objects.create(user=actor, event=project.event, membership_type=EventMembership.Type.MANAGER, is_active=False)
+    else:
+        CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.PURGED)
+    with pytest.raises(PredictionError) as error:
+        record_student_result_reveal(project=project, run=success_run, actor=actor)
+    assert error.value.status_code == 403
+    assert not StudentResultReveal.objects.exists()
+
+
+@pytest.mark.django_db
+def test_cross_project_reveal_is_rejected_even_with_forged_run_scope(project, success_run, owner):
+    from learning.models import StudentResultReveal
+    from learning.services import PredictionError, record_student_result_reveal
+
+    other_project = Project.objects.create(event=project.event, owner_user=owner, name="other")
+    success_run.project_id = other_project.pk
+    with pytest.raises(PredictionError, match="PROJECT_NOT_FOUND"):
+        record_student_result_reveal(project=other_project, run=success_run, actor=owner)
+    assert not StudentResultReveal.objects.exists()
+
+
+@pytest.mark.django_db
+def test_reveal_rejects_run_with_cross_project_revision(project, success_run, owner):
+    from learning.models import StudentResultReveal
+    from learning.services import PredictionError, record_student_result_reveal
+
+    other_project = Project.objects.create(event=project.event, owner_user=owner, name="other")
+    ModelRevision.objects.filter(pk=success_run.model_revision_id).update(project=other_project)
+    with pytest.raises(PredictionError, match="PROJECT_NOT_FOUND"):
+        record_student_result_reveal(project=project, run=success_run, actor=owner)
+    assert not StudentResultReveal.objects.exists()
+
+
+@pytest.mark.django_db
+def test_reveal_rolls_back_evidence_if_recording_fails(project, success_run, owner):
+    from django.db.models.signals import post_save
+    from learning.models import StudentResultReveal
+    from learning.services import record_student_result_reveal
+
+    def fail_after_save(sender, instance, **kwargs):
+        raise RuntimeError("artificial reveal failure")
+    post_save.connect(fail_after_save, sender=StudentResultReveal, weak=False)
+    try:
+        with pytest.raises(RuntimeError, match="artificial reveal failure"):
+            record_student_result_reveal(project=project, run=success_run, actor=owner)
+    finally:
+        post_save.disconnect(fail_after_save, sender=StudentResultReveal)
+    assert not StudentResultReveal.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("first_operation", ["completion", "reveal"])
+def test_completion_and_reveal_request_same_project_lock_before_evidence(reveal_project, success_run, owner, monkeypatch, first_operation):
+    """SQLite characterization: inspect real ORM lock requests; no claim of concurrent row locks."""
+    from django.db import connection
+    from django.db.models.query import QuerySet
+    from learning.models import Prediction, StudentResultReveal
+    from learning.services import PredictionError, complete_prediction, create_prediction, record_student_result_reveal
+
+    prediction = create_prediction(project=reveal_project, actor=owner, expected_draft_version=7)
+    observed = []
+    original_get = QuerySet.get
+    def observe_get(queryset, *args, **kwargs):
+        if queryset.model in (Project, Prediction, StudentResultReveal):
+            observed.append((queryset.model, queryset.query.select_for_update, connection.in_atomic_block, kwargs))
+        return original_get(queryset, *args, **kwargs)
+    monkeypatch.setattr(QuerySet, "get", observe_get)
+    for operation in (["completion", "reveal"] if first_operation == "completion" else ["reveal", "completion"]):
+        observed.clear()
+        if operation == "reveal":
+            record_student_result_reveal(project=reveal_project, run=success_run, actor=owner)
+        elif first_operation == "reveal":
+            with pytest.raises(PredictionError, match="PREDICTION_AFTER_RESULT_REVEAL"):
+                complete_prediction(prediction=prediction, actor=owner, expected_draft_version=7, payload=complete_payload())
+        else:
+            complete_prediction(prediction=prediction, actor=owner, expected_draft_version=7, payload=complete_payload())
+        assert observed[0] == (Project, True, True, {"pk": reveal_project.pk})
+        assert any(model is (StudentResultReveal if operation == "reveal" else Prediction) for model, *_ in observed[1:])
