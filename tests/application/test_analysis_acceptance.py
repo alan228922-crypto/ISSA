@@ -148,6 +148,29 @@ def test_analyze_rejects_stale_completed_prediction_before_creating_history(cont
 
 
 @pytest.mark.django_db
+def test_analyze_rejects_prediction_with_stale_project_object_before_creating_history(context):
+    """Validating the caller's cached draft must not attach old evidence to a new revision."""
+    from analysis.models import AnalysisRun, ModelRevision
+    from analysis.orchestration import AnalysisError, analyze_project
+    from projects.models import Project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    prediction = completed_prediction_for(project, owner, 1)
+    current_project = Project.objects.get(pk=project.pk)
+    save_bt01_draft(owner, current_project, material, section, fx_N=125.0)
+    assert project.draft_version == 1
+    assert current_project.draft_version == 2
+    before = (ModelRevision.objects.count(), AnalysisRun.objects.count())
+
+    with pytest.raises(AnalysisError, match="PREDICTION_STALE_DRAFT") as error:
+        analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
+
+    assert error.value.status_code == 409
+    assert (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
+
+
+@pytest.mark.django_db
 def test_analyze_hides_cross_project_or_missing_prediction_before_creating_history(context):
     """Changing project scoping must not turn another project's evidence into a usable ID."""
     from analysis.models import AnalysisRun, ModelRevision
