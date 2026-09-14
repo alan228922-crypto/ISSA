@@ -18,6 +18,49 @@ def can_modify_project(actor, project):
     return _can_modify_project(actor, event_id=project.event_id, owner_user_id=project.owner_user_id)
 
 
+def purge_project_operational_data(*, project_id, actor_id=None):
+    """Purge one Project's operational graph and return its durable receipt.
+
+    Internal application boundary: the caller owns purge authorization/scheduling.
+    Repeating a completed purge returns the original receipt, including its actor.
+    Protected historical links remain protected outside this ordered transaction.
+    """
+    from collections import Counter
+    from django.db import transaction
+
+    from analysis.models import AnalysisRun, ModelRevision, ValidationLog
+    from learning.models import Prediction, StudentResultReveal
+    from modeling.models import Connection, GeometryNode, NodeLoad, PhysicalMember, Support
+    from projects.models import Project, ProjectOperationalPurgeAudit
+
+    with transaction.atomic():
+        # Share the Project lock with operational writers. Check the receipt after
+        # this query so a concurrent completed purge is visible when the lock frees.
+        project = Project.objects.select_for_update().filter(pk=project_id).first()
+        audit = ProjectOperationalPurgeAudit.objects.filter(project_id=project_id).first()
+        if audit is not None:
+            return audit
+        if project is None:
+            raise Project.DoesNotExist(f"Project {project_id} has no purge receipt")
+
+        counts = Counter()
+        for model in (
+            StudentResultReveal, ValidationLog, AnalysisRun, Prediction, ModelRevision,
+            Support, NodeLoad, Connection, PhysicalMember, GeometryNode,
+        ):
+            _, deleted_counts = model.objects.filter(project_id=project_id).delete()
+            counts.update(deleted_counts)
+        event_id = project.event_id
+        _, deleted_counts = project.delete()
+        counts.update(deleted_counts)
+        return ProjectOperationalPurgeAudit.objects.create(
+            project_id=project_id,
+            event_id=event_id,
+            actor_id=actor_id,
+            deletion_counts_json=dict(counts),
+        )
+
+
 def preview_section(*, actor, project, definition):
     """以既有纯截面引擎预览属性，不持久化任何项目或截面数据。"""
     if not can_modify_project(actor, project):

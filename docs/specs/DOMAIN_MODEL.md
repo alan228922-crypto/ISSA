@@ -787,6 +787,8 @@ Purge domain operation處理順序概念：
 ### Invariants
 
 - 重複 purge 安全。
+- 單一 Project 以 `purge_project_operational_data(project_id, actor_id=None)` 為邊界；有受保護歷史關聯時直接 `Project.delete()` 不受支援。保留 `PROTECT`，依序刪除 Reveal、ValidationLog、AnalysisRun、Prediction/ModelRevision、物理草稿子資料，最後 Project；User、Material、Section、SolverVersion 保留。
+- 同一交易保存 `ProjectOperationalPurgeAudit`：unique primitive project ID、primitive event ID、時間、刪除類型/數量 JSON、optional primitive actor ID；不引用被刪 Project、不保存 raw payload。重跑回傳首次 audit；失敗全部回滾。
 - Purge audit 可保留「何時、哪個 Event、刪除類型/數量」等 metadata，但不保留被刪 raw payload。
 - User account 是否一併刪除/停用可在 Authorization/Event Spec 再細化；Project raw data purge 不能受此未決項阻擋。
 

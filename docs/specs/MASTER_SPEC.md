@@ -1172,6 +1172,10 @@ PoC 不需要 Celery。
 
 ---
 
+【Confirmed — M4A Project boundary】
+
+`purge_project_operational_data(project_id, actor_id=None)` 是單一 Project 的原子、依賴排序、可重跑且可稽核刪除邊界；保留既有 `PROTECT`，有歷史保護關聯時不支援直接 `Project.delete()`。Project 最後刪除，同一交易保存不含 raw payload 的最小 audit。Event 排程／資格／狀態編排仍由後續 Purge workflow 負責。
+
 ## 23.3 Account Lifecycle After Purge
 
 【Open Decision】

@@ -76,6 +76,14 @@ It stores no result, force, geometry, or snapshot and follows Project operationa
 
 Every future owner response exposing numerical/classified answers must call the same reveal service before returning content. `SUCCESS` metadata alone is not disclosure.
 
+## Operational purge boundary
+
+The supported single-Project boundary is `purge_project_operational_data(project_id, actor_id=None)`. Raw `Project.delete()` is intentionally unsupported when protected historical relationships exist. Preserve all `PROTECT` references, including Run → ModelRevision, Run → Prediction, and Reveal → first AnalysisRun.
+
+The internal application service locks Project and deletes in one transaction: StudentResultReveal, ValidationLog, AnalysisRun, Prediction, ModelRevision, then physical draft children (Support/NodeLoad, Connection and participation rows, PhysicalMember, GeometryNode), and Project last. User, Material, Section, SolverVersion, and Event are retained. Calling orchestration owns purge eligibility/authorization; this boundary adds no Event scheduler, Event status transition, or HTTP endpoint.
+
+The same transaction persists `ProjectOperationalPurgeAudit`: unique primitive `project_id`, primitive `event_id`, `purged_at`, `deletion_counts_json`, and optional primitive `actor_id`. It contains no raw payload and no foreign key to deleted operational data. Repeating a completed purge returns the original audit; an unknown ID without an audit is rejected. Any deletion or audit failure rolls back the whole purge.
+
 ## Transaction invariants
 
 Completion and owner result reveal serialize on `select_for_update()` of the same Project row.

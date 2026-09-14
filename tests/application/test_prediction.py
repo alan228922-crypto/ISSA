@@ -221,6 +221,140 @@ def test_project_deletion_removes_prediction(project, owner):
 
 
 @pytest.mark.django_db
+def test_raw_project_deletion_is_unsupported_with_protected_evidence(operational_graph):
+    """Raw Django deletion is not the supported ordered operational purge boundary."""
+    from django.db.models.deletion import ProtectedError
+
+    with pytest.raises(ProtectedError):
+        operational_graph["project"].delete()
+    for model, ids in operational_graph["owned"].items():
+        assert model.objects.filter(pk__in=ids).count() == len(ids)
+
+
+@pytest.fixture
+def operational_graph(project_with_two_members, owner, success_run):
+    from analysis.models import ValidationLog
+    from learning.models import Prediction, StudentResultReveal
+    from materials.models import Material, Section
+    from modeling.models import Connection, GeometryNode, NodeLoad, PhysicalMember, Support
+
+    project = project_with_two_members
+
+    prediction = Prediction.objects.create(
+        project=project,
+        source_draft_version=7,
+        created_by=owner,
+        status=Prediction.Status.COMPLETED,
+        completed_at=timezone.now(),
+        payload_json=complete_payload(),
+    )
+    success_run.prediction = prediction
+    success_run.result_json = {"schema_version": "truss2d-result-v1"}
+    success_run.save(update_fields=["prediction", "result_json"])
+    StudentResultReveal.objects.create(
+        project=project,
+        source_draft_version=7,
+        first_analysis_run=success_run,
+        revealed_to_user=owner,
+    )
+    ValidationLog.objects.create(
+        project=project, analysis_run=success_run, model_revision=success_run.model_revision,
+        stage="SOLVE", code="OK", severity="INFO",
+    )
+    connection = Connection.objects.get(project=project, client_key="c1")
+    Support.objects.create(project=project, target_connection=connection, support_type="PINNED")
+    NodeLoad.objects.create(project=project, target_connection=connection, client_key="load", fx_N=0, fy_N=-1)
+    models = (StudentResultReveal, ValidationLog, AnalysisRun, Prediction, ModelRevision,
+              Support, NodeLoad, Connection, PhysicalMember, GeometryNode)
+    return {
+        "project": project,
+        "owned": {Project: [project.pk], **{
+            model: list(model.objects.filter(project=project).values_list("pk", flat=True)) for model in models
+        }},
+        "retained": {
+            User: [owner.pk], SolverVersion: [success_run.solver_version_id],
+            Material: list(Material.objects.values_list("pk", flat=True)),
+            Section: list(Section.objects.values_list("pk", flat=True)),
+            CompetitionEvent: [project.event_id],
+        },
+    }
+
+
+@pytest.mark.django_db
+def test_supported_project_purge_is_ordered_audited_and_idempotent(operational_graph, owner):
+    """Missing a child, deleting Project early, or replacing the first audit breaks the contract."""
+    from django.db.models.signals import post_delete
+    from projects.services import purge_project_operational_data
+    from projects.models import ProjectOperationalPurgeAudit
+
+    project = operational_graph["project"]
+    deleted = []
+    def observe(sender, instance, **kwargs):
+        deleted.append(sender._meta.label)
+    post_delete.connect(observe, weak=False)
+    try:
+        audit = purge_project_operational_data(project_id=project.pk, actor_id=owner.pk)
+    finally:
+        post_delete.disconnect(observe)
+    audit.refresh_from_db()
+    assert audit.project_id == project.pk
+    assert audit.event_id == project.event_id
+    assert audit.actor_id == owner.pk
+    assert audit.purged_at is not None
+    assert deleted[0] == "learning.StudentResultReveal"
+    assert deleted[-1] == "projects.Project"
+    assert deleted.index("analysis.ValidationLog") < deleted.index("analysis.AnalysisRun")
+    assert deleted.index("analysis.AnalysisRun") < deleted.index("analysis.ModelRevision")
+    assert deleted.index("analysis.AnalysisRun") < deleted.index("learning.Prediction")
+    for model, ids in operational_graph["owned"].items():
+        assert not model.objects.filter(pk__in=ids).exists()
+        assert audit.deletion_counts_json[model._meta.label] == len(ids)
+    assert audit.deletion_counts_json["modeling.Connection_participating_members"] == 3
+    for model, ids in operational_graph["retained"].items():
+        assert model.objects.filter(pk__in=ids).count() == len(ids)
+    first_audit = ProjectOperationalPurgeAudit.objects.values().get(pk=audit.pk)
+    repeated = purge_project_operational_data(project_id=project.pk)
+    assert repeated.pk == audit.pk
+    assert ProjectOperationalPurgeAudit.objects.values().get(pk=audit.pk) == first_audit
+    assert ProjectOperationalPurgeAudit.objects.filter(project_id=project.pk).count() == 1
+
+
+@pytest.mark.django_db
+def test_supported_project_purge_rolls_back_every_deletion_on_failure(operational_graph):
+    """A failure after real deletions must restore the entire graph and leave no success audit."""
+    from django.db.models.signals import post_delete
+    from projects.models import ProjectOperationalPurgeAudit
+    from projects.services import purge_project_operational_data
+
+    def fail_after_run_delete(sender, instance, **kwargs):
+        raise RuntimeError("artificial mid-purge failure")
+    post_delete.connect(fail_after_run_delete, sender=AnalysisRun, weak=False)
+    try:
+        with pytest.raises(RuntimeError, match="artificial mid-purge failure"):
+            purge_project_operational_data(project_id=operational_graph["project"].pk)
+    finally:
+        post_delete.disconnect(fail_after_run_delete, sender=AnalysisRun)
+    for model, ids in operational_graph["owned"].items():
+        assert model.objects.filter(pk__in=ids).count() == len(ids)
+    assert not ProjectOperationalPurgeAudit.objects.exists()
+
+
+@pytest.mark.django_db
+def test_project_purge_audit_is_unique_and_unknown_project_is_rejected(project):
+    from projects.models import ProjectOperationalPurgeAudit
+    from projects.services import purge_project_operational_data
+    from django.db import transaction
+
+    with pytest.raises(Project.DoesNotExist):
+        purge_project_operational_data(project_id=project.pk + 1000)
+    audit = purge_project_operational_data(project_id=project.pk)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        ProjectOperationalPurgeAudit.objects.create(
+            project_id=audit.project_id, event_id=audit.event_id, deletion_counts_json={},
+        )
+
+
+@pytest.mark.django_db
 def test_payload_requires_every_active_member_once(project_with_two_members):
     from learning.services import PredictionError, validate_prediction_payload
 

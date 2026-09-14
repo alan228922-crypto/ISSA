@@ -16,3 +16,13 @@ class Project(models.Model):
     draft_version = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class ProjectOperationalPurgeAudit(models.Model):
+    """Minimal durable purge receipt; no FK or payload from deleted operational data."""
+
+    project_id = models.PositiveBigIntegerField(unique=True)
+    event_id = models.PositiveBigIntegerField()
+    actor_id = models.PositiveBigIntegerField(null=True, blank=True)
+    purged_at = models.DateTimeField(auto_now_add=True)
+    deletion_counts_json = models.JSONField()
