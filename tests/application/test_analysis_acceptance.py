@@ -89,6 +89,86 @@ def test_bt01_real_analysis_chain_and_prediction_is_optional(context):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("supply_prediction", [False, True])
+def test_identical_draft_save_binds_analysis_and_reveal_to_new_source(context, supply_prediction):
+    """Hash-only revision reuse must not let disclosure leave the new draft open."""
+    from analysis.models import ModelRevision
+    from analysis.orchestration import analyze_project
+    from learning.models import Prediction, StudentResultReveal
+    from learning.services import PredictionError, complete_prediction, create_prediction, record_student_result_reveal
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    old_run = analyze_project(project=project, actor=owner, expected_draft_version=1)
+    assert old_run.status == "SUCCESS"
+    old_revision = ModelRevision.objects.values().get(pk=old_run.model_revision_id)
+    old_reveal = record_student_result_reveal(project=project, run=old_run, actor=owner)
+    old_evidence = StudentResultReveal.objects.values().get(pk=old_reveal.pk)
+
+    # The helper submits the same physical payload through save_physical_draft;
+    # only its expected_draft_version advances, without changing model content.
+    save_bt01_draft(owner, project, material, section)
+    assert project.draft_version == 2
+    payload = {
+        "schema_version": "prediction-v1",
+        "member_judgments": [{"physical_member_client_key": "m1", "predicted_state": "TENSION"}],
+        "max_displacement_location": {"kind": "CONNECTION", "connection_client_key": "c2"},
+        "representative_load_path": [
+            {"kind": "CONNECTION", "connection_client_key": "c1"},
+            {"kind": "PHYSICAL_MEMBER", "physical_member_client_key": "m1"},
+            {"kind": "CONNECTION", "connection_client_key": "c2"},
+        ],
+    }
+    prediction = None
+    if supply_prediction:
+        prediction = create_prediction(project=project, actor=owner, expected_draft_version=2)
+        prediction = complete_prediction(
+            prediction=prediction, actor=owner, expected_draft_version=2, payload=payload,
+        )
+
+    current_run = analyze_project(
+        project=project, actor=owner, expected_draft_version=2,
+        prediction_id=prediction.pk if prediction else None,
+    )
+    assert current_run.status == "SUCCESS"
+    assert current_run.model_revision_id != old_run.model_revision_id
+    assert current_run.model_revision.source_draft_version == 2
+    assert current_run.prediction_id == (prediction.pk if prediction else None)
+    if prediction:
+        assert current_run.model_revision.source_draft_version == prediction.source_draft_version
+    assert current_run.model_revision.model_hash == old_run.model_revision.model_hash
+    assert current_run.model_revision.physical_snapshot_json == old_run.model_revision.physical_snapshot_json
+    assert current_run.solver_input_json == old_run.solver_input_json
+    assert current_run.input_hash == old_run.input_hash
+    assert current_run.result_json == old_run.result_json
+
+    current_reveal = record_student_result_reveal(project=project, run=current_run, actor=owner)
+    assert current_reveal.pk != old_reveal.pk
+    assert current_reveal.source_draft_version == 2
+    assert current_reveal.first_analysis_run_id == current_run.pk
+    current_evidence = StudentResultReveal.objects.values().get(pk=current_reveal.pk)
+    repeat_run = analyze_project(project=project, actor=owner, expected_draft_version=2)
+    assert repeat_run.status == "SUCCESS"
+    assert repeat_run.model_revision_id == current_run.model_revision_id
+    assert record_student_result_reveal(project=project, run=repeat_run, actor=owner).pk == current_reveal.pk
+    assert StudentResultReveal.objects.values().get(pk=current_reveal.pk) == current_evidence
+
+    late_prediction = create_prediction(project=project, actor=owner, expected_draft_version=2)
+    with pytest.raises(PredictionError, match="PREDICTION_AFTER_RESULT_REVEAL"):
+        complete_prediction(
+            prediction=late_prediction, actor=owner, expected_draft_version=2, payload=payload,
+        )
+    late_prediction.refresh_from_db()
+    assert late_prediction.status == Prediction.Status.DRAFT
+    assert late_prediction.completed_at is None
+    assert record_student_result_reveal(project=project, run=old_run, actor=owner).pk == old_reveal.pk
+    assert ModelRevision.objects.values().get(pk=old_run.model_revision_id) == old_revision
+    assert StudentResultReveal.objects.values().get(pk=old_reveal.pk) == old_evidence
+    assert ModelRevision.objects.filter(project=project).count() == 2
+    assert set(StudentResultReveal.objects.filter(project=project).values_list("source_draft_version", flat=True)) == {1, 2}
+
+
+@pytest.mark.django_db
 def test_analyze_accepts_none_reuses_completed_prediction_and_preserves_solver_artifacts(context):
     """A completed learning record is linked as evidence, never solver input."""
     from analysis.orchestration import analyze_project
