@@ -333,13 +333,14 @@ Tests：
 
 必測：
 
-- Analyze creates/reuses revision per hash policy。
+- Analyze only reuses a revision for the same `(Project, source_draft_version, model_hash)`; identical content saved as a new draft creates a new revision with the new source version.
 - Revision immutable。
 - editing Material after run 不改舊 revision snapshot。
 - editing Section after run 不改舊 input/result。
 - same canonical snapshot → same model_hash。
 - reordered non-semantic JSON keys → same canonical hash。
 - changed geometry/load/E/A → different input/model hash as defined。
+- identical content across different draft versions may retain the same `model_hash` / `input_hash` / result while retaining distinct revisions and reveal lineage.
 
 ---
 

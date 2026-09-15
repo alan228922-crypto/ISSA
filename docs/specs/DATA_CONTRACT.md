@@ -409,6 +409,8 @@ ModelRevision
 
 Snapshot 必須 freeze solver-relevant 與 report-relevant 數值：
 
+ModelRevision 的 reuse identity 為 `(project_id, source_draft_version, model_hash)`。`source_draft_version` 是 authoring lineage，不納入 hash 語意：不同 draft 版本即使內容 hash 相同，仍建立新的 revision；同一 draft 的相同 `model_hash` 可 reuse。
+
 - geometry coordinates
 - explicit connection topology
 - physical member assignments
@@ -738,6 +740,8 @@ Canonicalization：
 對 solver + postprocess 可重現所需的 canonical analysis input 生成。
 
 兩者可以相同也可以不同，但語意不可混用。
+
+`model_hash` 仍是內容 identity，`input_hash` 仍是 canonical numerical input identity；兩者均不取代 `source_draft_version` 的 authoring lineage identity。
 
 ---
 

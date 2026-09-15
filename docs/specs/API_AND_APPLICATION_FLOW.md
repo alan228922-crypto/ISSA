@@ -421,16 +421,17 @@ POST analyze(project, draft_version)
 
 ## 10. ModelRevision Creation Rule
 
-【Recommended】
+【Confirmed】
 
 Analyze 建立新 revision 的最小規則：
 
-- 若 current draft content hash 與上一 revision 相同，可選擇 reuse existing revision，而建立新的 AnalysisRun。
-- 若內容不同，建立下一 revision。
+- 僅當 current Project、`source_draft_version` 與 `model_hash` 都與既有 revision 相同時，才可 reuse existing revision，而建立新的 AnalysisRun。
+- 新的 `source_draft_version` 必須建立下一 revision，即使 content hash 相同。
+- 內容不同時同樣建立下一 revision。
 
 P0 最簡單也可每次 Analyze 都建立 revision；但若大量重按 Analyze 會產生重複 revision。
 
-**推薦 baseline：以 model_hash 去重同一 draft，AnalysisRun 仍每次記錄。**
+**Baseline：以 `(Project, source_draft_version, model_hash)` 去重同一 draft，AnalysisRun 仍每次記錄。**
 
 這不需要 generic dedup system，只需 current project last revision comparison。
 

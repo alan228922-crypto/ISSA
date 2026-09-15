@@ -28,6 +28,10 @@ There are no P0 member/displacement/load-path child tables. `COMPLETED` records 
 
 `AnalysisRun.prediction` is a nullable FK (`0..1` per Run, `0..N` Runs per Prediction). Repeated Analyze calls for the same source draft may reuse one completed Prediction.
 
+## Revision lineage at the prediction/reveal boundary
+
+`ModelRevision` reuse is limited to `(Project, source_draft_version, model_hash)`. A new authoring draft creates a new immutable revision even if physical content, `model_hash`, numerical `input_hash`, and eventual result are identical. This keeps revision lineage aligned with Prediction and StudentResultReveal, both of which are authoritative by `Project + source_draft_version`; hash values remain content/numerical identities and do not substitute for the draft-version boundary.
+
 ## `prediction-v1` payload
 
 ```json

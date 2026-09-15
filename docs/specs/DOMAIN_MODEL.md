@@ -496,6 +496,7 @@ ModelRevision 為 immutable analysis checkpoint。
 - project_id
 - revision_number
 - analysis_type
+- source_draft_version
 - physical_snapshot
 - schema_version
 - model_hash/input_hash
@@ -509,6 +510,8 @@ ModelRevision 為 immutable analysis checkpoint。
 3. 修改 Project Draft 不影響既有 ModelRevision。
 4. Material / Section numeric properties 在 revision snapshot 中 freeze。
 5. Purge 後 raw revision snapshot 必須依 Event policy 刪除。
+6. Reuse identity 是 `(Project, source_draft_version, model_hash)`；僅相同 Project、相同 authoring draft、相同 content hash 才可 reuse。
+7. 不同 `source_draft_version` 即使 snapshot、`model_hash` 與後續 `input_hash` 相同，也必須建立新的 immutable ModelRevision；`revision_number` 在 Project 內連續遞增。
 
 ---
 
