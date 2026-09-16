@@ -229,7 +229,39 @@ GET /projects/<project_id>/analyses/<run_id>/data/
 
 For M4A, an owner read of a SUCCESS numerical result must record the server-side `(Project, source_draft_version)` StudentResultReveal before returning the payload. Manager/Developer reads do not record student reveal.
 
-### 4.4.1 Prediction JSON minimum
+### 4.4.1 M4B Compare and Explain derived data
+
+```text
+GET /projects/<project_id>/analyses/<run_id>/comparison/
+GET /projects/<project_id>/analyses/<run_id>/explanation/
+```
+
+Both endpoints are GET-only deterministic derived views, not CRUD resources: they create no Comparison/Explanation aggregate, list endpoint, POST action, or client-side “mark revealed” action. They follow the existing M3 JSON success envelope while returning exactly one M4B domain contract and no incidental analysis/model payload:
+
+```json
+{"ok": true, "comparison": {"schema_version": "comparison-v1"}}
+```
+
+```json
+{"ok": true, "explanation": {"schema_version": "explanation-v1"}}
+```
+
+The nested value is the complete contract defined respectively in `COMPARISON_CONTRACT.md` or `EXPLANATION_CONTRACT.md`. The response must not add full `result_json`, solver input, physical snapshot, Prediction ORM row, Material/Section data, credentials, or internal ORM metadata.
+
+The View remains thin: authenticate; scoped Project/Run lookup; apply existing `can_view_project`; call one minimal application disclosure service; map its stable result/error to `JsonResponse`. The application service alone validates `SUCCESS`, invokes deterministic Compare/Explain Core, then calls the existing `record_student_result_reveal(project, run, actor)` before returning authoritative numerical/classified content. Views do not recompute teaching states, ZERO_FORCE, displacement, templates, mechanics, or reveal policy.
+
+The scoped Run lookup is `run.pk + project_id` as in Result Data. A Run from another Project is indistinguishable from an absent scoped Run (`PROJECT_NOT_FOUND`, 404); an actor without Project read permission receives the existing `PROJECT_READ_DENIED`, 403. Manager and Developer follow existing read authorization but the existing reveal service records no StudentResultReveal for them. Student-owner reveal recording is idempotent by `(Project, source_draft_version)` and must commit before the response; a reveal persistence failure returns `RESULT_REVEAL_FAILED`, 500, with no derived content. A Compare/Explain reveal therefore also blocks later same-draft Prediction completion via the existing `PREDICTION_AFTER_RESULT_REVEAL` invariant.
+
+Only `AnalysisRun.status = SUCCESS` may return a normal M4B output. `VALIDATION_FAILED` and `SOLVER_FAILED` return `ANALYSIS_NOT_SUCCESS`, 422, with the zh-CN message “分析尚未成功完成，暂无可用的比较或解释结果。”, create no reveal, and do not become a diagnostic-teaching feature. Integrity failures such as an incompatible Prediction/source draft fail closed with `COMPARE_SOURCE_MISMATCH`, 409; other immutable result/provenance conflicts use the endpoint-specific English integrity code with 409. Unexpected errors use the standard safe `INTERNAL_ERROR`, 500, without traceback.
+
+Prediction remains a Soft Gate:
+
+- Compare with `AnalysisRun.prediction = null` returns HTTP 200 and the nested `comparison-v1` unavailable form (`comparison_available: false`, `reason: "NO_PREDICTION"`), never 404/409.
+- Explain with no Prediction returns HTTP 200 and complete `explanation-v1` member-force / maximum-displacement blocks, `comparison_available: false`, `comparison_reason: "NO_PREDICTION"`, and no prediction-comparison or representative-load-path blocks.
+
+Dependency direction is `Analysis facts → Compare → Explain`; when no Prediction, it is `Analysis facts → Explain`. Neither Core mutates the other, and HTTP never calls mechanics directly.
+
+### 4.4.2 Prediction JSON minimum
 
 ```text
 POST /projects/<project_id>/predictions/                         create DRAFT

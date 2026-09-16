@@ -119,6 +119,10 @@ Explain 不得把 `MIXED` 简化为任一单一状态，也不得以最大绝对
 
 `explanation-v1` 不包含 Reflection、Design Rationale、自动优化、设计推荐、Euler final risk explanation、Frame explanation、HTTP、UI、AI generation、ORM Explanation/ExplanationBlock/TeachingMessage model 或任何 persistence。Explain 只帮助理解，不替学生完成设计决策。
 
+## HTTP disclosure boundary
+
+M4B Explain 的 HTTP boundary 是 `GET /projects/<project_id>/analyses/<run_id>/explanation/`，其完整规则见 `API_AND_APPLICATION_FLOW.md`。它沿用 M3 `ok` success envelope，唯一 domain payload 为嵌套的 `explanation-v1`。它同样是 result disclosure boundary：Student owner 在任何 authoritative explanation blocks 返回前，必须经既有 StudentResultReveal service 完成 reveal persistence；Manager/Developer 的合法 read 不创建 student reveal。无 Prediction 仍返回完整的无比较 Explain，并使用 `comparison_reason: "NO_PREDICTION"`，不是 error。
+
 ## Gate 2A self-review
 
 - 无 Prediction 时 Explain 仍可用，`NO_PREDICTION` 不成为错误。

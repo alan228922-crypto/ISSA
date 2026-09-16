@@ -148,6 +148,10 @@ The derived output contains only the minimum teaching facts:
 
 With no linked Prediction, output is limited to `schema_version`, `comparison_available: false`, `reason: "NO_PREDICTION"`, and safe Project/Run identifiers. Comparison must not copy the full physical snapshot, solver input, material/section database records, or full result payload.
 
+## HTTP disclosure boundary
+
+The M4B Compare HTTP boundary is `GET /projects/<project_id>/analyses/<run_id>/comparison/`, specified in `API_AND_APPLICATION_FLOW.md`. It uses the existing M3 `ok` success envelope with one nested `comparison-v1` value. It is a result-disclosure boundary: after scoped Project/Run read authorization and successful deterministic derivation, the existing StudentResultReveal service must persist the student-owner reveal before the response returns. Manager/Developer reads use the same authorization path but create no student reveal. No Prediction remains HTTP 200 with this contract’s `NO_PREDICTION` unavailable value.
+
 ## Explain and mechanics boundaries
 
 Compare Core returns facts only. Future Explain consumes these facts but is responsible for teaching prose; Compare does not generate recommendations, structural-quality assessments, long-form explanation, or AI output.
