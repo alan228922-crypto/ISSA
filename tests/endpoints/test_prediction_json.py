@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from django.db import OperationalError
 from django.test import Client
 from django.urls import reverse
 
@@ -494,3 +495,83 @@ def test_prediction_read_denies_unentitled_user(project_with_two_members, owner,
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "PROJECT_READ_DENIED"
+
+
+@pytest.mark.django_db
+def test_unentitled_user_cannot_distinguish_existing_and_missing_prediction_ids(
+    project_with_two_members, owner, client
+):
+    project_with_two_members.refresh_from_db()
+    prediction = Prediction.objects.create(
+        project=project_with_two_members,
+        source_draft_version=project_with_two_members.draft_version,
+        created_by=owner,
+        payload_json={},
+    )
+    client.force_login(User.objects.create_user("prediction-enumeration-other"))
+
+    missing_id = prediction.id + 1000
+    for endpoint, method, expected in (
+        ("learning:prediction_detail", "get", (403, "PROJECT_READ_DENIED")),
+        ("learning:prediction_complete", "post", (403, "PROJECT_WRITE_DENIED")),
+    ):
+        results = []
+        for prediction_id in (prediction.id, missing_id):
+            kwargs = {
+                "project_id": project_with_two_members.id,
+                "prediction_id": prediction_id,
+            }
+            response = (
+                client.get(reverse(endpoint, kwargs=kwargs))
+                if method == "get"
+                else post_json(
+                    client, endpoint, complete_body(project_with_two_members), **kwargs
+                )
+            )
+            results.append((response.status_code, response.json()["error"]["code"]))
+        assert results == [expected, expected]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("endpoint", "method"),
+    [
+        ("learning:prediction_create", "post"),
+        ("learning:prediction_complete", "post"),
+        ("learning:prediction_detail", "get"),
+    ],
+)
+def test_prediction_lookup_failure_returns_safe_json(
+    project_with_two_members, owner, monkeypatch, endpoint, method
+):
+    import learning.views
+
+    project_with_two_members.refresh_from_db()
+    boundary_client = Client(raise_request_exception=False)
+    boundary_client.force_login(owner)
+
+    def fail_project_lookup(project_id):
+        raise OperationalError("/private/server/path database secret")
+
+    monkeypatch.setattr(learning.views, "_project", fail_project_lookup)
+    kwargs = {"project_id": project_with_two_members.id}
+    if endpoint != "learning:prediction_create":
+        kwargs["prediction_id"] = 1
+    if method == "get":
+        response = boundary_client.get(reverse(endpoint, kwargs=kwargs))
+    else:
+        payload = (
+            create_body(project_with_two_members)
+            if endpoint == "learning:prediction_create"
+            else complete_body(project_with_two_members)
+        )
+        response = post_json(boundary_client, endpoint, payload, **kwargs)
+
+    assert response.status_code == 500
+    assert response.headers["Content-Type"].startswith("application/json")
+    body = response.json()
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert body["error"]["message"].isascii() is False
+    serialized = json.dumps(body)
+    assert "database secret" not in serialized
+    assert "/private/server/path" not in serialized

@@ -100,74 +100,79 @@ def _service_error(exc):
 @login_required
 @require_POST
 def prediction_create(request, project_id):
-    project = _project(project_id)
-    if project is None:
-        return _error("PROJECT_NOT_FOUND", 404)
-    payload = _json_body(request)
-    if payload is None:
-        return _error("MALFORMED_JSON", 400)
-    if set(payload) != {"expected_draft_version"} or type(
-        payload.get("expected_draft_version")
-    ) is not int:
-        return _error("INVALID_REQUEST", 400)
     try:
+        project = _project(project_id)
+        if project is None:
+            return _error("PROJECT_NOT_FOUND", 404)
+        payload = _json_body(request)
+        if payload is None:
+            return _error("MALFORMED_JSON", 400)
+        if set(payload) != {"expected_draft_version"} or type(
+            payload.get("expected_draft_version")
+        ) is not int:
+            return _error("INVALID_REQUEST", 400)
         prediction = create_prediction(
             project=project,
             actor=request.user,
             expected_draft_version=payload["expected_draft_version"],
         )
+        return _prediction_response(prediction, status=201)
     except PredictionError as exc:
         return _service_error(exc)
     except Exception:
         return _error("INTERNAL_ERROR", 500)
-    return _prediction_response(prediction, status=201)
 
 
 @login_required
 @require_POST
 def prediction_complete(request, project_id, prediction_id):
-    project = _project(project_id)
-    if project is None:
-        return _error("PROJECT_NOT_FOUND", 404)
-    prediction = Prediction.objects.filter(
-        pk=prediction_id, project_id=project.id
-    ).first()
-    if prediction is None:
-        return _error("PREDICTION_NOT_FOUND", 404)
-    payload = _json_body(request)
-    if payload is None:
-        return _error("MALFORMED_JSON", 400)
-    if (
-        set(payload) != {"expected_draft_version", "payload"}
-        or type(payload.get("expected_draft_version")) is not int
-        or not isinstance(payload.get("payload"), dict)
-    ):
-        return _error("INVALID_REQUEST", 400)
     try:
+        project = _project(project_id)
+        if project is None:
+            return _error("PROJECT_NOT_FOUND", 404)
+        if not can_view_project(request.user, project):
+            return _error("PROJECT_WRITE_DENIED", 403)
+        prediction = Prediction.objects.filter(
+            pk=prediction_id, project_id=project.id
+        ).first()
+        if prediction is None:
+            return _error("PREDICTION_NOT_FOUND", 404)
+        payload = _json_body(request)
+        if payload is None:
+            return _error("MALFORMED_JSON", 400)
+        if (
+            set(payload) != {"expected_draft_version", "payload"}
+            or type(payload.get("expected_draft_version")) is not int
+            or not isinstance(payload.get("payload"), dict)
+        ):
+            return _error("INVALID_REQUEST", 400)
         prediction = complete_prediction(
             prediction=prediction,
             actor=request.user,
             expected_draft_version=payload["expected_draft_version"],
             payload=payload["payload"],
         )
+        return _prediction_response(prediction)
     except PredictionError as exc:
         return _service_error(exc)
     except Exception:
         return _error("INTERNAL_ERROR", 500)
-    return _prediction_response(prediction)
 
 
 @login_required
 @require_GET
 def prediction_detail(request, project_id, prediction_id):
-    project = _project(project_id)
-    if project is None:
-        return _error("PROJECT_NOT_FOUND", 404)
-    prediction = Prediction.objects.filter(
-        pk=prediction_id, project_id=project.id
-    ).first()
-    if prediction is None:
-        return _error("PREDICTION_NOT_FOUND", 404)
-    if not can_view_project(request.user, project):
-        return _error("PROJECT_READ_DENIED", 403)
-    return _prediction_response(prediction)
+    try:
+        project = _project(project_id)
+        if project is None:
+            return _error("PROJECT_NOT_FOUND", 404)
+        if not can_view_project(request.user, project):
+            return _error("PROJECT_READ_DENIED", 403)
+        prediction = Prediction.objects.filter(
+            pk=prediction_id, project_id=project.id
+        ).first()
+        if prediction is None:
+            return _error("PREDICTION_NOT_FOUND", 404)
+        return _prediction_response(prediction)
+    except Exception:
+        return _error("INTERNAL_ERROR", 500)
