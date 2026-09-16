@@ -177,6 +177,19 @@ def _load_path_evidence(*, payload, physical_evidence):
     return evidence
 
 
+def build_teaching_member_evidence(*, run):
+    """Project authoritative segment forces into PhysicalMember teaching evidence."""
+    if run.status != "SUCCESS" or run.result_schema_version != "truss2d-result-v1":
+        _fail("COMPARE_RUN_NOT_SUCCESS")
+    result = run.result_json
+    if not isinstance(result, dict) or result.get("schema_version") != "truss2d-result-v1":
+        _fail("COMPARE_RESULT_INVALID")
+    return _segment_evidence(
+        result=result,
+        idealization=_idealization(run.model_revision.physical_snapshot_json),
+    )
+
+
 def build_comparison(*, run):
     """Return the minimum `comparison-v1` facts from immutable run evidence."""
     prediction = run.prediction
@@ -201,8 +214,8 @@ def build_comparison(*, run):
     if not isinstance(result, dict) or result.get("schema_version") != "truss2d-result-v1" or not isinstance(payload, dict):
         _fail("COMPARE_RESULT_INVALID")
 
+    physical_evidence = build_teaching_member_evidence(run=run)
     idealization = _idealization(revision.physical_snapshot_json)
-    physical_evidence = _segment_evidence(result=result, idealization=idealization)
     return {
         "schema_version": "comparison-v1",
         "comparison_available": True,
