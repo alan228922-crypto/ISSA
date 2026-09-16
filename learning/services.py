@@ -10,11 +10,22 @@ from modeling.models import Connection, PhysicalMember
 from projects.models import Project
 from projects.services import can_view_project
 
+from .comparison import ComparisonError, build_comparison
+from .explanation import ExplanationError, build_explanation
 from .models import Prediction, StudentResultReveal
 
 
 class PredictionError(ValueError):
     def __init__(self, code, status_code=400):
+        super().__init__(code)
+        self.code = code
+        self.status_code = status_code
+
+
+class DisclosureError(ValueError):
+    """Stable HTTP-facing failures for derived result disclosure."""
+
+    def __init__(self, code, status_code):
         super().__init__(code)
         self.code = code
         self.status_code = status_code
@@ -261,3 +272,37 @@ def record_student_result_reveal(*, project, run, actor) -> StudentResultReveal 
             defaults={"first_analysis_run": run, "revealed_to_user": actor},
         )
         return reveal
+
+
+def _record_reveal_after_derivation(*, project, run, actor):
+    """Commit the existing owner-only reveal evidence before returning facts."""
+    try:
+        record_student_result_reveal(project=project, run=run, actor=actor)
+    except PredictionError as exc:
+        raise DisclosureError(exc.code, exc.status_code) from exc
+    except Exception as exc:
+        raise DisclosureError("RESULT_REVEAL_FAILED", 500) from exc
+
+
+def comparison_for_disclosure(*, project, run, actor):
+    """Derive comparison facts, then record owner disclosure atomically before return."""
+    if run.status != AnalysisRun.Status.SUCCESS:
+        raise DisclosureError("ANALYSIS_NOT_SUCCESS", 422)
+    try:
+        comparison = build_comparison(run=run)
+    except ComparisonError as exc:
+        raise DisclosureError(exc.code, 409) from exc
+    _record_reveal_after_derivation(project=project, run=run, actor=actor)
+    return comparison
+
+
+def explanation_for_disclosure(*, project, run, actor):
+    """Derive explanation facts, then record owner disclosure before return."""
+    if run.status != AnalysisRun.Status.SUCCESS:
+        raise DisclosureError("ANALYSIS_NOT_SUCCESS", 422)
+    try:
+        explanation = build_explanation(run=run)
+    except ExplanationError as exc:
+        raise DisclosureError(exc.code, 409) from exc
+    _record_reveal_after_derivation(project=project, run=run, actor=actor)
+    return explanation

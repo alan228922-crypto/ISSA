@@ -8,7 +8,13 @@ from django.views.decorators.http import require_GET, require_POST
 from analysis.models import AnalysisRun
 from analysis.orchestration import AnalysisError, analyze_project, check_project
 from materials.services import SectionServiceError
-from learning.services import PredictionError, record_student_result_reveal
+from learning.services import (
+    DisclosureError,
+    PredictionError,
+    comparison_for_disclosure,
+    explanation_for_disclosure,
+    record_student_result_reveal,
+)
 from modeling.services import DraftSaveError, save_physical_draft
 
 from .models import Project
@@ -29,6 +35,7 @@ MESSAGES = {
     'OVERLAP_UNSUPPORTED': '当前不支持包含重叠区域的组合截面。',
     'SOLVER_FAILED': '分析计算未能完成，请检查模型后重试。',
     'RESULT_REVEAL_FAILED': '无法安全记录结果查看，请稍后重试。',
+    'ANALYSIS_NOT_SUCCESS': '分析尚未成功完成，暂无可用的比较或解释结果。',
     'INTERNAL_ERROR': '服务器暂时无法处理请求，请稍后重试。',
 }
 
@@ -138,6 +145,50 @@ def analysis_data(request, project_id, run_id):
         except Exception:
             return _error('RESULT_REVEAL_FAILED', 500)
     return JsonResponse({'ok': True, 'analysis_run_id': run.id, 'model_revision_id': run.model_revision_id, 'model_hash': run.model_revision.model_hash, 'solver_version': run.solver_version.solver_version, 'input_hash': run.input_hash, 'input_schema_version': run.input_schema_version, 'result_schema_version': run.result_schema_version, 'status': run.status, 'failure_code': run.failure_code, 'diagnostics': run.diagnostics_json, 'result_json': run.result_json})
+
+
+@login_required
+@require_GET
+def analysis_comparison(request, project_id, run_id):
+    project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
+    if not can_view_project(request.user, project):
+        return _error('PROJECT_READ_DENIED', 403)
+    run = AnalysisRun.objects.select_related('model_revision', 'prediction').filter(
+        pk=run_id, project_id=project.id,
+    ).first()
+    if run is None:
+        return _error('PROJECT_NOT_FOUND', 404)
+    try:
+        comparison = comparison_for_disclosure(project=project, run=run, actor=request.user)
+    except DisclosureError as exc:
+        return _error(exc.code, exc.status_code)
+    except Exception:
+        return _error('INTERNAL_ERROR', 500)
+    return JsonResponse({'ok': True, 'comparison': comparison})
+
+
+@login_required
+@require_GET
+def analysis_explanation(request, project_id, run_id):
+    project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
+    if not can_view_project(request.user, project):
+        return _error('PROJECT_READ_DENIED', 403)
+    run = AnalysisRun.objects.select_related('model_revision', 'prediction').filter(
+        pk=run_id, project_id=project.id,
+    ).first()
+    if run is None:
+        return _error('PROJECT_NOT_FOUND', 404)
+    try:
+        explanation = explanation_for_disclosure(project=project, run=run, actor=request.user)
+    except DisclosureError as exc:
+        return _error(exc.code, exc.status_code)
+    except Exception:
+        return _error('INTERNAL_ERROR', 500)
+    return JsonResponse({'ok': True, 'explanation': explanation})
 
 
 @login_required
