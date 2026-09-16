@@ -108,7 +108,7 @@ Section Designer 若需要即時計算 property，使用 JSON preview endpoint�
 ### Learning / Report
 
 ```text
-GET/POST /projects/<project_id>/prediction/
+POST/GET /projects/<project_id>/predictions/... (M4A JSON; exact variants in §4.4.1)
 GET/POST /projects/<project_id>/reflection/
 GET      /projects/<project_id>/compare/
 GET      /projects/<project_id>/report/
@@ -198,23 +198,26 @@ Request：
 
 ```json
 {
-  "draft_version": 13,
-  "prediction_id": "optional"
+  "expected_draft_version": 13,
+  "prediction_id": 42
 }
 ```
+
+`prediction_id` may be omitted or `null`; this remains analyzable. When supplied, it must identify completed same-Project, same-source-draft evidence or Analyze fails closed.
 
 成功 response：
 
 ```json
 {
   "ok": true,
-  "model_revision_id": "...",
-  "analysis_run_id": "...",
-  "result_url": "/projects/.../analyses/.../"
+  "model_revision_id": 17,
+  "analysis_run_id": 42,
+  "status": "SUCCESS",
+  "result_schema_version": "truss2d-result-v1"
 }
 ```
 
-失敗不回 stack trace；回 stable error code + beginner-facing message。
+Analyze metadata must not contain numerical/classified answers. Failures do not return a stack trace and use a stable English code plus zh-CN message.
 
 ### 4.4 Result data
 
@@ -235,6 +238,8 @@ GET  /projects/<project_id>/predictions/<prediction_id>/          read own/histo
 ```
 
 All POST endpoints retain CSRF and use thin views. There is no generic CRUD API and no client “mark revealed” endpoint.
+
+Prediction GET follows existing Project read authorization; authoring remains student-owner-only. JSON errors use 400 for malformed/unknown request shape, 403/404 for authorization and scoped lookup, 409 for lifecycle conflict, 422 for payload/topology validation, and a safe 500 for unexpected failure. Machine codes are English and human messages are zh-CN; no traceback is returned.
 
 ### 4.5 Section property preview
 
@@ -688,9 +693,9 @@ P0 可安全延期：
 
 ## 22. Open Decisions
 
-### OD-API-01 — Prediction 是否為 Analyze blocking gate
+### Resolved — Prediction is an Analyze Soft Gate
 
-【Open Decision】Teaching/UX 決定；架構已留檢查點。
+Prediction absence never blocks Analyze. A supplied Prediction must be completed, same-Project, owner-bound, and exactly current-draft evidence before its nullable AnalysisRun link is created.
 
 ### OD-API-02 — FINISHED_GRACE User access（Master O-003）
 

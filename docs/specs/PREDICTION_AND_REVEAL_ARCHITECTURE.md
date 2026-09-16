@@ -3,7 +3,7 @@
 ## Status and scope
 
 - Status: **CONFIRMED for M4A implementation planning**
-- Parent authority: `MASTER_SPEC.md v1.4`
+- Parent authority: `MASTER_SPEC.md v1.5`
 - Scope: Prediction persistence and integrity only; no Compare, Explain, Reflection, visual editor, visualization, or teaching-result UI.
 
 ## Confirmed product boundary

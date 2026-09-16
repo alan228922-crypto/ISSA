@@ -807,6 +807,10 @@ Purge 後不得保留：
 
 【Confirmed】Event 結束 7 天後清除 student Project Operational Data。
 
+### 17.1 Current M4A operational boundary
+
+The authoritative implemented single-Project boundary is `purge_project_operational_data(project_id, actor_id=None)`. Raw `Project.delete()` is not a supported purge operation while historical `PROTECT` relations exist. The service performs one atomic ordered deletion of Project operational data, persists the minimal `ProjectOperationalPurgeAudit`, and deletes Project last; User account lifecycle remains Master O-004 Open. Event eligibility, scheduling, and Event-status orchestration are outside M4A.
+
 【Recommended】purge transaction/service 順序：
 
 ```text

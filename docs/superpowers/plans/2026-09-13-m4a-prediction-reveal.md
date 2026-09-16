@@ -10,6 +10,8 @@
 
 **Spec:** `docs/specs/PREDICTION_AND_REVEAL_ARCHITECTURE.md`
 
+**Implementation status (2026-09-16):** Tasks 1–6 are complete through M4A Gates 1–4. Task 7 is not started and remains reserved for M4A Final Gate B.
+
 ## Global Constraints
 
 - TDD is mandatory: focused RED test, observed expected failure, minimum GREEN code, targeted regression, commit per task.
