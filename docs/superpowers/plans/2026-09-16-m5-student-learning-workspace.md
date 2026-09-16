@@ -35,7 +35,19 @@
 
 ## Dependency graph
 
-`1 → 2 → 3/4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14`.
+`1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15`.
+
+## Stable Workspace DOM Contract
+
+All modules/tests use these hooks: `#workspace-root`, `#workspace-project-header`, `#workspace-read-only`, `#workspace-modeling-panel`, `#workspace-properties-panel`, `#workspace-canvas`, `#workspace-workflow-panel`, `#workspace-workflow-steps`, `#workspace-status-bar`, `#workspace-dynamic-input`, `#workspace-dynamic-distance`, `#workspace-dynamic-angle`, `#workspace-snap-indicator`, `#workspace-save-status`, `#workspace-save`, `#workspace-model-check`, `#workspace-results`, `#workspace-reflection`, and `#workspace-bootstrap`. Dynamic input has `data-active-field="distance|angle"`; it is hidden outside `DYNAMIC_INPUT`. SVG selectable objects have `data-client-key`, `data-object-kind`, `tabindex="0"`, `role="button"`, and an `aria-label` such as `节点 n1` or `构件 m1`; selection is not color-only.
+
+## Bootstrap and URL Contract
+
+`#workspace-bootstrap` is `<script type="application/json">` with `{schema_version:"workspace-bootstrap-v1",project:{id:number,name:string,analysis_type:"TRUSS_2D"},draft:{schema_version:"physical-draft-v1",version:number,nodes:Array<{client_key:string,x_mm:number,y_mm:number,label:string}>,physical_members:Array<{client_key:string,start_node_client_key:string,end_node_client_key:string,material_id:number,section_id:number,label:string,is_active:boolean}>,connections:Array<{client_key:string,geometry_node_client_key:string,participating_member_client_keys:string[]}>,supports:Array<{target_connection_client_key:string,support_type:"PINNED"|"ROLLER",restrained_axis:"X"|"Y"|null}>,node_loads:Array<{client_key:string,target_connection_client_key:string,fx_N:number,fy_N:number,label:string}>},read_only:boolean,urls:{save:string,check:string,prediction_current:string,prediction_create:string,prediction_complete_template:string,analyze:string,result_template:string,comparison_template:string,explanation_template:string,reflection_template:string,reflection_complete_template:string}}`. URLs are `/projects/<project_id>/model/save/`, `/model/check/`, `/predictions/current/`, `/predictions/`, `/predictions/{prediction_id}/complete/`, `/analyze/`, `/analyses/{run_id}/data/`, `/comparison/`, `/explanation/`, `/analyses/{run_id}/reflection/`, and `/reflection/complete/` relative to `/projects/<project_id>/`. Result/evidence/text are lazy-loaded and never bootstrap fields.
+
+## Browser harness and isolation
+
+Add test-only `playwright==1.63.0` (PyPI supports Python 3.13) to `[project.optional-dependencies].test`; install Chromium with `python3 -m playwright install chromium`. Mark browser tests `@pytest.mark.browser`, register the marker, and skip them when `PLAYWRIGHT_BROWSERS_PATH`/Chromium is unavailable; ordinary `pytest -q` excludes browser tests via `-m 'not browser'`, while Final B runs `pytest tests/browser -q`. Fixture `workspace_page` in `tests/browser/conftest.py` opens Django `live_server`; pure-module tests call `page.evaluate("import('/static/projects/workspace/cad-input.js')")`, invoke exports, and return plain JSON for pytest assertions.
 
 ### Task 1 (Gate 1, BCG-01/03): Workspace delivery
 **Files:** Create `projects/workspace.py`, `templates/projects/workspace.html`, `projects/static/projects/workspace/{state.js,api.js,workspace.css}`, `tests/browser/conftest.py`; modify `projects/urls.py`, `pyproject.toml`; test `tests/endpoints/test_workspace.py`.
