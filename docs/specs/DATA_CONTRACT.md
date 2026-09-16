@@ -625,7 +625,7 @@ StudentResultReveal
 - first_revealed_at
 - unique(project_id, source_draft_version)
 
-`prediction-v1` contains exact member judgments, one restricted PhysicalPointRef, and an alternating representative load-path hypothesis. It contains no coordinates, model snapshot, material/section data, or solver result. `ZERO_FORCE` is a Prediction choice only; analysis-side policy remains O-007 Open.
+`prediction-v1` contains exact member judgments, one restricted PhysicalPointRef, and an alternating representative load-path hypothesis. It contains no coordinates, model snapshot, material/section data, or solver result. `ZERO_FORCE` is a Prediction choice; M4B teaching classification is derived only by the resolved O-007 policy in `COMPARISON_CONTRACT.md`, without changing this stored payload or analysis result schema.
 ```
 
 ### DesignRationale

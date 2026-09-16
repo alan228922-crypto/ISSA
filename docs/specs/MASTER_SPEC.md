@@ -4,7 +4,7 @@
 
 - 專案名稱：校內結構設計競賽互動式分析與學習平台
 - 文件角色：專案最高層級總規格（Current Source of Truth）
-- 版本：v1.5
+- 版本：v1.6
 - 狀態：**CURRENT / APPROVED BASELINE — 專案最高層級 Source of Truth**
 - 核准日期：2026-09-10
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
@@ -62,6 +62,11 @@ Mechanics 的 machine-readable code 保持英文稳定 identifier，例如 `ZERO
 
 - Refine ModelRevision reuse identity to `(Project, source_draft_version, model_hash)`.
 - Preserve `model_hash` as content identity and `input_hash` as numerical-input identity; a new authoring draft remains a distinct immutable revision even when those hashes match.
+
+**Version record — v1.6 change summary**
+
+- Freeze M4B `comparison-v1` as deterministic derived teaching facts; no Comparison persistence, score, ranking, grade, or load-path Solver truth.
+- Resolve O-007 with a relative-and-absolute teaching `ZERO_FORCE` threshold while preserving M1 numerical `ZERO` cleanup and `truss2d-result-v1`.
 
 ---
 
@@ -1373,7 +1378,7 @@ Prediction 應在 Analyze 前發生。
 - 預期最大位移位置
 - 簡短理由
 
-Prediction 不作為 Solver input。是否「沒有 Prediction 就禁止 Analyze」仍為 Open Decision；不得自行建立 blocking requirement。
+Prediction 不作為 Solver input，且是 Soft Gate：沒有 Prediction 不得阻擋 Analyze。
 
 ---
 
@@ -1385,7 +1390,7 @@ Prediction is a Soft Gate: `prediction_id=None` remains analyzable. A Prediction
 
 After the student owner receives a successful numerical/classified result for that Project/draft, no new or incomplete Prediction for that draft may become completed. The server records minimal reveal evidence keyed by `(Project, source_draft_version)`; Manager/Developer reads do not trigger it. A changed draft version has independent eligibility. Details live in `PREDICTION_AND_REVEAL_ARCHITECTURE.md`.
 
-`ZERO_FORCE` is confirmed as a student choice. It is not the current mechanics `ZERO` numerical cleanup; analysis-side engineering classification remains O-007 Open.
+`ZERO_FORCE` is confirmed as a student choice. M4B teaching classification follows the resolved O-007 policy in `COMPARISON_CONTRACT.md`; it does not alter the current mechanics `ZERO` numerical cleanup.
 
 ---
 
@@ -1404,6 +1409,8 @@ After the student owner receives a successful numerical/classified result for th
 - force
 - stress
 - stability screening
+
+M4B Compare is deterministic derived `comparison-v1` data from a completed same-Project, same-`source_draft_version` Prediction, successful AnalysisRun, immutable ModelRevision, and authoritative numerical result. It is unavailable—not erroneous—when no Prediction was linked. Member facts, maximum-displacement tie handling, and load-path evidence overlay are defined in `COMPARISON_CONTRACT.md`; Compare does not persist an aggregate, grade, score, ranking, or unique Solver-truth load path.
 
 ---
 
@@ -1988,9 +1995,9 @@ CompetitionEvent.status == ACTIVE 时是否允许新增参赛队伍账号尚未�
 
 **Owner：Mechanics Reviewer**
 
-**Status：MECHANICS REVIEW REQUIRED**
+**Status：RESOLVED / Confirmed — M4B Gate 1A**
 
-Prediction may record student choice `ZERO_FORCE`. The existing mechanics `ZERO` label is only numerical cleanup (`abs(N) <= 1e-9 N`) and must not be treated as engineering/teaching zero-force. Any absolute floor, relative factor, reference force, result schema classification, or Compare verdict awaits mechanics review.
+Prediction may record student choice `ZERO_FORCE`. M1 mechanics `ZERO` remains numerical cleanup only (`abs(N) <= 1e-9 N`). M4B Compare derives teaching `ZERO_FORCE` from real member axial forces with `threshold_N = max(1e-6 N, 0.001 * N_ref)`, where `N_ref = max_j |N_j|`; the all-zero case therefore uses `1e-6 N`. This changes neither M1 cleanup nor `truss2d-result-v1`; details and comparison semantics are frozen in `COMPARISON_CONTRACT.md`.
 
 ---
 

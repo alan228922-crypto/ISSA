@@ -100,4 +100,4 @@ Reveal: authorize and verify Project/Run scope and `SUCCESS`; lock Project; `get
 
 Only the student owner may create, save, or complete Prediction. Manager and Developer may read results under existing policy but cannot enter student learning evidence. PURGED blocks writes; FINISHED_GRACE remains Master O-003 Open.
 
-O-001, O-003, O-004, O-005, O-006 remain unchanged. O-007 — **Engineering Zero-Force Classification Policy** — is **OPEN / MECHANICS REVIEW REQUIRED**. M4A must not add a threshold or equate existing numerical `ZERO` with Prediction `ZERO_FORCE`.
+O-001, O-003, O-004, O-005, O-006 remain unchanged. O-007 — **Engineering Zero-Force Classification Policy** — is resolved by M4B `COMPARISON_CONTRACT.md`. M4A itself still adds no threshold and does not equate its existing numerical `ZERO` with Prediction `ZERO_FORCE`.
