@@ -30,7 +30,7 @@
 | File | Responsibility in this plan |
 |---|---|
 | `learning/models.py` | Add the sole `Reflection` model and `DRAFT`/`COMPLETED` choices. |
-| `learning/migrations/0002_reflection.py` | Create the Reflection table, constraints, and indexes generated from the model. |
+| `learning/migrations/0003_reflection.py` | Create the Reflection table, constraints, and indexes generated from the model. |
 | `learning/services.py` | Add `ReflectionError` and explicit create/update/complete/read application services; no mechanics logic. |
 | `projects/services.py` | Include Reflection in the existing ordered operational purge before protected AnalysisRun rows. |
 | `learning/views.py` | Add thin JSON handlers only after Gate 3A freezes routes and payloads. |
@@ -45,7 +45,7 @@
 
 **Files:**
 - Modify: `learning/models.py` after `StudentResultReveal`
-- Create: `learning/migrations/0002_reflection.py` via `makemigrations`
+- Create: `learning/migrations/0003_reflection.py` via `makemigrations`
 - Test: `tests/application/test_reflection.py`
 
 **Interfaces:**
@@ -129,7 +129,7 @@ Expected: PASS with four tests. Then run: `python3 manage.py makemigrations --ch
 - [ ] **Step 5: Commit the persistence contract**
 
 ```bash
-git add learning/models.py learning/migrations/0002_reflection.py tests/application/test_reflection.py
+git add learning/models.py learning/migrations/0003_reflection.py tests/application/test_reflection.py
 git commit -m "feat: add reflection persistence contract"
 ```
 
