@@ -5,7 +5,7 @@
 - Status: **CONFIRMED — M4C Gate 0A architecture freeze**
 - Parent authority: `MASTER_SPEC.md`
 - Schema: `reflection-v1`
-- Scope: student learning evidence after analysis; no HTTP endpoint, UI, AI workflow, research protocol workflow, score, grade, ranking, or mechanics authority.
+- Scope: student learning evidence after analysis; no UI, AI workflow, research protocol workflow, score, grade, ranking, or mechanics authority. The frozen M4C HTTP boundary is documented in `API_AND_APPLICATION_FLOW.md` §4.4.3.
 
 Reflection completes the teaching path without becoming an Analyze gate:
 
@@ -96,6 +96,10 @@ Only the Project student owner may create a Reflection, edit a DRAFT, or complet
 ACTIVE permits eligible Reflection authoring. PURGED rejects it because raw Project operational data no longer exists. FINISHED_GRACE Reflection authoring is temporarily fail-closed. This narrow M4C safety rule does **not** resolve Master O-003, which remains open for the product's broader FINISHED_GRACE user-access policy.
 
 P0 offers no manual student delete service or DELETE endpoint. DRAFT content can instead be edited or cleared; COMPLETED records remain immutable.
+
+## HTTP boundary
+
+Reflection is exposed only as an AnalysisRun-scoped singleton at `/projects/<project_id>/analyses/<run_id>/reflection/`, with an explicit `/complete/` action. Its route identity is the scoped Run, not a Reflection id. POST authoring creates the absent singleton or updates its DRAFT; missing fields preserve stored values and empty strings clear them. Read and authoring call the existing Reflection application services; Views never duplicate eligibility, lifecycle, event, ownership, or reveal policy. Reflection HTTP neither requires nor creates a new StudentResultReveal.
 
 ## Persistence, purge, and research boundary
 

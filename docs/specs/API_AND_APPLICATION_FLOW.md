@@ -109,7 +109,7 @@ Section Designer 若需要即時計算 property，使用 JSON preview endpoint�
 
 ```text
 POST/GET /projects/<project_id>/predictions/... (M4A JSON; exact variants in §4.4.1)
-GET/POST /projects/<project_id>/reflection/
+GET/POST /projects/<project_id>/analyses/<run_id>/reflection/ (M4C singleton; exact contract in §4.4.3)
 GET      /projects/<project_id>/compare/
 GET      /projects/<project_id>/report/
 ```
@@ -272,6 +272,26 @@ GET  /projects/<project_id>/predictions/<prediction_id>/          read own/histo
 All POST endpoints retain CSRF and use thin views. There is no generic CRUD API and no client “mark revealed” endpoint.
 
 Prediction GET follows existing Project read authorization; authoring remains student-owner-only. JSON errors use 400 for malformed/unknown request shape, 403/404 for authorization and scoped lookup, 409 for lifecycle conflict, 422 for payload/topology validation, and a safe 500 for unexpected failure. Machine codes are English and human messages are zh-CN; no traceback is returned.
+
+### 4.4.3 Reflection JSON minimum
+
+Reflection is an AnalysisRun-scoped singleton; its primary route identity is `run_id`, never `reflection_id`:
+
+```text
+GET  /projects/<project_id>/analyses/<run_id>/reflection/           read
+POST /projects/<project_id>/analyses/<run_id>/reflection/           create or update DRAFT
+POST /projects/<project_id>/analyses/<run_id>/reflection/complete/  complete DRAFT
+```
+
+Every route scopes `AnalysisRun(pk=run_id, project_id=project_id)`. A Run outside the URL Project is indistinguishable from an absent scoped Run (`PROJECT_NOT_FOUND`, 404); no route accepts a Reflection id. `GET` of an absent singleton returns `REFLECTION_NOT_FOUND`, 404. Absence is valid product state and never means Analyze, Prediction, Result, Compare, or Explain is blocked.
+
+All POST endpoints retain Django CSRF and use the existing authenticated JSON convention. The authoring request is an object whose only allowed keys are `original_reasoning`, `unexpected_results`, and `next_iteration_intent`. It is a DRAFT upsert: if no Reflection exists, the View calls `create_reflection(run, actor)` and then applies the supplied fields; if a DRAFT exists, it calls `update_reflection(reflection, actor, fields)`; if it is COMPLETED, it returns the immutable lifecycle conflict. Missing fields retain their existing DRAFT values, while an explicitly supplied empty string clears that field. Client input cannot set identity, author, status, timestamps, or schema version.
+
+The complete action accepts an empty JSON object only and calls `complete_reflection(reflection, actor)`. Completion policy—including DRAFT state, three trimmed non-empty fields, the server timestamp, ACTIVE-event authoring, SUCCESS/same-source Reveal eligibility, and immutability—remains solely in the Reflection application service. The HTTP boundary does not reproduce lifecycle or authorization policy and never creates a `StudentResultReveal`.
+
+Reflection GET returns only `reflection-v1` metadata and student text: `analysis_run_id`, `project_id`, `source_draft_version`, `status`, `original_reasoning`, `unexpected_results`, `next_iteration_intent`, `reflection_schema_version`, `created_at`, `updated_at`, and `completed_at`. It never returns result, solver input, physical snapshot, Compare/Explain data, or a full User object. DRAFT is owner-private. COMPLETED is readable by its owner and by existing authorized Manager/Developer Project readers, who remain read-only; other users have no access.
+
+Errors use English machine codes and zh-CN messages without traceback. `MALFORMED_JSON` and `INVALID_REQUEST` are 400; scoped absence/inaccessible data follows existing 403/404 policy; `REFLECTION_ALREADY_EXISTS`, `REFLECTION_ALREADY_COMPLETED`, and `REFLECTION_NOT_DRAFT` are 409; `REFLECTION_NOT_ELIGIBLE`, `REFLECTION_RUN_NOT_SUCCESS`, `REFLECTION_INCOMPLETE`, and `REFLECTION_INVALID_FIELDS` are 422; unexpected failures are `INTERNAL_ERROR`, 500. No DELETE, archive, restore, reopen, list, generic CRUD, or DRF endpoint exists.
 
 ### 4.5 Section property preview
 
