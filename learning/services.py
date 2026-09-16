@@ -12,7 +12,7 @@ from projects.services import can_view_project
 
 from .comparison import ComparisonError, build_comparison
 from .explanation import ExplanationError, build_explanation
-from .models import Prediction, StudentResultReveal
+from .models import Prediction, Reflection, StudentResultReveal
 
 
 class PredictionError(ValueError):
@@ -26,6 +26,13 @@ class DisclosureError(ValueError):
     """Stable HTTP-facing failures for derived result disclosure."""
 
     def __init__(self, code, status_code):
+        super().__init__(code)
+        self.code = code
+        self.status_code = status_code
+
+
+class ReflectionError(ValueError):
+    def __init__(self, code, status_code=400):
         super().__init__(code)
         self.code = code
         self.status_code = status_code
@@ -197,6 +204,107 @@ def _authorize_student_owner(project, actor):
         ).exists()
     ):
         raise PredictionError("PROJECT_WRITE_DENIED", 403)
+
+
+def _authorize_reflection_author(project, actor):
+    if project.event.status != CompetitionEvent.Status.ACTIVE:
+        raise ReflectionError("REFLECTION_EVENT_NOT_ACTIVE", 403)
+    if (
+        actor.role in {User.Role.MANAGER, User.Role.DEVELOPER}
+        or actor.id != project.owner_user_id
+        or not EventMembership.objects.filter(
+            user=actor,
+            event_id=project.event_id,
+            membership_type=EventMembership.Type.PARTICIPANT,
+            is_active=True,
+        ).exists()
+    ):
+        raise ReflectionError("REFLECTION_WRITE_DENIED", 403)
+
+
+def _locked_reflection(reflection):
+    try:
+        project = Project.objects.select_for_update().select_related("event").get(
+            pk=reflection.analysis_run.project_id
+        )
+        reflection = Reflection.objects.select_for_update().get(pk=reflection.pk, analysis_run__project=project)
+    except Reflection.DoesNotExist as exc:
+        raise ReflectionError("REFLECTION_NOT_FOUND", 404) from exc
+    return project, reflection
+
+
+def create_reflection(*, run, actor):
+    with transaction.atomic():
+        try:
+            run = AnalysisRun.objects.select_related("project__event", "model_revision").get(
+                pk=run.pk,
+                project=run.project,
+                model_revision__project=run.project,
+            )
+        except AnalysisRun.DoesNotExist as exc:
+            raise ReflectionError("REFLECTION_NOT_FOUND", 404) from exc
+        project = Project.objects.select_for_update().select_related("event").get(pk=run.project_id)
+        _authorize_reflection_author(project, actor)
+        if run.status != AnalysisRun.Status.SUCCESS:
+            raise ReflectionError("REFLECTION_RUN_NOT_SUCCESS", 422)
+        if not StudentResultReveal.objects.filter(
+            project=project,
+            source_draft_version=run.model_revision.source_draft_version,
+        ).exists():
+            raise ReflectionError("REFLECTION_NOT_ELIGIBLE", 422)
+        if Reflection.objects.filter(analysis_run=run).exists():
+            raise ReflectionError("REFLECTION_ALREADY_EXISTS", 409)
+        return Reflection.objects.create(analysis_run=run, created_by=actor)
+
+
+def update_reflection(*, reflection, actor, fields):
+    allowed = {"original_reasoning", "unexpected_results", "next_iteration_intent"}
+    if not isinstance(fields, dict) or set(fields) - allowed or any(
+        not isinstance(value, str) or len(value) > 2000 for value in fields.values()
+    ):
+        raise ReflectionError("REFLECTION_INVALID_FIELDS", 422)
+    with transaction.atomic():
+        project, reflection = _locked_reflection(reflection)
+        _authorize_reflection_author(project, actor)
+        if reflection.status == Reflection.Status.COMPLETED:
+            raise ReflectionError("REFLECTION_ALREADY_COMPLETED", 409)
+        if reflection.status != Reflection.Status.DRAFT:
+            raise ReflectionError("REFLECTION_NOT_DRAFT", 409)
+        for field, value in fields.items():
+            setattr(reflection, field, value)
+        reflection.save(update_fields=[*fields, "updated_at"])
+        return reflection
+
+
+def complete_reflection(*, reflection, actor):
+    with transaction.atomic():
+        project, reflection = _locked_reflection(reflection)
+        _authorize_reflection_author(project, actor)
+        if reflection.status == Reflection.Status.COMPLETED:
+            raise ReflectionError("REFLECTION_ALREADY_COMPLETED", 409)
+        if reflection.status != Reflection.Status.DRAFT:
+            raise ReflectionError("REFLECTION_NOT_DRAFT", 409)
+        if any(not getattr(reflection, field).strip() for field in (
+            "original_reasoning", "unexpected_results", "next_iteration_intent",
+        )):
+            raise ReflectionError("REFLECTION_INCOMPLETE", 422)
+        reflection.status = Reflection.Status.COMPLETED
+        reflection.completed_at = timezone.now()
+        reflection.save(update_fields=["status", "completed_at", "updated_at"])
+        return reflection
+
+
+def get_reflection_for_read(*, reflection, actor):
+    try:
+        reflection = Reflection.objects.select_related("analysis_run__project").get(pk=reflection.pk)
+    except Reflection.DoesNotExist as exc:
+        raise ReflectionError("REFLECTION_NOT_FOUND", 404) from exc
+    project = reflection.analysis_run.project
+    if actor.id == project.owner_user_id:
+        return reflection
+    if reflection.status == Reflection.Status.COMPLETED and can_view_project(actor, project):
+        return reflection
+    raise ReflectionError("REFLECTION_READ_DENIED", 403)
 
 
 def create_prediction(*, project, actor, expected_draft_version):

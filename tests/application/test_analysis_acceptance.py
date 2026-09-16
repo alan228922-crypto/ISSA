@@ -69,14 +69,17 @@ def save_singular_draft(owner, project, material, section):
 @pytest.mark.django_db
 def test_bt01_real_analysis_chain_and_prediction_is_optional(context):
     from analysis.orchestration import analyze_project
+    from learning.models import Reflection
     owner, project, material, section = context
     save_bt01_draft(owner, project, material, section)
     project.refresh_from_db()
+    assert not Reflection.objects.exists()
     run = analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=None)
     result = run.result_json
 
     # B/T01: P=100 N, L=1000 mm, E=2000 MPa, A=6 mm².
     assert run.status == 'SUCCESS'
+    assert not Reflection.objects.exists()
     assert result['schema_version'] == 'truss2d-result-v1'
     assert result['node_displacements'][1]['ux_mm'] == pytest.approx(100 * 1000 / (2000 * 6), abs=1e-10)
     assert result['node_displacements'][1]['uy_mm'] == pytest.approx(0, abs=1e-10)
