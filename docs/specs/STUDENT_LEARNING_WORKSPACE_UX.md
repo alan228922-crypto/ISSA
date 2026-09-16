@@ -77,7 +77,15 @@ Intersection is geometry only. Hovering, snapping, clicking, or drawing through 
 
 Object Snap (Node/Endpoint or Intersection) outranks ORTHO. Without one of those object candidates, ORTHO first constrains the candidate to global horizontal or vertical: compare `|Δx|` and `|Δy|` from the active command origin; `|Δx| > |Δy|` selects horizontal, `|Δy| > |Δx|` selects vertical, and exact equality selects horizontal. ORTHO is a drawing aid only and never changes support, mechanics, or solver semantics.
 
-With ORTHO on and no object candidate, Grid may adjust only the free axis; the locked ORTHO axis is retained. With ORTHO off and no higher candidate, Grid may select the nearest point for the configured grid spacing. This contract intentionally freezes no default grid spacing: **`SPEC_GAP_CANDIDATE — grid spacing`** must be resolved before an implementation chooses a default or exposes a setting.
+### O-M5-CAD-02 — Grid policy
+
+Grid is a drawing aid, not a mechanics constraint, structural topology, or physical property. Its snap spacing is fixed at **100 mm** in world space on both X and Y, anchored at global origin `(0, 0)`. Grid coordinates are integer multiples of 100 mm, including negative values. Pan and Zoom change only display transformation; they never move the grid origin or alter snap spacing. P0 excludes custom/per-project/adaptive/zoom-dependent spacing, major/minor snap levels, grid rotation, and local or polar grids.
+
+Grid Snap has an independent `ON`/`OFF` state. When off, it suppresses only Grid assistance; Node/Endpoint Snap, Intersection Snap, and ORTHO remain available. Grid visibility is a separate visual concern and may be on while Grid Snap is off, or off while Grid Snap is on. Visual density may omit minor lines at a given zoom, but it never changes the 100 mm snap targets.
+
+With no higher-priority object candidate and Grid Snap on, ORTHO off independently snaps X and Y to their nearest 100 mm multiple. At an exact midpoint between multiples, each axis resolves toward positive coordinates: `50 → 100`, `-50 → 0`, `150 → 200`, and `-150 → -100`. Implementations must not depend on language-default banker rounding. With ORTHO on, Grid may adjust only its free axis and preserves the locked axis; for example, horizontal from `(100,75)` near X `493` resolves `(500,75)`, and vertical from `(125,100)` near Y `487` resolves `(125,500)`.
+
+Grid never creates or merges nodes, creates a Connection, connects crossing members, or modifies a Support or Load. Node/Endpoint Snap still wins within the 12 CSS px object tolerance even if the candidate is off-grid. Valid complete numeric input remains authoritative and bypasses Grid Snap at Enter confirmation.
 
 Valid complete numeric input (`x,y`, `@dx,dy`, or `length<angle`) is the authoritative geometry intent at Enter confirmation and is never changed by pointer SNAP. Before pointer confirmation, the canvas presents a short, distinguishable visible marker/label for the resolved class: `NODE`, `INT`, or `GRID`.
 
