@@ -4,13 +4,17 @@ import json
 
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
+from analysis.models import AnalysisRun
 from projects.models import Project
 from projects.services import can_view_project
 
-from .models import Prediction
-from .services import PredictionError, complete_prediction, create_prediction
+from .models import Prediction, Reflection
+from .services import (
+    PredictionError, ReflectionError, complete_prediction, complete_reflection,
+    create_prediction, create_reflection, get_reflection_for_read, update_reflection,
+)
 
 
 MESSAGES = {
@@ -29,6 +33,17 @@ MESSAGES = {
     "PREDICTION_INVALIDATED": "该预测已经失效，不能再次修改。",
     "PREDICTION_AFTER_RESULT_REVEAL": "该模型版本的分析结果已查看，不能再完成预测。",
     "INTERNAL_ERROR": "服务器暂时无法处理请求，请稍后重试。",
+    "REFLECTION_NOT_FOUND": "未找到该分析记录的反思。",
+    "REFLECTION_WRITE_DENIED": "您没有填写该反思的权限。",
+    "REFLECTION_READ_DENIED": "您没有查看该反思的权限。",
+    "REFLECTION_ALREADY_EXISTS": "该分析记录已有反思。",
+    "REFLECTION_ALREADY_COMPLETED": "该反思已经完成，不能再修改。",
+    "REFLECTION_NOT_DRAFT": "该反思不处于可编辑草稿状态。",
+    "REFLECTION_NOT_ELIGIBLE": "尚未满足填写反思的结果查看条件。",
+    "REFLECTION_RUN_NOT_SUCCESS": "分析尚未成功完成，暂不能填写反思。",
+    "REFLECTION_INCOMPLETE": "请完成三项反思内容后再提交。",
+    "REFLECTION_INVALID_FIELDS": "反思字段不正确或超出长度限制。",
+    "REFLECTION_EVENT_NOT_ACTIVE": "当前赛事状态不允许填写反思。",
 }
 
 _VALIDATION_CODES = {
@@ -95,6 +110,31 @@ def _prediction_response(prediction, *, status=200):
 def _service_error(exc):
     status = 422 if exc.code in _VALIDATION_CODES else exc.status_code
     return _error(exc.code, status)
+
+
+def _reflection_response(reflection, *, status=200):
+    return JsonResponse({
+        "ok": True,
+        "analysis_run_id": reflection.analysis_run_id,
+        "project_id": reflection.analysis_run.project_id,
+        "source_draft_version": reflection.analysis_run.model_revision.source_draft_version,
+        "status": reflection.status,
+        "original_reasoning": reflection.original_reasoning,
+        "unexpected_results": reflection.unexpected_results,
+        "next_iteration_intent": reflection.next_iteration_intent,
+        "reflection_schema_version": reflection.reflection_schema_version,
+        "created_at": reflection.created_at.isoformat(),
+        "updated_at": reflection.updated_at.isoformat(),
+        "completed_at": reflection.completed_at.isoformat() if reflection.completed_at else None,
+    }, status=status)
+
+
+def _reflection_run(project, run_id):
+    return AnalysisRun.objects.select_related("model_revision").filter(pk=run_id, project=project).first()
+
+
+def _reflection_error(exc):
+    return _error(exc.code, exc.status_code)
 
 
 @login_required
@@ -174,5 +214,67 @@ def prediction_detail(request, project_id, prediction_id):
         if prediction is None:
             return _error("PREDICTION_NOT_FOUND", 404)
         return _prediction_response(prediction)
+    except Exception:
+        return _error("INTERNAL_ERROR", 500)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def reflection_detail(request, project_id, run_id):
+    try:
+        project = _project(project_id)
+        if project is None:
+            return _error("PROJECT_NOT_FOUND", 404)
+        if not can_view_project(request.user, project):
+            return _error("PROJECT_READ_DENIED", 403)
+        run = _reflection_run(project, run_id)
+        if run is None:
+            return _error("PROJECT_NOT_FOUND", 404)
+        reflection = Reflection.objects.filter(analysis_run=run).first()
+        if request.method == "GET":
+            if reflection is None:
+                return _error("REFLECTION_NOT_FOUND", 404)
+            return _reflection_response(get_reflection_for_read(reflection=reflection, actor=request.user))
+        payload = _json_body(request)
+        if payload is None:
+            return _error("MALFORMED_JSON", 400)
+        allowed = {"original_reasoning", "unexpected_results", "next_iteration_intent"}
+        if set(payload) - allowed:
+            return _error("INVALID_REQUEST", 400)
+        if reflection is None:
+            reflection = create_reflection(run=run, actor=request.user)
+            if payload:
+                reflection = update_reflection(reflection=reflection, actor=request.user, fields=payload)
+            return _reflection_response(reflection, status=201)
+        return _reflection_response(update_reflection(reflection=reflection, actor=request.user, fields=payload))
+    except ReflectionError as exc:
+        return _reflection_error(exc)
+    except Exception:
+        return _error("INTERNAL_ERROR", 500)
+
+
+@login_required
+@require_POST
+def reflection_complete(request, project_id, run_id):
+    try:
+        project = _project(project_id)
+        if project is None:
+            return _error("PROJECT_NOT_FOUND", 404)
+        if not can_view_project(request.user, project):
+            return _error("PROJECT_READ_DENIED", 403)
+        run = _reflection_run(project, run_id)
+        if run is None:
+            return _error("PROJECT_NOT_FOUND", 404)
+        payload = _json_body(request)
+        if payload is None:
+            return _error("MALFORMED_JSON", 400)
+        if payload != {}:
+            return _error("INVALID_REQUEST", 400)
+        reflection = Reflection.objects.filter(analysis_run=run).first()
+        if reflection is None:
+            return _error("REFLECTION_NOT_FOUND", 404)
+        return _reflection_response(complete_reflection(reflection=reflection, actor=request.user))
+    except ReflectionError as exc:
+        return _reflection_error(exc)
     except Exception:
         return _error("INTERNAL_ERROR", 500)
