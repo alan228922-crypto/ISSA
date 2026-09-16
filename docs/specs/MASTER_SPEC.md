@@ -4,7 +4,7 @@
 
 - 專案名稱：校內結構設計競賽互動式分析與學習平台
 - 文件角色：專案最高層級總規格（Current Source of Truth）
-- 版本：v1.8
+- 版本：v1.9
 - 狀態：**CURRENT / APPROVED BASELINE — 專案最高層級 Source of Truth**
 - 核准日期：2026-09-10
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
@@ -78,6 +78,11 @@ Mechanics 的 machine-readable code 保持英文稳定 identifier，例如 `ZERO
 - Freeze the M5 Student Learning Workspace UX contract: a single three-panel Project Workspace, lightweight CAD-style SVG interaction, and stage-based learning flow.
 - Preserve `Intersection ≠ Connection`, Prediction/Reflection Soft Gates, progressive result disclosure, read-only review boundaries, and backend mechanics authority.
 - Record Workspace/draft delivery and current-Prediction discovery as backend capability gaps for later M5 gates; no endpoint or mechanics change is authorized by this record.
+
+**Version record — v1.9 change summary**
+
+- Freeze O-M5-P01: P0 has at most one Prediction for each `(Project, source_draft_version)` and current discovery is `NONE`, one DRAFT, one COMPLETED, or fail-closed `PREDICTION_AMBIGUOUS`.
+- Preserve Prediction as a Soft Gate: a DRAFT never auto-binds Analyze and may be skipped with `prediction_id = null`; legacy duplicate evidence is preserved rather than selected, merged, or deleted.
 
 ---
 

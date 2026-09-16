@@ -519,7 +519,7 @@ ModelRevision 為 immutable analysis checkpoint。
 
 【Confirmed】
 
-Prediction 位於 Analyze 之前的 Soft Gate 教學循環，綁定 `Project + source_draft_version`，而非 Analyze 後才存在的 ModelRevision。`DRAFT → COMPLETED|INVALIDATED`；COMPLETED immutable，舊 completed draft 為 derived stale historical evidence，不是 stored status。Prediction 不被 Solver 讀取。
+Prediction 位於 Analyze 之前的 Soft Gate 教學循環，綁定 `Project + source_draft_version`，而非 Analyze 後才存在的 ModelRevision。`DRAFT → COMPLETED|INVALIDATED`；COMPLETED immutable，舊 completed draft 為 derived stale historical evidence，不是 stored status。Prediction 不被 Solver 讀取。O-M5-P01 冻结每个 `(Project, source_draft_version)` 的 P0 cardinality 为 `0..1`；实现以应用层并发保护与兼容时的持久层唯一性保证创建。历史重复行不得删除、合并、改写或被任意选择；current discovery 必须 fail closed 为 `PREDICTION_AMBIGUOUS`。
 
 P0 使用一個 versioned JSON aggregate，不建立 member/displacement/path 子表：所有 PhysicalMember 的 `TENSION|COMPRESSION|ZERO_FORCE|UNSURE`、一個 restricted PhysicalPointRef、和一條代表性 Connection/PhysicalMember alternating load-path hypothesis。`ZERO_FORCE` 是學生選項，不是 analysis classification。
 

@@ -95,7 +95,7 @@ Prediction is student-owner authoring only and is a hypothesis, never Solver inp
 
 For every current PhysicalMember, the student chooses exactly one visible option: **受拉、受压、近似零力、不确定**. These map only to the existing prediction contract choices `TENSION`, `COMPRESSION`, `ZERO_FORCE`, and `UNSURE`. “近似零力” is student-facing wording; it does not expose or alter the numerical residual-cleanup rule.
 
-After a completed Prediction is linked to an AnalysisRun, it is immutable. A Prediction from an old draft is visibly historical/stale rather than reused for the new draft. No score, grade, correctness percentage, ranking, or forced completion is introduced.
+After a completed Prediction is linked to an AnalysisRun, it is immutable. Workspace reload resumes the sole current-draft DRAFT or COMPLETED Prediction under O-M5-P01; it never creates a second Prediction. A current DRAFT is not auto-bound: the student may complete it or select “跳过预测，直接分析”, which sends `prediction_id = null`. A current COMPLETED Prediction may be explicitly bound. If legacy data is ambiguous, the Workspace presents `PREDICTION_AMBIGUOUS` with **“当前预测记录存在数据歧义，暂时无法继续使用预测。请联系管理员处理。”** and does not select a Prediction. A Prediction from an old draft is visibly historical/stale rather than reused for the new draft. No score, grade, correctness percentage, ranking, selector, or forced completion is introduced.
 
 ## 8. Analyze and result disclosure
 
@@ -177,7 +177,7 @@ No endpoint changes are made in Gate 0A. The current implementation has the anal
 | ID | Required capability | Current missing boundary | Blocks |
 |---|---|---|---|
 | BCG-M5-01 | Open/reload a Workspace with the authoritative mutable physical draft and current draft version. | No project Workspace page or read-draft delivery boundary is present. | M5 Gates 1–5. |
-| BCG-M5-02 | Restore the Prediction state relevant to the current draft after a page reload. | Prediction has create/detail-by-id endpoints but no current-draft discovery/read boundary. | M5 Gates 2–5. |
+| BCG-M5-02 | Restore the Prediction state relevant to the current draft after a page reload. | O-M5-P01 freezes a minimal current-discovery contract (`NONE`, one `DRAFT`, one `COMPLETED`, or fail-closed `PREDICTION_AMBIGUOUS`); Gate 0B must plan it and later gates implement it. | M5 Gates 2–5. |
 | BCG-M5-03 | Deliver the M5 Workspace shell and local static assets. | No Project Workspace template, project page route, or project static JS/CSS structure is present. | M5 Gate 1 and all UI gates. |
 
 These are **BACKEND_CAPABILITY_GAP** records, not permission to implement endpoints in Gate 0A. They do not change existing mechanics or learning contracts.

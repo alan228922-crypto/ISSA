@@ -28,6 +28,20 @@ There are no P0 member/displacement/load-path child tables. `COMPLETED` records 
 
 `AnalysisRun.prediction` is a nullable FK (`0..1` per Run, `0..N` Runs per Prediction). Repeated Analyze calls for the same source draft may reuse one completed Prediction.
 
+## P0 cardinality and current-draft discovery — O-M5-P01
+
+For one `(Project, source_draft_version)`, P0 permits **0..1 Prediction**. Prediction attempts, an active-Prediction flag, a latest-Prediction rule, a revision history, and a multi-attempt selector are not P0 concepts.
+
+If no Prediction exists for the current Project/draft, only the student owner may create one `DRAFT`. If its sole record is `DRAFT`, re-entering Prediction and Workspace reload resume that same record; they do not create a second record. If its sole record is `COMPLETED`, Workspace reload resumes that same immutable record; it does not create a second record. `INVALIDATED` remains an existing lifecycle status, but is not current-draft discoverable because it is created when its source draft is no longer current.
+
+The current-discovery result is exactly one of `NONE`, `DRAFT`, `COMPLETED`, or `AMBIGUOUS`. `NONE` has no Prediction identifier. `DRAFT` and `COMPLETED` expose the one existing Prediction through the established Prediction representation. `AMBIGUOUS` is a fail-closed legacy-data result with stable machine code `PREDICTION_AMBIGUOUS` and zh-CN message **“当前预测记录存在数据歧义，暂时无法继续使用预测。请联系管理员处理。”**; it must not be represented as `NONE`.
+
+When more than one historical row exists for the same `(Project, source_draft_version)`, the service must neither choose latest/earliest/completed/draft, nor delete, merge, overwrite, or reassign evidence or existing AnalysisRun bindings. It returns `PREDICTION_AMBIGUOUS` and requires explicit remediation outside automatic discovery. This preserves raw historical evidence.
+
+New creation must use both application/service-level concurrency protection and persistence-level uniqueness protection where compatible with the existing model and migration architecture. Before applying a uniqueness migration, implementation must preflight for duplicate historical rows and fail safely with a remediation path; migration must not silently delete or select an existing row.
+
+Analyze may explicitly bind only the sole current `COMPLETED` Prediction. A `DRAFT`, `NONE`, or `AMBIGUOUS` result must never be auto-bound. In particular, the student may skip a current `DRAFT` and analyze with `prediction_id = null`; Prediction remains a Soft Gate. `AMBIGUOUS` blocks Prediction/Compare selection until remediation, but does not authorize the browser or server to select a Prediction automatically.
+
 ## Revision lineage at the prediction/reveal boundary
 
 `ModelRevision` reuse is limited to `(Project, source_draft_version, model_hash)`. A new authoring draft creates a new immutable revision even if physical content, `model_hash`, numerical `input_hash`, and eventual result are identical. This keeps revision lineage aligned with Prediction and StudentResultReveal, both of which are authoritative by `Project + source_draft_version`; hash values remain content/numerical identities and do not substitute for the draft-version boundary.
