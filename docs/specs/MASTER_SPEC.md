@@ -68,6 +68,11 @@ Mechanics 的 machine-readable code 保持英文稳定 identifier，例如 `ZERO
 - Freeze M4B `comparison-v1` as deterministic derived teaching facts; no Comparison persistence, score, ranking, grade, or load-path Solver truth.
 - Resolve O-007 with a relative-and-absolute teaching `ZERO_FORCE` threshold while preserving M1 numerical `ZERO` cleanup and `truss2d-result-v1`.
 
+**Version record — v1.7 change summary**
+
+- Freeze M4B `explanation-v1` as deterministic zh-CN teaching blocks from authoritative Analysis facts and optional `comparison-v1` facts; no Prediction remains a legal Explain flow.
+- Preserve segment-level `ZERO_FORCE` evidence, PhysicalMember `MIXED`, and non-error `UNSURE` / `NOT_COMPARABLE`; no mechanics recomputation, Solver-truth load path, recommendation, AI, or Explanation persistence.
+
 ---
 
 # 1. 規格治理與權威關係
@@ -1411,6 +1416,8 @@ After the student owner receives a successful numerical/classified result for th
 - stability screening
 
 M4B Compare is deterministic derived `comparison-v1` data from a completed same-Project, same-`source_draft_version` Prediction, successful AnalysisRun, immutable ModelRevision, and authoritative numerical result. It is unavailable—not erroneous—when no Prediction was linked. Member facts, maximum-displacement tie handling, and load-path evidence overlay are defined in `COMPARISON_CONTRACT.md`; Compare does not persist an aggregate, grade, score, ranking, or unique Solver-truth load path.
+
+M4B Explain is deterministic derived `explanation-v1` zh-CN teaching blocks from a successful AnalysisRun’s authoritative facts and optional `comparison-v1`. It remains available without Prediction, and never recomputes mechanics, modifies numerical results, grades, recommends a design, introduces Solver-truth load paths, AI authority, or persistence. Details live in `EXPLANATION_CONTRACT.md`.
 
 ---
 
