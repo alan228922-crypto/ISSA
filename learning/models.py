@@ -45,3 +45,36 @@ class StudentResultReveal(models.Model):
                 name="unique_project_result_reveal_draft",
             ),
         ]
+
+
+class Reflection(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        COMPLETED = "COMPLETED", "Completed"
+
+    analysis_run = models.OneToOneField(
+        AnalysisRun,
+        on_delete=models.PROTECT,
+        related_name="reflection",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="reflections",
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    original_reasoning = models.CharField(max_length=2000, blank=True, default="")
+    unexpected_results = models.CharField(max_length=2000, blank=True, default="")
+    next_iteration_intent = models.CharField(max_length=2000, blank=True, default="")
+    reflection_schema_version = models.CharField(max_length=64, default="reflection-v1")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=["DRAFT", "COMPLETED"]),
+                name="reflection_status_is_valid",
+            ),
+        ]

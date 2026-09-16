@@ -29,7 +29,7 @@ def purge_project_operational_data(*, project_id, actor_id=None):
     from django.db import transaction
 
     from analysis.models import AnalysisRun, ModelRevision, ValidationLog
-    from learning.models import Prediction, StudentResultReveal
+    from learning.models import Prediction, Reflection, StudentResultReveal
     from modeling.models import Connection, GeometryNode, NodeLoad, PhysicalMember, Support
     from projects.models import Project, ProjectOperationalPurgeAudit
 
@@ -44,6 +44,8 @@ def purge_project_operational_data(*, project_id, actor_id=None):
             raise Project.DoesNotExist(f"Project {project_id} has no purge receipt")
 
         counts = Counter()
+        _, deleted_counts = Reflection.objects.filter(analysis_run__project_id=project_id).delete()
+        counts.update(deleted_counts)
         for model in (
             StudentResultReveal, ValidationLog, AnalysisRun, Prediction, ModelRevision,
             Support, NodeLoad, Connection, PhysicalMember, GeometryNode,
