@@ -210,6 +210,39 @@ def test_analyze_http_rejects_unknown_fields_and_noninteger_prediction_id(contex
 
 
 @pytest.mark.django_db
+def test_analyze_http_maps_unexpected_prediction_service_failure_to_safe_json(
+    context, monkeypatch
+):
+    import projects.views
+
+    owner, project, _, _ = context
+    boundary_client = Client(raise_request_exception=False)
+    boundary_client.force_login(owner)
+
+    def fail_analysis(**kwargs):
+        raise RuntimeError('/private/server/path database secret result_json axial_force_N')
+
+    monkeypatch.setattr(projects.views, 'analyze_project', fail_analysis)
+    response = post_json(
+        boundary_client,
+        'projects:analyze',
+        {'expected_draft_version': project.draft_version, 'prediction_id': 1},
+        project_id=project.id,
+    )
+
+    assert response.status_code == 500
+    assert response.headers['Content-Type'].startswith('application/json')
+    assert response.json() == {
+        'ok': False,
+        'error': {
+            'code': 'INTERNAL_ERROR',
+            'message': '服务器暂时无法处理请求，请稍后重试。',
+            'details': {},
+        },
+    }
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ('kind', 'expected_code', 'expected_status'),
     [

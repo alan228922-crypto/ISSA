@@ -29,6 +29,7 @@ MESSAGES = {
     'OVERLAP_UNSUPPORTED': '当前不支持包含重叠区域的组合截面。',
     'SOLVER_FAILED': '分析计算未能完成，请检查模型后重试。',
     'RESULT_REVEAL_FAILED': '无法安全记录结果查看，请稍后重试。',
+    'INTERNAL_ERROR': '服务器暂时无法处理请求，请稍后重试。',
 }
 
 
@@ -109,6 +110,8 @@ def analyze(request, project_id):
         return _error('INVALID_REQUEST', 400)
     except AnalysisError as exc:
         return _error(exc.code, exc.status_code)
+    except Exception:
+        return _error('INTERNAL_ERROR', 500)
     response = {'ok': run.status == AnalysisRun.Status.SUCCESS, 'analysis_run_id': run.id, 'model_revision_id': run.model_revision_id, 'status': run.status, 'result_schema_version': run.result_schema_version}
     if run.status != AnalysisRun.Status.SUCCESS:
         response['error'] = {'code': run.failure_code, 'message': MESSAGES.get(run.failure_code, '模型未通过分析验证。'), 'details': run.diagnostics_json}
