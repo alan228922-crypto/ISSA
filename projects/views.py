@@ -8,6 +8,7 @@ from django.views.decorators.http import require_GET, require_POST
 from analysis.models import AnalysisRun
 from analysis.orchestration import AnalysisError, analyze_project, check_project
 from materials.services import SectionServiceError
+from learning.services import PredictionError, record_student_result_reveal
 from modeling.services import DraftSaveError, save_physical_draft
 
 from .models import Project
@@ -27,6 +28,7 @@ MESSAGES = {
     'INVALID_SECTION_DEFINITION': '截面定义格式不正确。',
     'OVERLAP_UNSUPPORTED': '当前不支持包含重叠区域的组合截面。',
     'SOLVER_FAILED': '分析计算未能完成，请检查模型后重试。',
+    'RESULT_REVEAL_FAILED': '无法安全记录结果查看，请稍后重试。',
 }
 
 
@@ -91,6 +93,16 @@ def analyze(request, project_id):
     payload = _json_body(request)
     if payload is None:
         return _error('MALFORMED_JSON', 400)
+    if (
+        set(payload) - {'expected_draft_version', 'prediction_id'}
+        or 'expected_draft_version' not in payload
+        or type(payload.get('expected_draft_version')) is not int
+        or (
+            payload.get('prediction_id') is not None
+            and type(payload.get('prediction_id')) is not int
+        )
+    ):
+        return _error('INVALID_REQUEST', 400)
     try:
         run = analyze_project(project=project, actor=request.user, expected_draft_version=payload['expected_draft_version'], prediction_id=payload.get('prediction_id'))
     except KeyError:
@@ -115,6 +127,13 @@ def analysis_data(request, project_id, run_id):
     run = AnalysisRun.objects.select_related('model_revision', 'solver_version').filter(pk=run_id, project_id=project.id).first()
     if run is None:
         return _error('PROJECT_NOT_FOUND', 404)
+    if run.status == AnalysisRun.Status.SUCCESS:
+        try:
+            record_student_result_reveal(project=project, run=run, actor=request.user)
+        except PredictionError as exc:
+            return _error(exc.code, exc.status_code)
+        except Exception:
+            return _error('RESULT_REVEAL_FAILED', 500)
     return JsonResponse({'ok': True, 'analysis_run_id': run.id, 'model_revision_id': run.model_revision_id, 'model_hash': run.model_revision.model_hash, 'solver_version': run.solver_version.solver_version, 'input_hash': run.input_hash, 'input_schema_version': run.input_schema_version, 'result_schema_version': run.result_schema_version, 'status': run.status, 'failure_code': run.failure_code, 'diagnostics': run.diagnostics_json, 'result_json': run.result_json})
 
 
