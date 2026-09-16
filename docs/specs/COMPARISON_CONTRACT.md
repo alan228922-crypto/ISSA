@@ -5,7 +5,7 @@
 - Status: **CONFIRMED — M4B Gate 1A contract freeze**
 - Parent authority: `MASTER_SPEC.md v1.6`
 - Schema: `comparison-v1`
-- Scope: deterministic derived comparison facts for a completed Prediction and successful AnalysisRun. This contract creates no HTTP endpoint, UI, Explain text, Reflection flow (deferred to M4C), ORM model, or persisted Comparison aggregate.
+- Scope: deterministic derived comparison facts for a completed Prediction and successful AnalysisRun. Compare Core itself creates no UI, Explain text, Reflection flow (deferred to M4C), ORM model, or persisted Comparison aggregate; its separate M4B GET disclosure boundary is specified below.
 
 ## Product boundary
 

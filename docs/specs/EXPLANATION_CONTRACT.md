@@ -117,7 +117,7 @@ Explain 不得把 `MIXED` 简化为任一单一状态，也不得以最大绝对
 
 ## Explicit exclusions
 
-`explanation-v1` 不包含 Reflection、Design Rationale、自动优化、设计推荐、Euler final risk explanation、Frame explanation、HTTP、UI、AI generation、ORM Explanation/ExplanationBlock/TeachingMessage model 或任何 persistence。Explain 只帮助理解，不替学生完成设计决策。
+`explanation-v1` 不包含 Reflection、Design Rationale、自动优化、设计推荐、Euler final risk explanation、Frame explanation、UI、AI generation、ORM Explanation/ExplanationBlock/TeachingMessage model 或任何 persistence。Explain Core 本身不实现 HTTP；其单独定义的 GET disclosure boundary 见下节。Explain 只帮助理解，不替学生完成设计决策。
 
 ## HTTP disclosure boundary
 
