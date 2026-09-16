@@ -65,6 +65,22 @@ Keyboard focus, an incomplete field, or parse failure must have a visible explan
 
 P0 provides Node/Endpoint Snap, Grid Snap, Geometric Intersection Snap, ORTHO, Pan, Zoom, and Fit View. The status bar shows the active ORTHO and SNAP modes as well as the current pointer/drawing values.
 
+### O-M5-CAD-01 — SNAP resolution policy
+
+The only P0 snap candidate classes are Node/Endpoint, Geometric Intersection, and Grid. A pointer-based drawing point is produced by one resolution pipeline: collect candidates → resolve Node/Endpoint → otherwise resolve Intersection → otherwise apply ORTHO when enabled → apply Grid assistance → final point. Separate UI modules must not snap that result again.
+
+Priority is **Node/Endpoint > Geometric Intersection > Grid**. A valid higher-priority candidate prevents every lower-priority candidate from changing the final point. Candidate eligibility is measured from the pointer to the screen-projected candidate using a **12 CSS px** screen-space tolerance; it is never a fixed world-coordinate/mm tolerance and does not vary with zoom.
+
+Within one priority class, choose the candidate nearest to the pointer in screen-space. If that distance is exactly tied, choose by a stable canonical candidate key. Implementations must reuse a stable domain client key where available and must not rely on DOM order, database query order, creation time, or incidental iteration order. Node and member Endpoint are one highest-priority class: neither receives a further product priority, and coincident representations must produce the same geometry.
+
+Intersection is geometry only. Hovering, snapping, clicking, or drawing through an intersection must not create a Connection. Its marker/label must be visibly distinct from an explicit structural Connection; creating a Connection requires the explicit connection action and server validation.
+
+Object Snap (Node/Endpoint or Intersection) outranks ORTHO. Without one of those object candidates, ORTHO first constrains the candidate to global horizontal or vertical: compare `|Δx|` and `|Δy|` from the active command origin; `|Δx| > |Δy|` selects horizontal, `|Δy| > |Δx|` selects vertical, and exact equality selects horizontal. ORTHO is a drawing aid only and never changes support, mechanics, or solver semantics.
+
+With ORTHO on and no object candidate, Grid may adjust only the free axis; the locked ORTHO axis is retained. With ORTHO off and no higher candidate, Grid may select the nearest point for the configured grid spacing. This contract intentionally freezes no default grid spacing: **`SPEC_GAP_CANDIDATE — grid spacing`** must be resolved before an implementation chooses a default or exposes a setting.
+
+Valid complete numeric input (`x,y`, `@dx,dy`, or `length<angle`) is the authoritative geometry intent at Enter confirmation and is never changed by pointer SNAP. Before pointer confirmation, the canvas presents a short, distinguishable visible marker/label for the resolved class: `NODE`, `INT`, or `GRID`.
+
 ORTHO is a drawing aid only. When on, it preferentially locks a drawing preview to global horizontal or vertical direction. It is not a mechanics constraint and does not change supports, degrees of freedom, or analysis assumptions.
 
 Intersection Snap may detect, highlight, and use the geometric crossing as a pointing location. It must never create a structural Connection automatically. At a geometric crossing without an explicit Connection, the UI explicitly says: **“这里有构件交叉，但尚未建立连接。”** A Connection is created only by the explicit 连接 tool and subsequent server validation. This preserves `Intersection ≠ Connection` and `PhysicalMember ≠ AnalysisElement`.
