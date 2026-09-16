@@ -49,6 +49,26 @@ All modules/tests use these hooks: `#workspace-root`, `#workspace-project-header
 
 Add test-only `playwright==1.63.0` (PyPI supports Python 3.13) to `[project.optional-dependencies].test`; install Chromium with `python3 -m playwright install chromium`. Mark browser tests `@pytest.mark.browser`, register the marker, and skip them when `PLAYWRIGHT_BROWSERS_PATH`/Chromium is unavailable; ordinary `pytest -q` excludes browser tests via `-m 'not browser'`, while Final B runs `pytest tests/browser -q`. Fixture `workspace_page` in `tests/browser/conftest.py` opens Django `live_server`; pure-module tests call `page.evaluate("import('/static/projects/workspace/cad-input.js')")`, invoke exports, and return plain JSON for pytest assertions.
 
+## Execution command matrix
+
+Each task uses its row's exact commands; browser node IDs run through `workspace_page` above. “RED reason” is the required failure before implementation; “Regression” runs after PASS.
+
+| Task | RED command / reason | PASS command | Regression command | Commit |
+|---|---|---|---|---|
+| 1 | `pytest tests/endpoints/test_workspace.py::test_owner_gets_bootstrap_and_manager_gets_read_only -q` / route 404 | same command | `pytest tests/permissions/test_event_project_access.py -q` | `feat: add workspace shell` |
+| 2 | `pytest tests/browser/test_workspace.py::test_renderer_emits_stable_physical_svg -q` / module unavailable | same command | `pytest tests/endpoints/test_workspace.py -q` | `feat: render physical draft SVG` |
+| 3 | `pytest tests/browser/test_workspace.py::test_cad_parser_and_state_transitions -q` / exports unavailable | same command | `pytest tests/browser/test_workspace.py::test_cad_keyboard_tab_accessibility -q` | `feat: add CAD parser and state` |
+| 4 | `pytest tests/browser/test_workspace.py::test_snap_resolver_priority_grid_and_intersection_boundary -q` / resolver unavailable | same command | `pytest tests/browser/test_workspace.py::test_grid_midpoint_and_ortho_resolution -q` | `feat: add deterministic snap resolver` |
+| 5 | `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q` / editor unavailable | same command | `pytest tests/browser/test_workspace.py::test_editor_mutations_are_immutable -q` | `feat: add structural editor mutations` |
+| 6 | `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q` / interaction module unavailable | same command | `pytest tests/browser/test_workspace.py::test_svg_objects_are_keyboard_focusable -q` | `feat: add canvas navigation` |
+| 7 | `pytest tests/browser/test_workspace.py::test_save_check_error_presentation -q` / API workflow unavailable | same command | `pytest tests/endpoints/test_project_json.py -q` | `feat: add workspace save and model check` |
+| 8 | `pytest tests/application/test_prediction.py::test_current_prediction_singleton -q` / service absent | same command | `pytest tests/endpoints/test_prediction_json.py -q` | `feat: add prediction discovery` |
+| 9 | `pytest tests/browser/test_workspace.py::test_prediction_workspace_states_and_skip -q` / prediction module unavailable | same command | `pytest tests/application/test_prediction.py tests/endpoints/test_prediction_json.py -q` | `feat: add prediction workspace UI` |
+| 10 | `pytest tests/browser/test_workspace.py::test_analyze_level_one_and_stale_run -q` / results module unavailable | same command | `pytest tests/endpoints/test_project_json.py -q` | `feat: add analyze result level one` |
+| 11 | `pytest tests/browser/test_workspace.py::test_compare_explain_states_and_canvas_link -q` / comparison UI unavailable | same command | `pytest tests/endpoints/test_compare_explanation_json.py -q` | `feat: add compare and explain UI` |
+| 12 | `pytest tests/browser/test_workspace.py::test_engineering_details_authoritative_values -q` / details region absent | same command | `pytest tests/endpoints/test_project_json.py -q` | `feat: add engineering details` |
+| 13 | `pytest tests/browser/test_workspace.py::test_reflection_draft_complete_and_readonly -q` / reflection module unavailable | same command | `pytest tests/endpoints/test_reflection_json.py -q` | `feat: add reflection workspace UI` |
+
 ### Task 1 (Gate 1, BCG-01/03): Workspace delivery
 **Files:** Create `projects/workspace.py`, `templates/projects/workspace.html`, `projects/static/projects/workspace/{state.js,api.js,workspace.css}`, `tests/browser/conftest.py`; modify `projects/urls.py`, `pyproject.toml`; test `tests/endpoints/test_workspace.py`.
 **Interfaces:** `workspace(request, project_id) -> TemplateResponse`; bootstrap `{project,draft,read_only,urls}`.
@@ -136,9 +156,9 @@ Add test-only `playwright==1.63.0` (PyPI supports Python 3.13) to `[project.opti
 
 ### Task 15 (Final Gate B): Fresh verification and acceptance evidence
 **Files:** no changes.
-- [ ] Run `python manage.py check`, `python manage.py makemigrations --check --dry-run`, targeted M5 tests, `pytest -q`, `pytest tests/browser -q`, `git diff --check`, and `git status`; any failure is STOP/classified.
+- [ ] Run in order: `python3 manage.py check`; `python3 manage.py makemigrations --check --dry-run`; `pytest tests/endpoints/test_workspace.py -q`; `pytest tests/application/test_prediction.py tests/endpoints/test_prediction_json.py tests/endpoints/test_project_json.py tests/endpoints/test_compare_explanation_json.py tests/endpoints/test_reflection_json.py -q`; `pytest tests/browser -q`; `pytest -q -m 'not browser'`; `git diff --check`; `git status`. Any failure is STOP/classified.
 - [ ] Make no production, test, spec, or merge change; report commands/output as final evidence.
 
 ## Coverage review
 
-Tasks 1–2 cover layout/delivery/rendering; 3–5 cover CAD precision, SNAP/Grid and `Intersection ≠ Connection`; 6 covers save/check; 7–8 cover O-M5-P01 and soft skip; 9–10 cover progressive result disclosure; 11 covers Reflection; 12 covers scenarios A–E. No task changes mechanics authority or introduces a frontend framework.
+Task 1 covers Workspace delivery; 2 SVG rendering; 3 parser/state; 4 SNAP/Grid/geometry; 5 editor mutation; 6 navigation/picking; 7 save/check/errors; 8 Prediction backend; 9 Prediction UI; 10 Analyze/Level 1; 11 Compare/Explain; 12 engineering details; 13 Reflection; 14 reconciliation; 15 fresh verification. Scenario A is Tasks 1–13 plus `test_workspace_full_learning_loop`; B is Tasks 7,9,10,13 plus `test_workspace_soft_gates`; C is Tasks 3–4 plus `test_cad_parser_and_state_transitions`; D is Tasks 4–5 plus `test_editor_crossing_members_do_not_create_connection`. No task changes mechanics authority or introduces a frontend framework.
