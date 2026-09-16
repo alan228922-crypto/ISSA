@@ -1995,9 +1995,9 @@ CompetitionEvent.status == ACTIVE 时是否允许新增参赛队伍账号尚未�
 
 **Owner：Mechanics Reviewer**
 
-**Status：RESOLVED / Confirmed — M4B Gate 1A**
+**Status：RESOLVED / Confirmed — M4B Gate 1B SPEC-gap resolution**
 
-Prediction may record student choice `ZERO_FORCE`. M1 mechanics `ZERO` remains numerical cleanup only (`abs(N) <= 1e-9 N`). M4B Compare derives teaching `ZERO_FORCE` from real member axial forces with `threshold_N = max(1e-6 N, 0.001 * N_ref)`, where `N_ref = max_j |N_j|`; the all-zero case therefore uses `1e-6 N`. This changes neither M1 cleanup nor `truss2d-result-v1`; details and comparison semantics are frozen in `COMPARISON_CONTRACT.md`.
+Prediction may record student choice `ZERO_FORCE`. M1 mechanics `ZERO` remains numerical cleanup only (`abs(N) <= 1e-9 N`). M4B Compare derives teaching `ZERO_FORCE` first from every authoritative analysis-segment axial force with `threshold_N = max(1e-6 N, 0.001 * N_ref)`, where `N_ref = max_j |N_j|` over all segments; the all-zero case therefore uses `1e-6 N`. It then projects segment facts to PhysicalMember evidence without losing differences: mixed segment states yield Compare-only `MIXED` and a determinate Prediction receives `NOT_COMPARABLE`. This changes neither M1 cleanup nor `truss2d-result-v1`; details and comparison semantics are frozen in `COMPARISON_CONTRACT.md`.
 
 ---
 

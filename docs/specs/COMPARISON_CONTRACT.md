@@ -37,16 +37,18 @@ Comparison requires all of the following:
 
 Project mismatch is rejected with `COMPARE_PROJECT_MISMATCH`; source-version mismatch is rejected with `COMPARE_SOURCE_MISMATCH`. Matching `model_hash` or `input_hash` never permits a cross-`source_draft_version` comparison. The revision snapshot, not mutable Project authoring data, is the identity source for deterministic mapping.
 
-## Teaching force classification
+## Teaching force classification and PhysicalMember projection
 
-The Compare Core derives a teaching classification from each authoritative numerical member axial force `N_i` in N:
+The authoritative `truss2d-result-v1.member_results` records **analysis segments**. A single PhysicalMember can be idealized into more than one analysis segment when it has an explicit intermediate Connection. Compare must not assume `PhysicalMember → one axial force`, and must not choose a single segment (including the maximum-absolute-force segment) as a substitute for the PhysicalMember.
+
+The Compare Core first derives a teaching classification from each authoritative **analysis-segment** axial force `N_i` in N. The reference spans every authoritative analysis segment in the successful result:
 
 ```text
 N_ref = max_j |N_j|
 threshold_N = max(1e-6 N, 0.001 * N_ref)
 ```
 
-If every member force is zero, `N_ref = 0` and `threshold_N = 1e-6 N`; no division is used. Classification is evaluated in this order:
+If every segment force is zero, `N_ref = 0` and `threshold_N = 1e-6 N`; no division is used. Classification is evaluated in this order:
 
 ```text
 abs(N_i) <= threshold_N  → ZERO_FORCE
@@ -54,19 +56,31 @@ N_i > threshold_N        → TENSION
 N_i < -threshold_N       → COMPRESSION
 ```
 
-This is M4B’s engineering/teaching policy. It does not alter the M1 numerical residual cleanup `ZERO` rule, `abs(N) <= 1e-9 N`, and it does not change `truss2d-result-v1`; the real `axial_force_N` remains available to the professional layer. Student-facing wording for `ZERO_FORCE` is **“近似零力构件”**.
+This is M4B’s engineering/teaching policy. It does not alter the M1 numerical residual cleanup `ZERO` rule, `abs(N) <= 1e-9 N`, and it does not change `truss2d-result-v1`; every real segment `axial_force_N` remains available to the professional layer. Student-facing wording for `ZERO_FORCE` is **“近似零力构件”**.
+
+Compare then projects the segment classifications onto each PhysicalMember:
+
+| Segment teaching states for one PhysicalMember | Derived `actual_state` |
+| --- | --- |
+| all `TENSION` | `TENSION` |
+| all `COMPRESSION` | `COMPRESSION` |
+| all `ZERO_FORCE` | `ZERO_FORCE` |
+| two or more distinct states | `MIXED` |
+
+`MIXED` is a Compare-side derived state only. It is not a Prediction choice and is never persisted. The segment evidence must remain available wherever Compare reports its PhysicalMember projection.
 
 ## Member comparison semantics
 
-Each Prediction member judgment is compared with the derived actual teaching classification:
+Each Prediction member judgment is compared with the projected PhysicalMember `actual_state`:
 
-| Predicted state | Actual teaching state | Outcome |
+| Predicted state | PhysicalMember `actual_state` | `comparison_status` |
 | --- | --- | --- |
-| `TENSION`, `COMPRESSION`, or `ZERO_FORCE` | same | `MATCH` |
-| `TENSION`, `COMPRESSION`, or `ZERO_FORCE` | different | `MISMATCH` |
-| `UNSURE` | any actual state | `UNSURE` |
+| `UNSURE` | any state, including `MIXED` | `UNSURE` |
+| `TENSION`, `COMPRESSION`, or `ZERO_FORCE` | `MIXED` | `NOT_COMPARABLE` |
+| `TENSION`, `COMPRESSION`, or `ZERO_FORCE` | same non-`MIXED` state | `MATCH` |
+| `TENSION`, `COMPRESSION`, or `ZERO_FORCE` | different non-`MIXED` state | `MISMATCH` |
 
-`UNSURE` records that the student had not determined a force state. It is not an error, a mismatch, a wrong answer, a score, a percentage, a rank, a grade, or a pass/fail outcome. For example, `UNSURE` plus actual `COMPRESSION` communicates “分析前未确定；分析结果为受压”.
+`UNSURE` records that the student had not determined a force state. `NOT_COMPARABLE` records that a PhysicalMember had mixed segment evidence while the Prediction schema has no `MIXED` choice. Neither is an error, a mismatch, a wrong answer, a score, a percentage, a rank, a grade, or a pass/fail outcome. For example, `UNSURE` plus actual `COMPRESSION` communicates “分析前未确定；分析结果为受压”.
 
 ## Maximum-displacement comparison
 
@@ -85,7 +99,7 @@ This produces a deterministic candidate set, including the all-zero case. The Pr
 
 ## Load-path evidence overlay
 
-The representative Prediction load path is a student hypothesis, never Solver truth. Compare must not create an `actual_load_path`, a unique “real path”, a correctness boolean, or a path score. For each PhysicalMember explicitly named in the student’s alternating path, the overlay exposes only that member’s authoritative `axial_force_N` and derived teaching classification so the student can inspect the evidence.
+The representative Prediction load path is a student hypothesis, never Solver truth. Compare must not create an `actual_load_path`, a unique “real path”, a correctness boolean, or a path score. For each PhysicalMember explicitly named in the student’s alternating path, the overlay exposes the projected `actual_state` and its complete segment evidence. It must not fabricate a single PhysicalMember `axial_force_N` when multiple segments exist. Each segment entry reuses the stable authoritative `analysis_member_id` from `truss2d-result-v1`, plus that segment’s `axial_force_N` and teaching state; it never uses an ORM identity.
 
 ## `comparison-v1` output
 
@@ -104,8 +118,13 @@ The derived output contains only the minimum teaching facts:
     {
       "physical_member_client_key": "m1",
       "predicted_state": "UNSURE",
-      "actual": {"axial_force_N": -12.5, "teaching_state": "COMPRESSION"},
-      "outcome": "UNSURE"
+      "actual": {
+        "actual_state": "COMPRESSION",
+        "segments": [
+          {"analysis_member_id": "m1:1", "axial_force_N": -12.5, "teaching_state": "COMPRESSION"}
+        ]
+      },
+      "comparison_status": "UNSURE"
     }
   ],
   "maximum_displacement": {
@@ -118,8 +137,10 @@ The derived output contains only the minimum teaching facts:
   "load_path_evidence": [
     {
       "physical_member_client_key": "m1",
-      "axial_force_N": -12.5,
-      "teaching_state": "COMPRESSION"
+      "actual_state": "COMPRESSION",
+      "segments": [
+        {"analysis_member_id": "m1:1", "axial_force_N": -12.5, "teaching_state": "COMPRESSION"}
+      ]
     }
   ]
 }
@@ -136,8 +157,8 @@ Compare must not modify Solver, reaction, displacement, axial force, stress, mas
 ## Gate 1A self-review
 
 - Cross-draft comparison is forbidden independently of matching hashes.
-- Teaching `ZERO_FORCE` is independent of M1 numerical `ZERO`.
-- `UNSURE` is non-error evidence.
+- Teaching `ZERO_FORCE` is classified at analysis-segment level, then projected without losing segment evidence; it is independent of M1 numerical `ZERO`.
+- `UNSURE` and `NOT_COMPARABLE` are non-error evidence.
 - Load path has no Solver-truth or score semantics.
 - No-Prediction remains a legal product flow.
 - No score, ranking, grade, or Comparison persistence is introduced.
