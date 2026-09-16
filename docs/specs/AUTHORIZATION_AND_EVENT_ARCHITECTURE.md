@@ -378,6 +378,10 @@ PURGED
 
 【Open Decision — Master O-003】FINISHED_GRACE User access 尚未確認；核定前不得建立永久 allow/deny edit/analyze assertions。不影響 Project Operational Data purge。
 
+#### M4C Reflection narrow authoring rule
+
+M4C `reflection-v1` is a narrow learning-evidence rule, not a resolution of Master O-003. During ACTIVE, only the Project student owner may create, edit a DRAFT, or complete an eligible Reflection. FINISHED_GRACE Reflection authoring is temporarily fail-closed; PURGED rejects authoring. DRAFT is visible only to its student owner. A COMPLETED Reflection is readable, but never writable, by its student owner and by assigned Manager/Developer through existing Project-read authorization. This does not set the broader FINISHED_GRACE Project view/edit/analyze policy.
+
 ---
 
 ## 14. Purge Scheduling

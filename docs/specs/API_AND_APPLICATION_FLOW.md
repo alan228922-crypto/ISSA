@@ -537,7 +537,7 @@ P0 不做 automatic optimization。
 
 系統描述差異，不替學生決定「最佳設計」。
 
-若比較後有修改，DesignRationale 可關聯 before/after revision。
+M4C P0 若要记录下一版的修改或重新观察意图，使用绑定 AnalysisRun 的 `Reflection.next_iteration_intent`；不建立关联 before/after revision 的独立 DesignRationale aggregate。M4C endpoint 仍待后续 Gate 冻结。
 
 ---
 

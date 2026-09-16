@@ -1421,15 +1421,9 @@ M4B Explain is deterministic derived `explanation-v1` zh-CN teaching blocks from
 
 ---
 
-## 29.2 DesignRationale
+## 29.2 DesignRationale — superseded for M4C P0
 
-【Confirmed】
-
-平台應記錄重大修改理由，以支援：
-
-- 學習反思
-- 設計推理
-- 研究分析
+The earlier standalone DesignRationale record is **SUPERSEDED for M4C P0**. P0 Design Rationale is `Reflection.next_iteration_intent`, bound to one AnalysisRun and governed by `REFLECTION_AND_RATIONALE_ARCHITECTURE.md`. M4C creates no separate DesignRationale model/domain, second lifecycle, or DesignIteration domain. Any future independent rationale aggregate requires a new architecture decision.
 
 ---
 
@@ -1437,15 +1431,7 @@ M4B Explain is deterministic derived `explanation-v1` zh-CN teaching blocks from
 
 【Confirmed】
 
-Reflect 是核心教學循環的一部分。
-
-平台可以引導學生說明：
-
-- 為什麼修改
-- 哪個分析結果影響決策
-- 修改後有何 trade-off
-
-但不能替學生生成最終設計論證。
+Reflect 是核心教學循環的一部分，也是 Soft Gate。M4C `reflection-v1` is bound to one SUCCESS AnalysisRun after same-source-draft student result reveal, and its three structured inputs are original reasoning, unexpected results, and `next_iteration_intent` (P0 Design Rationale). It is not an Analyze prerequisite, does not require Compare/Explain to have been opened, and never becomes evaluation or mechanics authority. Lifecycle, authorization, purge, and non-AI boundaries are frozen in `REFLECTION_AND_RATIONALE_ARCHITECTURE.md`.
 
 ---
 

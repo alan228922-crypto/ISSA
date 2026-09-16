@@ -39,8 +39,8 @@ CompetitionEvent
              │     └── AnalysisRun
              │           ├── ValidationLog
              │           └── TeachingInsight
+             │           └── Reflection (0..1)
              │
-             ├── DesignRationale / Reflection
              └── ReportCompleteness
 ```
 
@@ -654,31 +654,11 @@ Invariant：
 
 ---
 
-## 20. DesignRationale and Reflection
+## 20. Reflection integrates P0 Design Rationale
 
-【Confirmed】
+The older separate `DesignRationale` record is **SUPERSEDED for M4C P0**. The authoritative aggregate is one `Reflection` per AnalysisRun (`AnalysisRun 1 → 0..1 Reflection`), with `next_iteration_intent` serving as P0 Design Rationale. Reflection is traceable to source draft through its Run and ModelRevision, but is not identified by draft version.
 
-平台需支援 Reflect / Design Rationale。
-
-【Recommended】
-
-`DesignRationale` 用於重大修改原因，最好關聯：
-
-```text
-from_revision → to_revision
-```
-
-若第一次修改尚無 from revision，可允許 null。
-
-可記錄：
-
-- rationale category
-- short text
-- referenced analysis run
-
-`Reflection` 則是學習循環較高層回應，可關聯 Project / comparison set / AnalysisRun。
-
-兩者不要硬塞成同一欄位，因研究用途不同。
+There is no independent DesignRationale model, second lifecycle, comparison-set binding, or DesignIteration domain. A future independent rationale design needs a new architecture decision. The full `reflection-v1` lifecycle, eligibility, visibility, and purge contract lives in `REFLECTION_AND_RATIONALE_ARCHITECTURE.md`.
 
 ---
 
@@ -790,7 +770,7 @@ Purge domain operation處理順序概念：
 ### Invariants
 
 - 重複 purge 安全。
-- 單一 Project 以 `purge_project_operational_data(project_id, actor_id=None)` 為邊界；有受保護歷史關聯時直接 `Project.delete()` 不受支援。保留 `PROTECT`，依序刪除 Reveal、ValidationLog、AnalysisRun、Prediction/ModelRevision、物理草稿子資料，最後 Project；User、Material、Section、SolverVersion 保留。
+- 單一 Project 以 `purge_project_operational_data(project_id, actor_id=None)` 為邊界；有受保護歷史關聯時直接 `Project.delete()` 不受支援。保留 `PROTECT`，依序刪除 Reflection、Reveal、ValidationLog、AnalysisRun、Prediction/ModelRevision、物理草稿子資料，最後 Project；User、Material、Section、SolverVersion 保留。
 - 同一交易保存 `ProjectOperationalPurgeAudit`：unique primitive project ID、primitive event ID、時間、刪除類型/數量 JSON、optional primitive actor ID；不引用被刪 Project、不保存 raw payload。重跑回傳首次 audit；失敗全部回滾。
 - Purge audit 可保留「何時、哪個 Event、刪除類型/數量」等 metadata，但不保留被刪 raw payload。
 - User account 是否一併刪除/停用可在 Authorization/Event Spec 再細化；Project raw data purge 不能受此未決項阻擋。

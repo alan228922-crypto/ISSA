@@ -70,7 +70,6 @@ P0 使用 Django ORM + SQLite。
 - ValidationLog
 - Prediction
 - Reflection
-- DesignRationale
 - ReportCompleteness
 - PurgeAudit
 - BulkImportBatch
@@ -599,7 +598,7 @@ ValidationLog
 
 ---
 
-## 12. Prediction / Reflection / DesignRationale
+## 12. Prediction / Reflection
 
 ### Prediction
 
@@ -628,35 +627,24 @@ StudentResultReveal
 `prediction-v1` contains exact member judgments, one restricted PhysicalPointRef, and an alternating representative load-path hypothesis. It contains no coordinates, model snapshot, material/section data, or solver result. `ZERO_FORCE` is a Prediction choice; M4B teaching classification is derived only by the resolved O-007 policy in `COMPARISON_CONTRACT.md`, without changing this stored payload or analysis result schema.
 ```
 
-### DesignRationale
-
-```text
-DesignRationale
-- id
-- project_id
-- from_revision_id                 nullable
-- to_revision_id                   nullable until next analysis
-- referenced_analysis_run_id       nullable
-- rationale_category
-- text
-- created_at
-```
-
 ### Reflection
 
 ```text
 Reflection
 - id
-- project_id
-- analysis_run_id / comparison context
-- created_by
-- reflection_json / text
+- analysis_run_id                   unique; AnalysisRun 1 → 0..1 Reflection
+- created_by_id
+- status                            DRAFT | COMPLETED
+- original_reasoning                nullable text, max 2000 characters
+- unexpected_results                nullable text, max 2000 characters
+- next_iteration_intent             nullable text, max 2000 characters; P0 Design Rationale
+- reflection_schema_version         reflection-v1
 - created_at
+- updated_at
+- completed_at                      nullable
 ```
 
-【Recommended】
-
-P0 不需要 rich-text editor 或 event sourcing；短結構欄位 + 短句已足以支援研究與教學循環。
+`reflection-v1` is the sole M4C P0 aggregate: no separate DesignRationale, DesignIteration, reflection revision history, comparison/explanation/result snapshot, rich text, or attachment. DRAFT fields may be partial or blank; COMPLETED requires all three trimmed fields to be non-empty and is immutable. Creation requires a SUCCESS Run and a same-Project, same-source-draft StudentResultReveal, without requiring that reveal's first Run to be the Reflection Run. Full policy is `REFLECTION_AND_RATIONALE_ARCHITECTURE.md`.
 
 ---
 
@@ -823,6 +811,8 @@ write PurgeAudit pre-state counts
 delete operational Project children
   ↓
 delete ModelRevision raw snapshots
+  ↓
+delete Reflection raw text / metadata
   ↓
 delete AnalysisRun raw input/result
   ↓
