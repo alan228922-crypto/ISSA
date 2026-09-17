@@ -63,6 +63,32 @@ Keyboard focus, an incomplete field, or parse failure must have a visible explan
 
 ## 4. Snap, ORTHO, view, and intersection
 
+### O-M5-CAD-03 — Drawing State Transition Contract
+
+`transition(state, event)` is pure and returns only `{state, fieldIndex}`. `fieldIndex` is `null` outside `DYNAMIC_INPUT`, `0` for `DISTANCE`, and `1` for `ANGLE`; the initial value is `{state:"IDLE",fieldIndex:null}`. Legal states are `IDLE`, `SELECTING`, `DRAW_NODE`, `DRAW_MEMBER_WAIT_START`, `DRAW_MEMBER_WAIT_END`, and `DYNAMIC_INPUT`.
+
+Events are `SELECT_TOOL {type:"SELECT_TOOL",tool:"SELECT"|"NODE"|"MEMBER"}`, `POINTER_POINT {type:"POINTER_POINT",point:{x:number,y:number}}` (finite world coordinates), `INPUT_CHANGE {type:"INPUT_CHANGE",mode:"COMMAND"|"DYNAMIC",value:string,field?:"DISTANCE"|"ANGLE"}`, `TAB {type:"TAB"}`, `ENTER {type:"ENTER",valid:boolean,point?:{x:number,y:number}}`, and `ESC {type:"ESC"}`. A valid Enter that needs geometry requires a finite point; invalid Enter is always unchanged.
+
+| Current state | Event | Result |
+|---|---|---|
+| any | SELECT_TOOL SELECT/NODE/MEMBER | SELECTING/null, DRAW_NODE/null, DRAW_MEMBER_WAIT_START/null respectively; cancels unfinished work without mutation |
+| IDLE, SELECTING | POINTER_POINT, COMMAND/DYNAMIC INPUT_CHANGE, TAB, valid ENTER | unchanged |
+| DRAW_NODE | POINTER_POINT, COMMAND INPUT_CHANGE, valid ENTER | DRAW_NODE/null; accepts a node point when supplied and keeps Node active |
+| DRAW_NODE | DYNAMIC INPUT_CHANGE, TAB | unchanged |
+| DRAW_MEMBER_WAIT_START | POINTER_POINT or valid ENTER | DRAW_MEMBER_WAIT_END/null; accepts member start |
+| DRAW_MEMBER_WAIT_START | COMMAND/DYNAMIC INPUT_CHANGE, TAB | unchanged |
+| DRAW_MEMBER_WAIT_END | POINTER_POINT or valid ENTER | DRAW_MEMBER_WAIT_START/null; accepts member end and completes that member |
+| DRAW_MEMBER_WAIT_END | COMMAND INPUT_CHANGE, TAB | unchanged |
+| DRAW_MEMBER_WAIT_END | DYNAMIC INPUT_CHANGE DISTANCE/ANGLE | DYNAMIC_INPUT/0 or DYNAMIC_INPUT/1 respectively |
+| DYNAMIC_INPUT | POINTER_POINT or COMMAND INPUT_CHANGE | unchanged |
+| DYNAMIC_INPUT | DYNAMIC INPUT_CHANGE DISTANCE/ANGLE | DYNAMIC_INPUT/0 or DYNAMIC_INPUT/1 respectively |
+| DYNAMIC_INPUT/0 | TAB | DYNAMIC_INPUT/1 |
+| DYNAMIC_INPUT/1 | TAB | DYNAMIC_INPUT/0 |
+| any | ENTER valid:false | unchanged |
+| any | ESC | IDLE/null; cancels tool/unfinished command without mutation |
+
+`DYNAMIC_INPUT` always has `fieldIndex` in `{0,1}`. CAD-specific Tab is expressed only in that state; later DOM wiring may prevent default only then, preserving normal Tab accessibility otherwise. Member completion never chains its endpoint into a following member start. Task 3 creates no effects, draft mutations, Snap/Grid/ORTHO work, or Connection; Task 4 resolves points and Task 5 performs structural mutations.
+
 P0 provides Node/Endpoint Snap, Grid Snap, Geometric Intersection Snap, ORTHO, Pan, Zoom, and Fit View. The status bar shows the active ORTHO and SNAP modes as well as the current pointer/drawing values.
 
 ### O-M5-CAD-01 — SNAP resolution policy

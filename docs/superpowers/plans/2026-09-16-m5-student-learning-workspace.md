@@ -125,11 +125,11 @@ Each task uses its row's exact commands; browser node IDs run through `workspace
 - Modify: None
 - Test: `tests/browser/test_workspace.py`
 
-**Consumes:** the frozen CAD input grammar; the Dynamic Input DOM Contract; the angle convention `0° = +X` and positive counter-clockwise.
+**Consumes:** the frozen CAD input grammar; O-M5-CAD-03; the Dynamic Input DOM Contract; the angle convention `0° = +X` and positive counter-clockwise. O-M5-CAD-03 defines exact event payloads, `{state,fieldIndex}` semantics, valid/invalid Enter, Esc, Tab, no chaining, and Task 3/4/5 responsibility boundaries.
 
 **Produces:** `parseCadInput(text, origin) -> {ok:true,kind:"ABSOLUTE"|"RELATIVE"|"POLAR",point:{x:number,y:number}}|{ok:false,code:"EMPTY"|"INCOMPLETE"|"MALFORMED"}` and `transition(state, event) -> {state, fieldIndex}`. States are `IDLE`, `SELECTING`, `DRAW_NODE`, `DRAW_MEMBER_WAIT_START`, `DRAW_MEMBER_WAIT_END`, and `DYNAMIC_INPUT`; events are `SELECT_TOOL`, `POINTER_POINT`, `INPUT_CHANGE`, `TAB`, `ENTER`, and `ESC`.
 
-**Test to create:** `test_cad_parser_and_state_transitions` asserts `1000,500`, `@-2.5, 3`, `1000<30`, whitespace, malformed and partial input, and Enter/Esc/Tab transitions. `test_cad_keyboard_tab_accessibility` asserts that Tab switches fields only in `DYNAMIC_INPUT`.
+**Test to create:** `test_cad_parser_and_state_transitions` asserts `1000,500`, `@-2.5, 3`, `1000<30`, whitespace, malformed and partial input; all SELECT_TOOL outcomes; pointer transitions from each drawing state; COMMAND/DYNAMIC input changes; valid/invalid Enter; and Esc. `test_cad_keyboard_tab_accessibility` asserts `DYNAMIC_INPUT` Tab 0→1→0 and unchanged Tab outside it.
 
 **RED command:** `pytest tests/browser/test_workspace.py::test_cad_parser_and_state_transitions -q`
 
