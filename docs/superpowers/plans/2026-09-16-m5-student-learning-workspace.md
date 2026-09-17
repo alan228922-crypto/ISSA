@@ -15,7 +15,7 @@
 - UI copy is zh-CN; identifiers remain English.
 - Use `TRUSS_2D`, mm/N/MPa/g, existing JSON services, CSRF, and server authorization.
 - No browser solver/classifier, automatic Connection, SPA, WebGL, adaptive/custom Grid, history selector, scoring, or DesignIteration.
-- Every task: write the named failing test, run it RED, implement minimally, run PASS plus named regression, commit, and stop for review.
+- Every task: write the named failing test, run it RED, implement minimally, run its PASS command and named regression command, commit, and stop for review.
 
 ## File responsibility map
 
@@ -55,27 +55,43 @@ Each task uses its row's exact commands; browser node IDs run through `workspace
 
 | Task | RED command / reason | PASS command | Regression command | Commit |
 |---|---|---|---|---|
-| 1 | `pytest tests/endpoints/test_workspace.py::test_owner_gets_bootstrap_and_manager_gets_read_only -q` / route 404 | same command | `pytest tests/permissions/test_event_project_access.py -q` | `feat: add workspace shell` |
+| 1 | `pytest tests/endpoints/test_workspace.py::test_owner_gets_bootstrap_and_manager_gets_read_only -q` / route 404 | `pytest tests/endpoints/test_workspace.py::test_owner_gets_bootstrap_and_manager_gets_read_only -q` | `pytest tests/permissions/test_event_project_access.py -q` | `feat: add workspace shell` |
 | 2 | `pytest tests/browser/test_workspace.py::test_renderer_emits_stable_physical_svg -q` / module unavailable | `pytest tests/browser/test_workspace.py::test_renderer_emits_stable_physical_svg -q` | `pytest tests/endpoints/test_workspace.py -q` | `feat: render physical draft SVG` |
 | 3 | `pytest tests/browser/test_workspace.py::test_cad_parser_and_state_transitions -q` / exports unavailable | `pytest tests/browser/test_workspace.py::test_cad_parser_and_state_transitions -q` | `pytest tests/browser/test_workspace.py::test_cad_keyboard_tab_accessibility -q` | `feat: add CAD parser and state` |
 | 4 | `pytest tests/browser/test_workspace.py::test_snap_resolver_priority_grid_and_intersection_boundary -q` / resolver unavailable | `pytest tests/browser/test_workspace.py::test_snap_resolver_priority_grid_and_intersection_boundary -q` | `pytest tests/browser/test_workspace.py::test_grid_midpoint_and_ortho_resolution -q` | `feat: add deterministic snap resolver` |
 | 5 | `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q` / editor unavailable | `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q` | `pytest tests/browser/test_workspace.py::test_editor_mutations_are_immutable -q` | `feat: add structural editor mutations` |
 | 6 | `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q` / interaction module unavailable | `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q` | `pytest tests/browser/test_workspace.py::test_svg_objects_are_keyboard_focusable -q` | `feat: add canvas navigation` |
 | 7 | `pytest tests/browser/test_workspace.py::test_save_check_error_presentation -q` / API workflow unavailable | `pytest tests/browser/test_workspace.py::test_save_check_error_presentation -q` | `pytest tests/endpoints/test_project_json.py -q` | `feat: add workspace save and model check` |
-| 8 | `pytest tests/application/test_prediction.py::test_current_prediction_singleton -q` / service absent | same command | `pytest tests/endpoints/test_prediction_json.py -q` | `feat: add prediction discovery` |
-| 9 | `pytest tests/browser/test_workspace.py::test_prediction_workspace_states_and_skip -q` / prediction module unavailable | same command | `pytest tests/application/test_prediction.py tests/endpoints/test_prediction_json.py -q` | `feat: add prediction workspace UI` |
-| 10 | `pytest tests/browser/test_workspace.py::test_analyze_level_one_and_stale_run -q` / results module unavailable | same command | `pytest tests/endpoints/test_project_json.py -q` | `feat: add analyze result level one` |
-| 11 | `pytest tests/browser/test_workspace.py::test_compare_explain_states_and_canvas_link -q` / comparison UI unavailable | same command | `pytest tests/endpoints/test_compare_explanation_json.py -q` | `feat: add compare and explain UI` |
-| 12 | `pytest tests/browser/test_workspace.py::test_engineering_details_authoritative_values -q` / details region absent | same command | `pytest tests/endpoints/test_project_json.py -q` | `feat: add engineering details` |
-| 13 | `pytest tests/browser/test_workspace.py::test_reflection_draft_complete_and_readonly -q` / reflection module unavailable | same command | `pytest tests/endpoints/test_reflection_json.py -q` | `feat: add reflection workspace UI` |
+| 8 | `pytest tests/application/test_prediction.py::test_current_prediction_singleton -q` / service absent | `pytest tests/application/test_prediction.py::test_current_prediction_singleton -q` | `pytest tests/endpoints/test_prediction_json.py -q` | `feat: add prediction discovery` |
+| 9 | `pytest tests/browser/test_workspace.py::test_prediction_workspace_states_and_skip -q` / prediction module unavailable | `pytest tests/browser/test_workspace.py::test_prediction_workspace_states_and_skip -q` | `pytest tests/application/test_prediction.py tests/endpoints/test_prediction_json.py -q` | `feat: add prediction workspace UI` |
+| 10 | `pytest tests/browser/test_workspace.py::test_analyze_level_one_and_stale_run -q` / results module unavailable | `pytest tests/browser/test_workspace.py::test_analyze_level_one_and_stale_run -q` | `pytest tests/endpoints/test_project_json.py -q` | `feat: add analyze result level one` |
+| 11 | `pytest tests/browser/test_workspace.py::test_compare_explain_states_and_canvas_link -q` / comparison UI unavailable | `pytest tests/browser/test_workspace.py::test_compare_explain_states_and_canvas_link -q` | `pytest tests/endpoints/test_compare_explanation_json.py -q` | `feat: add compare and explain UI` |
+| 12 | `pytest tests/browser/test_workspace.py::test_engineering_details_authoritative_values -q` / details region absent | `pytest tests/browser/test_workspace.py::test_engineering_details_authoritative_values -q` | `pytest tests/endpoints/test_project_json.py -q` | `feat: add engineering details` |
+| 13 | `pytest tests/browser/test_workspace.py::test_reflection_draft_complete_and_readonly -q` / reflection module unavailable | `pytest tests/browser/test_workspace.py::test_reflection_draft_complete_and_readonly -q` | `pytest tests/endpoints/test_reflection_json.py -q` | `feat: add reflection workspace UI` |
 
 ### Task 1 (Gate 1, BCG-01/03): Workspace delivery
-**Files:** Create `projects/workspace.py`, `templates/projects/workspace.html`, `projects/static/projects/workspace/{state.js,api.js,workspace.css}`, `tests/browser/conftest.py`; modify `projects/urls.py`, `pyproject.toml`; test `tests/endpoints/test_workspace.py`.
-**Interfaces:** `workspace(request, project_id) -> TemplateResponse`; bootstrap `{project,draft,read_only,urls}`.
-- [ ] Write `test_owner_gets_bootstrap_and_manager_gets_read_only`; run `pytest tests/endpoints/test_workspace.py -q` (RED).
-- [ ] Add pinned Python `playwright` to the test extra and an authenticated `live_server` fixture; install its Chromium runtime once for browser tests because the repository has no Node/JS runner.
-- [ ] Serialize current mutable draft with client keys/version, authorize by `can_view_project`, render labeled left/center/right/status regions and local assets; rerun PASS and `pytest tests/permissions/test_event_project_access.py -q`.
-- [ ] Commit `feat: add workspace shell`.
+**Files:**
+- Create: `projects/workspace.py`; `templates/projects/workspace.html`; `projects/static/projects/workspace/state.js`; `projects/static/projects/workspace/api.js`; `projects/static/projects/workspace/workspace.css`; `tests/browser/conftest.py`
+- Modify: `projects/urls.py`; `pyproject.toml`
+- Test: `tests/endpoints/test_workspace.py`
+
+**Consumes:** Project authorization through `can_view_project`; the current Physical Draft; the Bootstrap and URL Contract; and the Stable Workspace DOM Contract.
+
+**Produces:** `workspace(request, project_id) -> TemplateResponse` and `#workspace-bootstrap` containing the exact `workspace-bootstrap-v1` project, draft, `read_only`, and URL fields.
+
+**Test to create:** `test_owner_gets_bootstrap_and_manager_gets_read_only` asserts the owner receives the bootstrap and the manager receives the same readable workspace marked read-only.
+
+**RED command:** `pytest tests/endpoints/test_workspace.py::test_owner_gets_bootstrap_and_manager_gets_read_only -q`
+
+**Expected RED:** workspace route does not exist.
+
+**Implementation boundary:** Authorize and serialize the existing draft/version and render the three panels/status regions; provide local ES-module assets and the authenticated browser fixture; do not alter physical-draft persistence, mechanics, prediction, result, or reflection semantics.
+
+**PASS command:** `pytest tests/endpoints/test_workspace.py::test_owner_gets_bootstrap_and_manager_gets_read_only -q`
+
+**Regression command:** `pytest tests/permissions/test_event_project_access.py -q`
+
+**Commit:** `feat: add workspace shell`
 
 ### Task 2 (Gate 2A): Deterministic SVG renderer
 
@@ -228,40 +244,148 @@ Each task uses its row's exact commands; browser node IDs run through `workspace
 **Commit:** `feat: add workspace save and model check`
 
 ### Task 8 (Gate 3A, BCG-02): Prediction cardinality, migration, discovery
-**Files:** Modify `learning/{models,services,views,urls}.py`; create migration `learning/migrations/0004_prediction_project_draft_unique.py`; tests `test_prediction.py`, `test_prediction_json.py`.
-**Interfaces:** `discover_current_prediction(project, actor) -> {state:"NONE",source_draft_version:number}|{state:"DRAFT"|"COMPLETED",prediction:Prediction}|raise PredictionError("PREDICTION_AMBIGUOUS")`; `GET /projects/<project_id>/predictions/current/` returns `{ok:true,state:"NONE",source_draft_version}` or `{ok:true,state:"DRAFT"|"COMPLETED",prediction:<existing response>}`, and 409 `{ok:false,error:{code:"PREDICTION_AMBIGUOUS",message,details:{project_id,source_draft_version,duplicate_count}}}`. POST `/projects/<project_id>/predictions/` resumes DRAFT, returns COMPLETED unchanged, and rejects ambiguity.
-- [ ] Test duplicate preflight fails `PREDICTION_AMBIGUOUS`, concurrent create returns same DRAFT, completed binds only explicitly, draft/null remains analyzable; RED.
-- [ ] Lock Project in `transaction.atomic`, re-query pair, create only when absent; on uniqueness `IntegrityError`, re-query and return sole DRAFT/COMPLETED, else ambiguity. Migration queries `values("project_id","source_draft_version").annotate(count=Count("id")).filter(count__gt=1)` and raises with each pair/count before adding the constraint; no mutation/remediation. PASS plus `pytest tests/application/test_prediction.py tests/endpoints/test_prediction_json.py -q`; commit.
+**Files:**
+- Create: `learning/migrations/0004_prediction_project_draft_unique.py`
+- Modify: `learning/models.py`; `learning/services.py`; `learning/views.py`; `learning/urls.py`
+- Test: `tests/application/test_prediction.py`; `tests/endpoints/test_prediction_json.py`
+
+**Consumes:** O-M5-P01; the existing `Prediction` model and create/complete services; Project authorization; `source_draft_version`; and the existing prediction response serializer.
+
+**Produces:** database uniqueness for `(project, source_draft_version)`; concurrency-safe create/resume; `discover_current_prediction(project, actor) -> {state:"NONE",source_draft_version:number}|{state:"DRAFT"|"COMPLETED",prediction:Prediction}|raise PredictionError("PREDICTION_AMBIGUOUS")`; `GET /projects/<project_id>/predictions/current/`; and POST create behavior NONE -> DRAFT, DRAFT -> same DRAFT, COMPLETED -> same COMPLETED, multiple records -> fail closed.
+
+**Test to create:** `test_current_prediction_singleton` asserts NONE, DRAFT resume, COMPLETED return, duplicate ambiguity, concurrent/race-safe creation, and HTTP 409 `PREDICTION_AMBIGUOUS`.
+
+**RED command:** `pytest tests/application/test_prediction.py::test_current_prediction_singleton -q`
+
+**Expected RED:** singleton discovery / uniqueness behavior is not implemented.
+
+**Implementation boundary:** Lock the Project or authoritative parent in the existing service convention inside a transaction, re-query after lock, and use the uniqueness constraint with an `IntegrityError` re-query fallback; return ambiguity unless exactly one result exists. The migration preflights duplicate `project_id`/`source_draft_version` pairs and reports pair/count before adding the constraint; it must not delete, merge, choose latest/earliest, or rewrite evidence.
+
+**PASS command:** `pytest tests/application/test_prediction.py::test_current_prediction_singleton -q`
+
+**Regression command:** `pytest tests/endpoints/test_prediction_json.py -q`
+
+**Commit:** `feat: add prediction discovery`
 
 ### Task 9 (Gate 3B): Prediction workspace UI
-**Files:** Create `prediction.js`; modify workflow/api/renderer; test browser file.
-**Interfaces:** `loadPrediction()`, `completePrediction(payload)`, `predictionForAnalyze() -> id|null`.
-- [ ] Test NONE/DRAFT/COMPLETED/AMBIGUOUS, all member choices, point/path selection, skip; RED.
-- [ ] Wire existing endpoints and no selector/history; PASS; commit.
+**Files:**
+- Create: `projects/static/projects/workspace/prediction.js`
+- Modify: `projects/static/projects/workspace/workflow.js`; `projects/static/projects/workspace/api.js`; `projects/static/projects/workspace/renderer.js`; `projects/static/projects/workspace/state.js`
+- Test: `tests/browser/test_workspace.py`
+
+**Consumes:** bootstrap `urls.prediction_current`, `urls.prediction_create`, and `urls.prediction_complete_template`; Task 8 states NONE, DRAFT, COMPLETED, and AMBIGUOUS; the existing Prediction payload contract; PhysicalMember client keys; and the PhysicalPointRef contract.
+
+**Produces:** prediction workflow state, DRAFT-resume UI, COMPLETED read-only/restored UI, member-prediction interaction, maximum-displacement prediction, representative-load-path selection, explicit skip behavior, and `predictionForAnalyze(...) -> predictionId|null`, where only COMPLETED returns its ID, NONE returns null, skipped DRAFT returns null, and AMBIGUOUS fails closed.
+
+**Test to create:** `test_prediction_workspace_states_and_skip` asserts NONE, DRAFT resume, COMPLETED restoration, AMBIGUOUS fail-closed behavior, member choices `TENSION`, `COMPRESSION`, `ZERO_FORCE`, `UNSURE`, point selection, representative load path, and skip -> null binding.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_prediction_workspace_states_and_skip -q`
+
+**Expected RED:** Prediction workspace module/UI behavior does not exist.
+
+**Implementation boundary:** Use the frozen endpoints and existing payload only; never show history/selectors or latest-wins behavior, score/correct-wrong language, browser mechanics classification, or a result-reveal side effect; a DRAFT must never auto-bind Analyze.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_prediction_workspace_states_and_skip -q`
+
+**Regression command:** `pytest tests/application/test_prediction.py tests/endpoints/test_prediction_json.py -q`
+
+**Commit:** `feat: add prediction workspace UI`
 
 ### Task 10 (Gate 4A): Analyze and Level 1 results
-**Files:** Create `results.js`; modify workflow/api/renderer; tests browser and `test_project_json.py`.
-**Interfaces:** `analyze(version,predictionId)`, `showLevelOne(run,data)`.
-- [ ] Test null prediction allowed, completed explicit binding, stale-result label and text/non-color force overlay; RED.
-- [ ] Consume authoritative analysis data only; PASS; commit.
+**Files:**
+- Create: `projects/static/projects/workspace/results.js`
+- Modify: `projects/static/projects/workspace/workflow.js`; `projects/static/projects/workspace/api.js`; `projects/static/projects/workspace/renderer.js`; `projects/static/projects/workspace/state.js`
+- Test: `tests/browser/test_workspace.py`; `tests/endpoints/test_project_json.py`
+
+**Consumes:** bootstrap `urls.analyze` and `urls.result_template`; the server-authoritative draft version; `predictionForAnalyze(...)`; POST Analyze JSON `{expected_draft_version:number,prediction_id:number|null}`; and the result endpoint JSON `{analysis_run_id,model_revision_id,model_hash,solver_version,input_hash,input_schema_version,result_schema_version,status,failure_code,diagnostics,result_json}`.
+
+**Produces:** an Analyze workflow call, successful `run_id`, Level-1 result state, maximum-displacement presentation, authoritative member tension/compression/near-zero presentation, stale/previous-draft indication, and a non-color-only Canvas result overlay.
+
+**Test to create:** `test_analyze_level_one_and_stale_run` asserts null prediction is accepted, one COMPLETED prediction can be explicitly bound, DRAFT is not auto-bound, success stores `run_id`, stale/previous-draft results are visibly identified, and result states are not color-only.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_analyze_level_one_and_stale_run -q`
+
+**Expected RED:** results module / Level-1 workflow does not exist.
+
+**Implementation boundary:** Submit only the exact Analyze fields and display backend response values; do not calculate displacement, reactions, force, stress, member-force class, or a zero-force threshold in the browser.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_analyze_level_one_and_stale_run -q`
+
+**Regression command:** `pytest tests/endpoints/test_project_json.py -q`
+
+**Commit:** `feat: add analyze result level one`
 
 ### Task 11 (Gate 4B): Compare and Explain
-**Files:** Modify `results.js`; tests browser, `test_compare_explanation_json.py`.
-**Interfaces:** `showComparison(comparison)`, `showExplanation(explanation)`, `focusPhysicalMember(clientKey)`.
-- [ ] Test MATCH/MISMATCH/UNSURE/NOT_COMPARABLE/NO_PREDICTION and MIXED segment evidence; RED.
-- [ ] Render backend wording/blocks and Canvas linkage without recomputation; PASS; commit.
+**Files:**
+- Create: None
+- Modify: `projects/static/projects/workspace/results.js`; `projects/static/projects/workspace/workflow.js`; `projects/static/projects/workspace/api.js`; `projects/static/projects/workspace/renderer.js`
+- Test: `tests/browser/test_workspace.py`; `tests/endpoints/test_compare_explanation_json.py`
+
+**Consumes:** a successful `run_id`; bootstrap run-scoped `urls.comparison_template` and `urls.explanation_template`; backend `comparison-v1`; and backend `explanation-v1`.
+
+**Produces:** `showComparison(comparison) -> void`; `showExplanation(explanation) -> void`; and `focusPhysicalMember(clientKey) -> void`, supporting the authoritative `MATCH`, `MISMATCH`, `UNSURE`, `NOT_COMPARABLE`, `NO_PREDICTION`, and MIXED-evidence states.
+
+**Test to create:** `test_compare_explain_states_and_canvas_link` asserts every authoritative state, MIXED segment evidence, and Canvas focus/highlight linkage.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_compare_explain_states_and_canvas_link -q`
+
+**Expected RED:** Compare/Explain workspace presentation does not exist.
+
+**Implementation boundary:** Render backend wording and blocks without recomputing comparison or regenerating explanation; use no correct/wrong score language; retain MIXED as backend/segment evidence; Canvas focus is presentation only.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_compare_explain_states_and_canvas_link -q`
+
+**Regression command:** `pytest tests/endpoints/test_compare_explanation_json.py -q`
+
+**Commit:** `feat: add compare and explain UI`
 
 ### Task 12 (Gate 4C): Engineering details
-**Files:** Modify `results.js`; test `tests/browser/test_workspace.py`.
-**Interfaces:** `showEngineeringDetails(resultJson) -> void`.
-- [ ] Test Level-3 only exposes authoritative displacement/reaction/axial-force/stress/mass and optional deformation warning; run `pytest tests/browser/test_workspace.py -q` (RED).
-- [ ] Render supplied values only; if deformation view is added, show “变形显示已放大，仅用于观察变形趋势。”; PASS plus compare regression; commit.
+**Files:**
+- Create: None
+- Modify: `projects/static/projects/workspace/results.js`; `projects/static/projects/workspace/renderer.js`; `templates/projects/workspace.html`
+- Test: `tests/browser/test_workspace.py`; `tests/endpoints/test_project_json.py`
+
+**Consumes:** the authoritative `analysis_data` response field `result_json`, whose `truss2d-result-v1` keys are `node_displacements` (`node_id`, `ux_mm`, `uy_mm`), `support_reactions` (`node_id`, `rx_N`, `ry_N`), `member_results` (`analysis_member_id`, `physical_member_id`, `axial_force_N`, `axial_stress_MPa`, `state`, `mass_g`, `buckling`), and `total_mass_g`.
+
+**Produces:** `showEngineeringDetails(resultJson) -> void` presenting Level-3 nodal displacement, support reaction, member axial force, member stress, and total/member mass; any optional deformation view displays exactly “变形显示已放大，仅用于观察变形趋势。”.
+
+**Test to create:** `test_engineering_details_authoritative_values` asserts Level 3 exposes only the authoritative displacement, reaction, axial-force, stress, and mass values, and checks the exact warning if the optional deformation view is present.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_engineering_details_authoritative_values -q`
+
+**Expected RED:** Level-3 engineering detail UI does not exist.
+
+**Implementation boundary:** Render supplied authoritative values only; do not derive mechanics, stress, or mass in the browser and do not invent absent engineering values. If a required UX value is absent from the backend contract, stop and record `BACKEND_CAPABILITY_GAP` rather than computing it.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_engineering_details_authoritative_values -q`
+
+**Regression command:** `pytest tests/endpoints/test_project_json.py -q`
+
+**Commit:** `feat: add engineering details`
 
 ### Task 13 (Gate 5): Reflection UI
-**Files:** Create `reflection.js`; modify workflow/api/template; tests browser, `test_reflection_json.py`.
-**Interfaces:** `loadReflection(runId)`, `saveReflection(fields)`, `completeReflection()`.
-- [ ] Test draft partial/clear/complete, owner-only editing, completed reader view, skip; RED.
-- [ ] Wire existing singleton routes; PASS and soft-gate regression; commit.
+**Files:**
+- Create: `projects/static/projects/workspace/reflection.js`
+- Modify: `projects/static/projects/workspace/workflow.js`; `projects/static/projects/workspace/api.js`; `projects/static/projects/workspace/state.js`; `templates/projects/workspace.html`
+- Test: `tests/browser/test_workspace.py`; `tests/endpoints/test_reflection_json.py`
+
+**Consumes:** a successful `run_id`; bootstrap run-scoped `urls.reflection_template` and `urls.reflection_complete_template`; the existing Reflection HTTP contract; Reflection states DRAFT and COMPLETED; and M4C authorization/privacy rules.
+
+**Produces:** `loadReflection(runId) -> Reflection`; `saveReflection(fields) -> Reflection`; `completeReflection() -> Reflection`; a Reflection DRAFT editor with save/update and completion, COMPLETED read-only presentation, optional skip behavior, and the browser acceptance tests `test_workspace_full_learning_loop` and `test_workspace_soft_gates`.
+
+**Test to create:** `test_reflection_draft_complete_and_readonly` asserts partial DRAFT save, clear, backend-validated completion, owner-only editing, COMPLETED reader view, and skip. `test_workspace_full_learning_loop` covers build/model-check -> Prediction -> Analyze -> Result -> Compare -> Explain -> Reflection. `test_workspace_soft_gates` covers skip Prediction -> Analyze with null prediction -> understand result -> skip Reflection. Run these acceptance tests with `pytest tests/browser/test_workspace.py::test_workspace_full_learning_loop tests/browser/test_workspace.py::test_workspace_soft_gates -q` after the individual reflection PASS; if they expose missing behavior outside Reflection integration, stop and classify `PRODUCTION_DEFECT` or `PLAN_CONTRACT_CONFLICT`.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_reflection_draft_complete_and_readonly -q`
+
+**Expected RED:** Reflection workspace module/UI does not exist.
+
+**Implementation boundary:** Use only the existing singleton routes; Reflection remains a Soft Gate, permits partial DRAFT save and clear, requires backend validation to complete, and makes COMPLETED immutable. Never disclose DRAFT content to Manager/Developer, reveal results as a side effect, or add a scoring/mechanics feature.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_reflection_draft_complete_and_readonly -q`
+
+**Regression command:** `pytest tests/endpoints/test_reflection_json.py -q`
+
+**Commit:** `feat: add reflection workspace UI`
 
 ### Task 14 (Final Gate A): Reconciliation
 **Files:** Modify `docs/superpowers/plans/2026-09-16-m5-student-learning-workspace.md` only if implementation records require factual status; no production/test files.
