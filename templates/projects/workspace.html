@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>项目工作区</title>
   <link rel="stylesheet" href="{% static 'projects/workspace/workspace.css' %}">
+  <style>#workspace-canvas [data-selected="true"] > *, #workspace-canvas [data-focused="true"] > *, #workspace-canvas [data-object-kind]:focus > * { stroke-dasharray: 5 3; stroke-width: 5; }</style>
 </head>
 <body>
   <main id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}">
@@ -48,7 +49,12 @@
     </footer>
   </main>
   {{ bootstrap|json_script:"workspace-bootstrap" }}
-  <script type="module" src="{% static 'projects/workspace/state.js' %}"></script>
+  <script type="module">
+    import { createWorkspaceState, readWorkspaceBootstrap } from "{% static 'projects/workspace/state.js' %}";
+    import { renderWorkspace } from "{% static 'projects/workspace/renderer.js' %}";
+    const bootstrap = readWorkspaceBootstrap();
+    renderWorkspace(document.getElementById("workspace-canvas"), bootstrap.draft, createWorkspaceState(bootstrap));
+  </script>
   <script type="module" src="{% static 'projects/workspace/api.js' %}"></script>
 </body>
 </html>

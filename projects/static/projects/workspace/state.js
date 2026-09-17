@@ -9,5 +9,7 @@ export function createWorkspaceState(bootstrap) {
     draft: bootstrap.draft,
     draftVersion: bootstrap.draft.version,
     readOnly: bootstrap.read_only,
+    selectedObject: null,
+    focusedObject: null,
   });
 }

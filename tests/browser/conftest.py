@@ -13,22 +13,31 @@ def pytest_configure(config):
 @pytest.fixture
 def workspace_page(live_server):
     playwright = pytest.importorskip("playwright.sync_api")
-    with playwright.sync_playwright() as runtime:
-        try:
-            browser = runtime.chromium.launch()
-        except Exception as exc:
-            pytest.skip(f"Playwright Chromium unavailable: {exc}")
-        context = browser.new_context()
-        page = context.new_page()
+    resources = {}
 
-        def open_workspace(*, user, project):
-            client = Client()
-            client.force_login(user)
-            session_key = client.session.session_key
-            context.add_cookies([{"name": "sessionid", "value": session_key, "url": live_server.url}])
-            page.goto(live_server.url + reverse("projects:workspace", kwargs={"project_id": project.id}))
-            return page
+    def open_workspace(*, user, project):
+        client = Client()
+        client.force_login(user)
+        session_key = client.session.session_key
+        if not resources:
+            runtime = playwright.sync_playwright().start()
+            try:
+                browser = runtime.chromium.launch()
+            except Exception as exc:
+                runtime.stop()
+                pytest.skip(f"Playwright Chromium unavailable: {exc}")
+            resources.update(
+                runtime=runtime,
+                browser=browser,
+                context=browser.new_context(),
+            )
+            resources["page"] = resources["context"].new_page()
+        resources["context"].add_cookies([{"name": "sessionid", "value": session_key, "url": live_server.url}])
+        resources["page"].goto(live_server.url + reverse("projects:workspace", kwargs={"project_id": project.id}))
+        return resources["page"]
 
-        yield open_workspace
-        context.close()
-        browser.close()
+    yield open_workspace
+    if resources:
+        resources["context"].close()
+        resources["browser"].close()
+        resources["runtime"].stop()
