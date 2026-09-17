@@ -32,6 +32,12 @@ function position(connection, nodePositions) {
   return nodePositions.get(connection.geometry_node_client_key);
 }
 
+export function renderSnapIndicator(indicator, resolution) {
+  const snapType = ["NODE", "INT", "GRID"].includes(resolution?.snapType) ? resolution.snapType : null;
+  indicator.textContent = snapType ? `SNAP: ${snapType}` : "SNAP: 无";
+  indicator.dataset.snapType = snapType || "";
+}
+
 export function renderWorkspace(svg, draft, uiState = {}) {
   const nodes = ordered(draft.nodes || []);
   const members = ordered(draft.physical_members || []);
