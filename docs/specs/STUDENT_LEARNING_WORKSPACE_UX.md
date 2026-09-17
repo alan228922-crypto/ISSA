@@ -93,6 +93,14 @@ P0 provides Node/Endpoint Snap, Grid Snap, Geometric Intersection Snap, ORTHO, P
 
 ### O-M5-CAD-01 — SNAP resolution policy
 
+### O-M5-CAD-04 — SNAP Candidate & Coordinate Transform Contract
+
+`resolvePointerPoint({worldPointer,screenPointer,candidates,viewTransform,origin,ortho,gridEnabled,explicitNumeric})` uses finite `{x,y}` worldPointer, screenPointer, and origin; `screenPointer` is CSS px. `viewTransform` is the only plain affine world-to-screen form `{a,b,c,d,e,f}`, all finite: `screenX=a*worldX+c*worldY+e`, `screenY=b*worldX+d*worldY+f`. Its output and screenPointer share CSS-pixel coordinates.
+
+Each candidate is `{kind:"NODE"|"ENDPOINT"|"INTERSECTION",canonicalKey:string,worldPoint:{x:number,y:number}}`. Malformed candidates are ignored; malformed top-level inputs are caller-contract violations. NODE/ENDPOINT are class 1 and return `NODE`; INTERSECTION is class 2 and returns `INT`; Grid is class-3 fallback and returns `GRID`. Same-class eligibility is distance `<=12` CSS px, then nearest, then lexical canonicalKey; array/DOM/query order never decides. Canonical keys are `NODE:<node_client_key>`, `ENDPOINT:<physical_member_client_key>:START|END`, and `INTERSECTION:<lower_member_key>|<higher_member_key>` with lexical member ordering.
+
+When `explicitNumeric===true`, worldPointer is the exact parseCadInput point and immediately returns it with `snapType:null,candidateKey:null`: it bypasses Node/Endpoint/Intersection, ORTHO, and Grid. Otherwise resolve class 1, then class 2, then apply ORTHO from worldPointer-origin (horizontal if `|dx|>=|dy|`, vertical otherwise), then fixed global-origin 100 mm Grid; under ORTHO Grid changes only the free axis. `origin` is the drawing origin, never Grid origin. This decision adds no mutation, Connection, Snap type ENDPOINT, custom grid, UCS, or alternate transform shape.
+
 The only P0 snap candidate classes are Node/Endpoint, Geometric Intersection, and Grid. A pointer-based drawing point is produced by one resolution pipeline: collect candidates → resolve Node/Endpoint → otherwise resolve Intersection → otherwise apply ORTHO when enabled → apply Grid assistance → final point. Separate UI modules must not snap that result again.
 
 Priority is **Node/Endpoint > Geometric Intersection > Grid**. A valid higher-priority candidate prevents every lower-priority candidate from changing the final point. Candidate eligibility is measured from the pointer to the screen-projected candidate using a **12 CSS px** screen-space tolerance; it is never a fixed world-coordinate/mm tolerance and does not vary with zoom.

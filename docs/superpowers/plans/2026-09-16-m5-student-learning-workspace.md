@@ -150,9 +150,9 @@ Each task uses its row's exact commands; browser node IDs run through `workspace
 - Modify: `projects/static/projects/workspace/renderer.js`
 - Test: `tests/browser/test_workspace.py`
 
-**Consumes:** O-M5-CAD-01; O-M5-CAD-02; a world pointer; a screen pointer; a candidate list; drawing origin; ORTHO state; Grid Snap state; and the world/screen transform.
+**Consumes:** O-M5-CAD-01; O-M5-CAD-02; O-M5-CAD-04 candidate `{kind,canonicalKey,worldPoint}` and affine `viewTransform`; finite world/screen pointers and origin; ORTHO state; Grid Snap state; and explicitNumeric authority.
 
-**Produces:** `resolvePointerPoint({worldPointer,screenPointer,candidates,origin,ortho,gridEnabled,explicitNumeric}) -> {point:{x:number,y:number},snapType:"NODE"|"INT"|"GRID"|null,candidateKey:string|null}` and `gridNearest(value) -> number`.
+**Produces:** `resolvePointerPoint({worldPointer,screenPointer,candidates,viewTransform,origin,ortho,gridEnabled,explicitNumeric}) -> {point:{x:number,y:number},snapType:"NODE"|"INT"|"GRID"|null,candidateKey:string|null}` and `gridNearest(value) -> number`.
 
 **Test to create:** `test_snap_resolver_priority_grid_and_intersection_boundary` asserts Node/Endpoint > Intersection > Grid priority, 12 CSS px screen tolerance, nearest same-class candidate, deterministic canonical-key tie break, explicit-numeric bypass, and no `Connection` count mutation for an intersection candidate. `test_grid_midpoint_and_ortho_resolution` asserts `493 -> 500`, `247 -> 200`, `50 -> 100`, `-50 -> 0`, `-150 -> -100`, and ORTHO free-axis-only Grid behavior.
 
