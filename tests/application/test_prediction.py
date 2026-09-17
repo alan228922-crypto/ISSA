@@ -262,7 +262,7 @@ def operational_graph(project_with_two_members, owner, success_run):
         stage="SOLVE", code="OK", severity="INFO",
     )
     connection = Connection.objects.get(project=project, client_key="c1")
-    Support.objects.create(project=project, target_connection=connection, support_type="PINNED")
+    Support.objects.create(project=project, client_key="s1", target_connection=connection, support_type="PINNED")
     NodeLoad.objects.create(project=project, target_connection=connection, client_key="load", fx_N=0, fy_N=-1)
     models = (StudentResultReveal, ValidationLog, AnalysisRun, Prediction, ModelRevision,
               Support, NodeLoad, Connection, PhysicalMember, GeometryNode)

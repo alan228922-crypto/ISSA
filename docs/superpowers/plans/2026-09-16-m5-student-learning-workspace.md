@@ -175,7 +175,7 @@ Each task uses its row's exact commands; browser node IDs run through `workspace
 - Modify: `projects/static/projects/workspace/state.js`; `projects/static/projects/workspace/renderer.js`
 - Test: `tests/browser/test_workspace.py`
 
-**Consumes:** the current local Physical Draft and resolved geometric points from Task 4.
+**Consumes:** the current local Physical Draft and resolved geometric points from Task 4. Support identity is available through O-M5-CAD-05A: every canonical Support has its own `client_key`; `target_connection_client_key` remains a relationship reference.
 
 **Produces:** `applyEditorAction(draft, action) -> newDraft` with the action discriminators `CREATE_NODE`, `CREATE_MEMBER`, `UPDATE_OBJECT`, `DELETE_OBJECT`, and `CREATE_CONNECTION`.
 

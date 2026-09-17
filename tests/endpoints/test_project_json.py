@@ -14,7 +14,7 @@ def post_json(client, name, payload, **kwargs):
 def save_bt01(client, project, material, section, *, version=0):
     payload = valid_payload(material, section, version=version)
     payload['connections'].append({'client_key': 'c2', 'geometry_node_client_key': 'n2', 'participating_member_client_keys': ['m1']})
-    payload['supports'].append({'target_connection_client_key': 'c2', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
+    payload['supports'].append({'client_key': 's2', 'target_connection_client_key': 'c2', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
     payload['node_loads'][0].update({'target_connection_client_key': 'c2', 'fx_N': 100.0, 'fy_N': 0.0})
     response = post_json(client, 'projects:model_save', payload, project_id=project.id)
     project.refresh_from_db()
@@ -28,7 +28,7 @@ def singular_payload(material, section, *, version=0):
         {'client_key': 'cmid', 'geometry_node_client_key': 'nmid', 'participating_member_client_keys': ['m1']},
         {'client_key': 'c2', 'geometry_node_client_key': 'n2', 'participating_member_client_keys': ['m1']},
     ])
-    payload['supports'].append({'target_connection_client_key': 'c2', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
+    payload['supports'].append({'client_key': 's2', 'target_connection_client_key': 'c2', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
     payload['node_loads'][0].update({'target_connection_client_key': 'c2', 'fx_N': 0.0, 'fy_N': -100.0})
     return payload
 

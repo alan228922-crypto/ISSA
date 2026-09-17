@@ -73,7 +73,7 @@ def test_owner_gets_bootstrap_and_manager_gets_read_only(context, client):
     }
     assert owner_bootstrap["draft"]["physical_members"] == [{"client_key": "m1", "start_node_client_key": "n1", "end_node_client_key": "n2", "material_id": material.id, "section_id": section.id, "label": "杆件", "is_active": True}]
     assert owner_bootstrap["draft"]["connections"] == [{"client_key": "c1", "geometry_node_client_key": "n1", "participating_member_client_keys": ["m1"]}]
-    assert owner_bootstrap["draft"]["supports"] == [{"target_connection_client_key": "c1", "support_type": "PINNED", "restrained_axis": None}]
+    assert owner_bootstrap["draft"]["supports"] == [{"client_key": "s1", "target_connection_client_key": "c1", "support_type": "PINNED", "restrained_axis": None}]
     assert owner_bootstrap["draft"]["node_loads"] == [{"client_key": "l1", "target_connection_client_key": "c1", "fx_N": 0.0, "fy_N": -100.0, "label": "荷载"}]
 
     manager = User.objects.create_user("workspace-manager", role=User.Role.MANAGER)

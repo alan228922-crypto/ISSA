@@ -30,7 +30,7 @@ def valid_payload(material, section, *, version=0):
         "nodes": [{"client_key": "n1", "x_mm": 0.0, "y_mm": 0.0, "label": "左"}, {"client_key": "n2", "x_mm": 1000.0, "y_mm": 0.0, "label": "右"}],
         "physical_members": [{"client_key": "m1", "start_node_client_key": "n1", "end_node_client_key": "n2", "material_id": material.id, "section_id": section.id, "label": "杆件", "is_active": True}],
         "connections": [{"client_key": "c1", "geometry_node_client_key": "n1", "participating_member_client_keys": ["m1"]}],
-        "supports": [{"target_connection_client_key": "c1", "support_type": "PINNED", "restrained_axis": None}],
+        "supports": [{"client_key": "s1", "target_connection_client_key": "c1", "support_type": "PINNED", "restrained_axis": None}],
         "node_loads": [{"client_key": "l1", "target_connection_client_key": "c1", "fx_N": 0.0, "fy_N": -100.0, "label": "荷载"}],
     }
 
@@ -71,7 +71,7 @@ def test_support_enforces_v13_axis_policy(context, support_type, axis, valid):
     _, project, _, _ = context
     node = GeometryNode.objects.create(project=project, client_key="n", x_mm=0, y_mm=0, label="A")
     connection = Connection.objects.create(project=project, client_key="c", geometry_node=node)
-    support = Support(project=project, target_connection=connection, support_type=support_type, restrained_axis=axis)
+    support = Support(project=project, client_key="s", target_connection=connection, support_type=support_type, restrained_axis=axis)
     if valid:
         support.full_clean()
     else:
@@ -108,6 +108,41 @@ def test_draft_save_increments_version_and_preserves_explicit_connection_only(co
     assert result["draft_version"] == 1
     assert GeometryNode.objects.filter(project=project).count() == 4
     assert Connection.objects.filter(project=project).count() == 1
+
+
+@pytest.mark.django_db
+def test_support_client_key_round_trips_through_draft_and_snapshot(context):
+    from modeling.models import Support
+    from modeling.services import save_physical_draft
+    from modeling.snapshot import build_physical_snapshot
+    from projects.workspace import _draft
+
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    project.refresh_from_db()
+
+    support = Support.objects.get(project=project)
+    assert support.client_key == "s1"
+    draft = _draft(project)
+    assert draft["supports"] == [{"client_key": "s1", "target_connection_client_key": "c1", "support_type": "PINNED", "restrained_axis": None}]
+    assert build_physical_snapshot(project)["supports"] == [{"id": "s1", "connection_id": "c1", "support_type": "PINNED", "restrained_axis": None}]
+
+    round_trip = {**draft, "expected_draft_version": project.draft_version}
+    save_physical_draft(actor=owner, project=project, payload=round_trip)
+    assert Support.objects.get(project=project).client_key == "s1"
+
+
+@pytest.mark.django_db
+def test_multiple_supports_keep_distinct_client_keys(context):
+    from modeling.services import save_physical_draft
+    from projects.workspace import _draft
+
+    owner, project, material, section = context
+    payload = valid_payload(material, section)
+    payload["supports"].append({"client_key": "s2", "target_connection_client_key": "c1", "support_type": "ROLLER", "restrained_axis": "Y"})
+    save_physical_draft(actor=owner, project=project, payload=payload)
+
+    assert [support["client_key"] for support in _draft(project)["supports"]] == ["s1", "s2"]
 
 
 @pytest.mark.django_db

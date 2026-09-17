@@ -55,11 +55,12 @@ def _draft(project):
         ],
         "supports": [
             {
+                "client_key": support.client_key,
                 "target_connection_client_key": support.target_connection.client_key,
                 "support_type": support.support_type,
                 "restrained_axis": support.restrained_axis,
             }
-            for support in Support.objects.filter(project=project).select_related("target_connection").order_by("pk")
+            for support in Support.objects.filter(project=project).select_related("target_connection").order_by("client_key")
         ],
         "node_loads": [
             {

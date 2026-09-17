@@ -28,6 +28,7 @@ def save_bt01_draft(owner, project, material, section, *, fx_N=100.0):
         'participating_member_client_keys': ['m1'],
     })
     payload['supports'].append({
+        'client_key': 's2',
         'target_connection_client_key': 'c2', 'support_type': 'ROLLER',
         'restrained_axis': 'Y',
     })
@@ -56,6 +57,7 @@ def save_singular_draft(owner, project, material, section):
         },
     ])
     payload['supports'].append({
+        'client_key': 's2',
         'target_connection_client_key': 'c2', 'support_type': 'ROLLER',
         'restrained_axis': 'Y',
     })
@@ -367,8 +369,8 @@ def test_split_member_persists_segment_mass_without_physical_member_double_count
         {'client_key': 'cmid', 'geometry_node_client_key': 'nmid', 'participating_member_client_keys': ['m1']},
         {'client_key': 'c2', 'geometry_node_client_key': 'n2', 'participating_member_client_keys': ['m1']},
     ])
-    payload['supports'].append({'target_connection_client_key': 'c2', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
-    payload['supports'].append({'target_connection_client_key': 'cmid', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
+    payload['supports'].append({'client_key': 's2', 'target_connection_client_key': 'c2', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
+    payload['supports'].append({'client_key': 's3', 'target_connection_client_key': 'cmid', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
     payload['node_loads'][0].update({'target_connection_client_key': 'c2', 'fx_N': 100.0, 'fy_N': 0.0})
     save_physical_draft(actor=owner, project=project, payload=payload)
     project.refresh_from_db()
