@@ -1,3 +1,5 @@
+import { applyEditorAction } from "./editor.js";
+
 export function readWorkspaceBootstrap(documentRef = document) {
   const element = documentRef.getElementById("workspace-bootstrap");
   if (!element) throw new Error("WORKSPACE_BOOTSTRAP_MISSING");
@@ -12,4 +14,8 @@ export function createWorkspaceState(bootstrap) {
     selectedObject: null,
     focusedObject: null,
   });
+}
+
+export function applyWorkspaceEditorAction(state, action) {
+  return Object.freeze({...state, draft: applyEditorAction(state.draft, action), dirty: true});
 }

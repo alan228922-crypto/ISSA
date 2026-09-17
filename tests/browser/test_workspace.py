@@ -48,7 +48,7 @@ def test_renderer_emits_stable_physical_svg(context, workspace_page):
     assert rendered['stable'] is True
     assert {(item['key'], item['kind']) for item in rendered['objects']} == {
         ('n1', 'GeometryNode'), ('n2', 'GeometryNode'), ('m1', 'PhysicalMember'),
-        ('c1', 'Connection'), ('support-c1', 'Support'), ('l1', 'NodeLoad'),
+        ('c1', 'Connection'), ('s1', 'Support'), ('l1', 'NodeLoad'),
     }
     assert all(item['tabindex'] == '0' and item['role'] == 'button' and item['label'] for item in rendered['objects'])
     assert any(item['key'] == 'm1' and item['selected'] == 'true' and item['focused'] == 'true' for item in rendered['objects'])
@@ -129,3 +129,65 @@ def test_renderer_displays_snap_indicator_types_as_text(context, workspace_page)
         {'text':'SNAP: INT','type':'INT'},
         {'text':'SNAP: GRID','type':'GRID'},
     ]
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_editor_crossing_members_do_not_create_connection(context, workspace_page):
+    owner, project, _, _ = context; page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => { const { applyEditorAction } = await import('/static/projects/workspace/editor.js'); const draft={schema_version:'physical-draft-v1',version:4,nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:''},{client_key:'n2',x_mm:100,y_mm:100,label:''},{client_key:'n3',x_mm:0,y_mm:100,label:''},{client_key:'n4',x_mm:100,y_mm:0,label:''}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'',is_active:true}],connections:[],supports:[],node_loads:[]}; const crossing=applyEditorAction(draft,{type:'CREATE_MEMBER',member:{client_key:'m2',start_node_client_key:'n3',end_node_client_key:'n4',material_id:1,section_id:1,label:'',is_active:true}}); const connected=applyEditorAction(crossing,{type:'CREATE_CONNECTION',connection:{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']}}); return {before:draft.connections.length,crossing:crossing.connections.length,explicit:connected.connections.length,unchanged:JSON.stringify(draft)}; }""")
+    assert result['before'] == 0 and result['crossing'] == 0 and result['explicit'] == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_editor_mutations_are_immutable(context, workspace_page):
+    owner, project, _, _ = context; page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => { const { applyEditorAction, EditorActionError } = await import('/static/projects/workspace/editor.js'); const { applyWorkspaceEditorAction } = await import('/static/projects/workspace/state.js'); const draft={schema_version:'physical-draft-v1',version:4,nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:'a'},{client_key:'n2',x_mm:100,y_mm:0,label:'b'}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'m',is_active:true}],connections:[],supports:[],node_loads:[]}; const original=JSON.stringify(draft); const fail=(action,source=draft)=>{const before=JSON.stringify(source);try{applyEditorAction(source,action)}catch(error){return {name:error.name,code:error.code,unchanged:before===JSON.stringify(source)}}}; const node=applyEditorAction(draft,{type:'CREATE_NODE',node:{client_key:'n3',x_mm:50,y_mm:50,label:'c'}}); const member=applyEditorAction(node,{type:'CREATE_MEMBER',member:{client_key:'m2',start_node_client_key:'n1',end_node_client_key:'n3',material_id:2,section_id:3,label:'m2',is_active:true}}); const connection=applyEditorAction(member,{type:'CREATE_CONNECTION',connection:{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1','m2']}}); const support=applyEditorAction(connection,{type:'CREATE_SUPPORT',support:{client_key:'s1',target_connection_client_key:'c1',support_type:'PINNED',restrained_axis:null}}); const load=applyEditorAction(support,{type:'CREATE_NODE_LOAD',nodeLoad:{client_key:'l1',target_connection_client_key:'c1',fx_N:1,fy_N:-2,label:'l'}}); const updated=applyEditorAction(load,{type:'UPDATE_OBJECT',target:{kind:'NODE_LOAD',clientKey:'l1'},changes:{fx_N:5,label:'new'}}); const deleted=applyEditorAction(updated,{type:'DELETE_OBJECT',target:{kind:'NODE_LOAD',clientKey:'l1'}}); const local=applyWorkspaceEditorAction({draft, draftVersion:4, readOnly:false},{type:'CREATE_NODE',node:{client_key:'n4',x_mm:4,y_mm:4,label:''}}); return {originalUnchanged:original===JSON.stringify(draft), collectionsNew:node.nodes!==draft.nodes&&member.physical_members!==node.physical_members&&connection.connections!==member.connections&&support.supports!==connection.supports&&load.node_loads!==support.node_loads, created:[node.nodes.at(-1).client_key,member.physical_members.at(-1).client_key,connection.connections.at(-1).client_key,support.supports.at(-1).client_key,load.node_loads.at(-1).client_key], updated:updated.node_loads[0], deletedLoads:deleted.node_loads.length, state:{dirty:local.dirty,version:local.draftVersion,key:local.draft.nodes.at(-1).client_key}, failures:{duplicate:fail({type:'CREATE_NODE',node:{client_key:'n1',x_mm:1,y_mm:1,label:''}}),malformed:fail({type:'CREATE_NODE',node:{client_key:'bad'}}),missing:fail({type:'CREATE_MEMBER',member:{client_key:'bad',start_node_client_key:'missing',end_node_client_key:'n1',material_id:1,section_id:1,label:'',is_active:true}}),forbidden:fail({type:'UPDATE_OBJECT',target:{kind:'CONNECTION',clientKey:'c1'},changes:{label:'x'}}),dependency:fail({type:'DELETE_OBJECT',target:{kind:'PHYSICAL_MEMBER',clientKey:'m1'}},connection)}, analysis:JSON.stringify(deleted).includes('AnalysisElement')}; }""")
+    assert result['originalUnchanged'] is True and result['collectionsNew'] is True
+    assert result['created'] == ['n3','m2','c1','s1','l1'] and result['updated'] == {'client_key':'l1','target_connection_client_key':'c1','fx_N':5,'fy_N':-2,'label':'new'} and result['deletedLoads'] == 0
+    assert result['state'] == {'dirty':True,'version':4,'key':'n4'} and result['analysis'] is False
+    assert result['failures'] == {
+        'duplicate': {'name':'EditorActionError','code':'EDITOR_DUPLICATE_CLIENT_KEY','unchanged':True},
+        'malformed': {'name':'EditorActionError','code':'EDITOR_INVALID_ACTION','unchanged':True},
+        'missing': {'name':'EditorActionError','code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
+        'forbidden': {'name':'EditorActionError','code':'EDITOR_UPDATE_FIELD_NOT_ALLOWED','unchanged':True},
+        'dependency': {'name':'EditorActionError','code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True},
+    }
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_editor_enforces_full_reference_update_and_delete_matrix(context, workspace_page):
+    owner, project, _, _ = context; page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { applyEditorAction } = await import('/static/projects/workspace/editor.js');
+      const draft={schema_version:'physical-draft-v1',version:4,nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:'a'},{client_key:'n2',x_mm:1,y_mm:0,label:'b'}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'m',is_active:true},{client_key:'m2',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'m2',is_active:true}],connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']}],supports:[{client_key:'s1',target_connection_client_key:'c1',support_type:'PINNED',restrained_axis:null}],node_loads:[{client_key:'l1',target_connection_client_key:'c1',fx_N:1,fy_N:2,label:'l'}]};
+      const fail=(action,source=draft)=>{const before=JSON.stringify(source);try{applyEditorAction(source,action)}catch(error){return {code:error.code,unchanged:before===JSON.stringify(source)}}};
+      const node=applyEditorAction(draft,{type:'UPDATE_OBJECT',target:{kind:'GEOMETRY_NODE',clientKey:'n1'},changes:{x_mm:3,label:'moved'}});
+      const member=applyEditorAction(node,{type:'UPDATE_OBJECT',target:{kind:'PHYSICAL_MEMBER',clientKey:'m1'},changes:{material_id:2,section_id:3,label:'changed',is_active:false}});
+      const support=applyEditorAction(member,{type:'UPDATE_OBJECT',target:{kind:'SUPPORT',clientKey:'s1'},changes:{support_type:'ROLLER',restrained_axis:'Y'}});
+      const crossKind=applyEditorAction(support,{type:'CREATE_NODE',node:{client_key:'m1',x_mm:9,y_mm:9,label:'same-other-kind'}});
+      const supportRemoved=applyEditorAction(support,{type:'DELETE_OBJECT',target:{kind:'SUPPORT',clientKey:'s1'}});
+      const loadRemoved=applyEditorAction(supportRemoved,{type:'DELETE_OBJECT',target:{kind:'NODE_LOAD',clientKey:'l1'}});
+      const connectionRemoved=applyEditorAction(loadRemoved,{type:'DELETE_OBJECT',target:{kind:'CONNECTION',clientKey:'c1'}});
+      const spare=applyEditorAction(connectionRemoved,{type:'CREATE_NODE',node:{client_key:'n3',x_mm:3,y_mm:3,label:''}});
+      const nodeRemoved=applyEditorAction(spare,{type:'DELETE_OBJECT',target:{kind:'GEOMETRY_NODE',clientKey:'n3'}});
+      return {updates:[node.nodes[0],member.physical_members[0],support.supports[0]], deletions:[supportRemoved.supports.length,loadRemoved.node_loads.length,connectionRemoved.connections.length,nodeRemoved.nodes.some(x=>x.client_key==='n3')], crossKind:crossKind.nodes.at(-1).client_key, failures:{duplicateParticipants:fail({type:'CREATE_CONNECTION',connection:{client_key:'bad1',geometry_node_client_key:'n1',participating_member_client_keys:['m1','m1']}}),unsortedParticipants:fail({type:'CREATE_CONNECTION',connection:{client_key:'bad2',geometry_node_client_key:'n1',participating_member_client_keys:['m2','m1']}}),missingConnection:fail({type:'CREATE_CONNECTION',connection:{client_key:'bad3',geometry_node_client_key:'missing',participating_member_client_keys:['m1']}}),missingSupport:fail({type:'CREATE_SUPPORT',support:{client_key:'s2',target_connection_client_key:'missing',support_type:'PINNED',restrained_axis:null}}),missingLoad:fail({type:'CREATE_NODE_LOAD',nodeLoad:{client_key:'l2',target_connection_client_key:'missing',fx_N:0,fy_N:0,label:''}}),nodeDependency:fail({type:'DELETE_OBJECT',target:{kind:'GEOMETRY_NODE',clientKey:'n1'}}),connectionDependency:fail({type:'DELETE_OBJECT',target:{kind:'CONNECTION',clientKey:'c1'}}),unknownKind:fail({type:'UPDATE_OBJECT',target:{kind:'BOGUS',clientKey:'x'},changes:{label:'x'}})}};
+    }""")
+    assert result['updates'] == [
+        {'client_key':'n1','x_mm':3,'y_mm':0,'label':'moved'},
+        {'client_key':'m1','start_node_client_key':'n1','end_node_client_key':'n2','material_id':2,'section_id':3,'label':'changed','is_active':False},
+        {'client_key':'s1','target_connection_client_key':'c1','support_type':'ROLLER','restrained_axis':'Y'},
+    ]
+    assert result['deletions'] == [0,0,0,False] and result['crossKind'] == 'm1'
+    assert result['failures'] == {
+        'duplicateParticipants': {'code':'EDITOR_INVALID_ACTION','unchanged':True},
+        'unsortedParticipants': {'code':'EDITOR_INVALID_ACTION','unchanged':True},
+        'missingConnection': {'code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
+        'missingSupport': {'code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
+        'missingLoad': {'code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
+        'nodeDependency': {'code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True},
+        'connectionDependency': {'code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True},
+        'unknownKind': {'code':'EDITOR_INVALID_ACTION','unchanged':True},
+    }

@@ -43,7 +43,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   const members = ordered(draft.physical_members || []);
   const connections = ordered(draft.connections || []);
   const loads = ordered(draft.node_loads || []);
-  const supports = [...(draft.supports || [])].sort((left, right) => left.target_connection_client_key.localeCompare(right.target_connection_client_key));
+  const supports = ordered(draft.supports || []);
   const nodePositions = pointMap(nodes);
   const connectionByKey = new Map(connections.map((connection) => [connection.client_key, connection]));
   const layers = [element("g", { "data-render-layer": "members" }), element("g", { "data-render-layer": "supports-loads" }), element("g", { "data-render-layer": "nodes-connections" })];
@@ -61,9 +61,8 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const connection = connectionByKey.get(support.target_connection_client_key);
     const target = connection && position(connection, nodePositions);
     if (!target) continue;
-    const key = `support-${support.target_connection_client_key}`;
     const label = support.support_type === "ROLLER" ? `滚动支座 ${support.restrained_axis} ${support.target_connection_client_key}` : `铰支座 ${support.target_connection_client_key}`;
-    const group = selectable("Support", key, label, uiState);
+    const group = selectable("Support", support.client_key, label, uiState);
     group.append(element("path", { d: `M ${target.x - 18} ${target.y + 22} L ${target.x + 18} ${target.y + 22} L ${target.x} ${target.y}`, fill: "none", stroke: "currentColor", "stroke-width": 3 }));
     layers[1].append(group);
   }
