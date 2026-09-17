@@ -1,0 +1,54 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>项目工作区</title>
+  <link rel="stylesheet" href="{% static 'projects/workspace/workspace.css' %}">
+</head>
+<body>
+  <main id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}">
+    <header id="workspace-project-header">
+      <h1>{{ bootstrap.project.name }}</h1>
+      <p>当前草稿 v{{ bootstrap.draft.version }}</p>
+      <p id="workspace-read-only"{% if not bootstrap.read_only %} hidden{% endif %}>只读查看</p>
+    </header>
+    <section class="workspace-layout" aria-label="结构学习工作区">
+      <aside id="workspace-modeling-panel" aria-label="建模工具">
+        <h2>建模工具</h2>
+        <p>选择、节点、构件、连接、支座、荷载</p>
+        <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>保存</button>
+        <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>模型检查</button>
+        <section id="workspace-properties-panel" aria-label="对象属性">
+          <h2>对象属性</h2>
+          <p>选择对象后可在这里查看属性。</p>
+        </section>
+      </aside>
+      <section class="workspace-center" aria-label="结构画布">
+        <svg id="workspace-canvas" role="img" aria-label="结构画布" viewBox="0 0 1000 600"></svg>
+      </section>
+      <aside id="workspace-workflow-panel" aria-label="学习流程">
+        <h2>学习流程</h2>
+        <ol id="workspace-workflow-steps">
+          <li>① 建模</li><li>② 预测</li><li>③ 分析</li><li>④ 理解</li><li>⑤ 反思</li>
+        </ol>
+        <section id="workspace-results" aria-label="分析结果"></section>
+        <section id="workspace-reflection" aria-label="反思"></section>
+      </aside>
+    </section>
+    <section id="workspace-dynamic-input" data-active-field="distance" hidden aria-label="动态输入">
+      <label>距离 <input id="workspace-dynamic-distance" type="text" disabled></label>
+      <label>角度 <input id="workspace-dynamic-angle" type="text" disabled></label>
+    </section>
+    <footer id="workspace-status-bar" aria-live="polite">
+      <span>X: —</span><span>Y: —</span><span>ΔL: —</span><span>Angle: —</span>
+      <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 关</span>
+      <span id="workspace-save-status">未保存修改：无</span>
+    </footer>
+  </main>
+  {{ bootstrap|json_script:"workspace-bootstrap" }}
+  <script type="module" src="{% static 'projects/workspace/state.js' %}"></script>
+  <script type="module" src="{% static 'projects/workspace/api.js' %}"></script>
+</body>
+</html>

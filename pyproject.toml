@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 dependencies = ["numpy==2.5.1"]
 
 [project.optional-dependencies]
-test = ["pytest==9.1.1"]
+test = ["pytest==9.1.1", "playwright==1.63.0"]
 web = ["Django==5.2.17", "pytest-django==4.14.0"]
 
 [build-system]
@@ -17,5 +17,6 @@ include = ["mechanics*", "idealization*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers"
+addopts = "--strict-markers -m 'not browser'"
 DJANGO_SETTINGS_MODULE = "config.settings"
+markers = ["browser: requires Playwright Chromium"]
