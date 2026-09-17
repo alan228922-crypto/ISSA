@@ -177,15 +177,15 @@ Each task uses its row's exact commands; browser node IDs run through `workspace
 
 **Consumes:** the current local Physical Draft and resolved geometric points from Task 4. Support identity is available through O-M5-CAD-05A: every canonical Support has its own `client_key`; `target_connection_client_key` remains a relationship reference.
 
-**Produces:** `applyEditorAction(draft, action) -> newDraft` with the action discriminators `CREATE_NODE`, `CREATE_MEMBER`, `UPDATE_OBJECT`, `DELETE_OBJECT`, and `CREATE_CONNECTION`.
+**Produces:** O-M5-CAD-05 `applyEditorAction(draft, action) -> newDraft`. Actions are exactly `CREATE_NODE {node:{client_key,x_mm,y_mm,label}}`, `CREATE_MEMBER {member:{client_key,start_node_client_key,end_node_client_key,material_id,section_id,label,is_active}}`, `CREATE_CONNECTION {connection:{client_key,geometry_node_client_key,participating_member_client_keys}}`, `CREATE_SUPPORT {support:{client_key,target_connection_client_key,support_type,restrained_axis}}`, `CREATE_NODE_LOAD {nodeLoad:{client_key,target_connection_client_key,fx_N,fy_N,label}}`, `UPDATE_OBJECT {target:{kind,clientKey},changes}`, and `DELETE_OBJECT {target:{kind,clientKey}}`. Target kinds are `GEOMETRY_NODE`, `PHYSICAL_MEMBER`, `CONNECTION`, `SUPPORT`, and `NODE_LOAD`; `clientKey` is canonical collection-local identity.
 
-**Test to create:** `test_editor_crossing_members_do_not_create_connection` asserts crossing members do not add a Connection unless the action is explicit. `test_editor_mutations_are_immutable` asserts each supported action returns an updated local draft without mutating the input draft.
+**Test to create:** `test_editor_crossing_members_do_not_create_connection` asserts a crossing `CREATE_MEMBER` leaves `connections` unchanged and only explicit `CREATE_CONNECTION` adds one. `test_editor_mutations_are_immutable` covers all seven creates/update/delete, canonical reference checks and lexical unique connection participants, collection-local duplicate keys, the O-M5-CAD-05 per-kind update whitelist (Connection forbidden), no-cascade dependency matrix, failure atomicity/error codes, and no AnalysisElement/mechanics output.
 
 **RED command:** `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q`
 
 **Expected RED:** editor module/export does not exist.
 
-**Implementation boundary:** Return immutable updated local drafts for the named editor actions; permit `CREATE_CONNECTION` only on an explicit user action; never derive a Connection from a geometric crossing; do not save to the server, resolve snaps, render mechanics, or run solver behavior.
+**Implementation boundary:** Follow O-M5-CAD-05 exactly: validate creates against existing canonical references; `CREATE_CONNECTION` alone may add a Connection; use the frozen GeometryNode/PhysicalMember/Connection/Support/NodeLoad shapes; allow only the frozen non-topological UPDATE fields; reject Connection update; enforce no implicit deletion cascade and the frozen dependency matrix; throw only the frozen `EditorActionError` codes; preserve input and root server version. Never derive a Connection from a crossing, save to the server, resolve snaps, render mechanics, run solver behavior, navigate/pick, or add undo/redo.
 
 **PASS command:** `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q`
 
