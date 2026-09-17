@@ -18,6 +18,7 @@ def _error(code):
 
 
 def _validate(actor,event,rows,requested_role):
+    # 预览和确认共用这套校验，确认阶段会再次执行以防令牌签发后状态变化。
     if not can_create_role(actor,event,requested_role):
         _error('ROLE_NOT_ALLOWED')
     if not can_manage_event(actor,event):
@@ -50,6 +51,7 @@ def _validate(actor,event,rows,requested_role):
 
 
 def preview_team_import(actor,event,source_filename,csv_text,requested_role=User.Role.USER):
+    # 预览令牌只携带短期确认所需的原始行，不把学号写入持久化审计记录。
     rows=list(csv.DictReader(StringIO(csv_text)))
     errors=_validate(actor,event,rows,requested_role)
     display=[{'team_number':row.get('team_number','').strip(),'username':f'{event.competition_date:%Y%m%d}{int(row.get("team_number","0")):02d}' if row.get('team_number','').strip().isdigit() else ''} for row in rows]
@@ -58,6 +60,7 @@ def preview_team_import(actor,event,source_filename,csv_text,requested_role=User
 
 
 def confirm_team_import(actor,event,token):
+    # 确认过程在事务内批量创建账户与成员关系，失败时不留下半批数据。
     try:
         data=signing.loads(token,salt='team-import',max_age=600)
     except signing.BadSignature:

@@ -12,6 +12,7 @@ def _finite(value):
 
 
 class GeometryNode(models.Model):
+    # 這些 ORM 模型保存的是使用者編輯中的 physical draft；它們不是求解器直接使用的分析節點。
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="geometry_nodes")
     client_key = models.CharField(max_length=128)
     x_mm = models.FloatField()
@@ -28,6 +29,7 @@ class GeometryNode(models.Model):
 
 
 class PhysicalMember(models.Model):
+    # 一根物理杆件保留端點、材料與截面等設計語意，後續才由 idealization 切成分析杆件。
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="physical_members")
     client_key = models.CharField(max_length=128)
     start_geometry_node = models.ForeignKey(GeometryNode, on_delete=models.CASCADE, related_name="starting_physical_members")
@@ -60,6 +62,7 @@ class PhysicalMember(models.Model):
 
 
 class Connection(models.Model):
+    # Connection 是荷載、支承與多根物理杆件的明確連接點；幾何上相近不代表自動連接。
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="connections")
     client_key = models.CharField(max_length=128)
     geometry_node = models.ForeignKey(GeometryNode, on_delete=models.CASCADE, related_name="connections")
@@ -85,6 +88,8 @@ class Support(models.Model):
     support_type = models.CharField(max_length=16, choices=Type.choices)
     restrained_axis = models.CharField(max_length=1, null=True, blank=True)
 
+    # 支承資料只記錄全域 X/Y 平移約束，實際轉換成求解器的布林自由度由理想化流程負責。
+
     def clean(self):
         super().clean()
         errors = {}
@@ -99,6 +104,7 @@ class Support(models.Model):
 
 
 class NodeLoad(models.Model):
+    # 荷載綁定 Connection 而非任意幾何位置，確保它能在分析模型中對應到明確節點。
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="node_loads")
     client_key = models.CharField(max_length=128)
     target_connection = models.ForeignKey(Connection, on_delete=models.CASCADE, related_name="node_loads")

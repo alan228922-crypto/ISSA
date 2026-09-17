@@ -19,6 +19,7 @@ def _finite(value: object) -> bool:
 
 def validate_truss_model(model: TrussModel) -> tuple[ValidationIssue, ...]:
     """回傳 deterministic issues；重複桿件拒絕，重複支承以 DOF 聯集解讀。"""
+    # 验证阶段只报告问题，不修正输入；调用方可据此决定是否进入求解。
     issues: list[ValidationIssue] = []
     def add(code: str, kind: str = 'model', ids: tuple[str,...] = (), field: str | None = None) -> None:
         issues.append(ValidationIssue(code, 'ERROR', kind, ids, field))

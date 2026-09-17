@@ -8,6 +8,9 @@ from .errors import MechanicsError, ValidationIssue
 from .validation import validate_truss_model
 
 
+# 閱讀提示：這個檔案把每根構件的剛度放進整體結構的計算表中。
+
+
 @dataclass(frozen=True)
 class AssembledSystem:
     """K 是 (2n,2n) N/mm 矩陣，P 是 (2n,) N 向量，索引對應輸入節點序列。"""
@@ -24,6 +27,8 @@ def element_stiffness(member: Member, node_i: Node, node_j: Node) -> NDArray[np.
     c=dx/L、s=dy/L 是全域方向餘弦；軸向伸長為 [-c,-s,c,s]·u。
     僅有軸向能量，所以全域剛度等於 EA/L 乘此投影向量的外積。
     """
+    # 每根桿件先在自己的兩端節點上形成局部貢獻，再由下方組裝進全域矩陣。
+    # 這裡只描述軸向伸縮；二維平面中的彎曲與轉動自由度不在本模型範圍內。
     dx,dy = node_j.x_mm-node_i.x_mm, node_j.y_mm-node_i.y_mm
     length = hypot(dx,dy)
     direction = np.array([-dx/length,-dy/length,dx/length,dy/length],dtype=np.float64)
@@ -39,6 +44,9 @@ def element_stiffness(member: Member, node_i: Node, node_j: Node) -> NDArray[np.
 
 def assemble_global_stiffness(model: TrussModel) -> AssembledSystem:
     """驗證後組裝 K/P，固定零位移支承索引；重複節點外力相加。"""
+    # 組裝的目的，是把每根桿件「抵抗伸縮的能力」放到同一個 K 矩陣，
+    # 並把所有節點荷載整理成 P 向量；之後求解器才能一次求出全體節點位移。
+    # DOF（自由度）就是每個節點可移動的方向，此模型每節點有 x、y 兩個 DOF。
     issues=validate_truss_model(model)
     if any(i.severity=='ERROR' for i in issues):
         raise MechanicsError(issues)

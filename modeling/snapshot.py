@@ -1,6 +1,9 @@
 """从 mutable ORM draft 生成纯 physical-snapshot-v1。"""
+
+# 閱讀提示：snapshot 是把目前草稿固定下來的一份資料副本，供後續分析使用。
 def build_physical_snapshot(project):
     """冻结数值，避免之后 Material/Section 的修改改变旧 Revision。"""
+    # 关系字段先按 client_key 排序，保证同一业务图每次序列化结果稳定。
     nodes=sorted(project.geometry_nodes.all(),key=lambda x:x.client_key)
     members=sorted(project.physical_members.select_related('material','section').all(),key=lambda x:x.client_key)
     connections=sorted(project.connections.prefetch_related('participating_members').all(),key=lambda x:x.client_key)

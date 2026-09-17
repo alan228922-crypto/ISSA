@@ -25,6 +25,7 @@ def purge_project_operational_data(*, project_id, actor_id=None):
     Repeating a completed purge returns the original receipt, including its actor.
     Protected historical links remain protected outside this ordered transaction.
     """
+    # 删除顺序显式列出依赖图，审计回执则保留在项目删除之外作为幂等凭证。
     from collections import Counter
     from django.db import transaction
 
@@ -65,6 +66,7 @@ def purge_project_operational_data(*, project_id, actor_id=None):
 
 def preview_section(*, actor, project, definition):
     """以既有纯截面引擎预览属性，不持久化任何项目或截面数据。"""
+    # 预览调用纯截面数学，不会把尚未确认的定义写入项目草稿。
     if not can_modify_project(actor, project):
         raise SectionServiceError('PROJECT_WRITE_DENIED')
     if not isinstance(definition, dict) or definition.get('schema_version') != 'section-definition-v1':

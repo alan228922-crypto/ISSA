@@ -171,6 +171,7 @@ def _load_path(path, members, connections):
 
 def validate_prediction_payload(project, payload):
     """Validate only stored prediction-v1 shape and physical topology."""
+    # 预测引用的是物理拓扑而不是理想化后的分析节点，确保学生填写的证据可追溯。
     if not isinstance(payload, dict) or payload.get("schema_version") != "prediction-v1":
         _schema_error()
     _only_keys(
@@ -234,6 +235,7 @@ def _locked_reflection(reflection):
 
 
 def create_reflection(*, run, actor):
+    # 反思只能绑定成功分析且已向学生揭示结果的 Run，避免提前泄露答案。
     with transaction.atomic():
         try:
             run = AnalysisRun.objects.select_related("project__event", "model_revision").get(
@@ -258,6 +260,7 @@ def create_reflection(*, run, actor):
 
 
 def update_reflection(*, reflection, actor, fields):
+    # 草稿状态允许增量编辑；完成后只读，保证提交内容可作为学习证据保存。
     allowed = {"original_reasoning", "unexpected_results", "next_iteration_intent"}
     if not isinstance(fields, dict) or set(fields) - allowed or any(
         not isinstance(value, str) or len(value) > 2000 for value in fields.values()
@@ -277,6 +280,7 @@ def update_reflection(*, reflection, actor, fields):
 
 
 def complete_reflection(*, reflection, actor):
+    # 完成操作检查三段必填文本并记录完成时间，状态转换在事务中完成。
     with transaction.atomic():
         project, reflection = _locked_reflection(reflection)
         _authorize_reflection_author(project, actor)
@@ -309,6 +313,7 @@ def get_reflection_for_read(*, reflection, actor):
 
 def create_prediction(*, project, actor, expected_draft_version):
     """Create a server-bound DRAFT for the Project's current draft version."""
+    # 预测草稿绑定创建时的版本，后续草稿变更会使其失效而不能参与揭示。
     with transaction.atomic():
         project = Project.objects.select_for_update().select_related("event").get(pk=project.pk)
         _authorize_student_owner(project, actor)
@@ -325,6 +330,7 @@ def create_prediction(*, project, actor, expected_draft_version):
 
 def complete_prediction(*, prediction, actor, expected_draft_version, payload):
     """Atomically validate and complete a current, unrevealed prediction draft."""
+    # 锁定项目和预测后再次检查版本、揭示状态与拓扑，防止并发提交绕过时序规则。
     error_code = None
     with transaction.atomic():
         project = Project.objects.select_for_update().select_related("event").get(pk=prediction.project_id)

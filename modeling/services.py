@@ -19,6 +19,7 @@ class DraftSaveError(ValueError):
 
 
 def _items(payload, key):
+    # 顶层集合必须是数组；后续 keyed 校验再负责元素身份与去重。
     value = payload.get(key)
     if not isinstance(value, list):
         raise DraftSaveError("INVALID_DRAFT")
@@ -26,6 +27,7 @@ def _items(payload, key):
 
 
 def _keyed(items, key="client_key"):
+    # client_key 是一次草稿替换中的稳定引用，重复键会破坏跨实体关联。
     result = {}
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get(key), str) or not item[key] or item[key] in result:
@@ -35,6 +37,7 @@ def _keyed(items, key="client_key"):
 
 
 def _instance(instance):
+    # 统一执行数值有限性、Django 模型校验和保存，避免单个分支遗漏校验。
     numeric_fields = (("x_mm", "y_mm") if isinstance(instance, GeometryNode) else
                       ("fx_N", "fy_N") if isinstance(instance, NodeLoad) else ())
     if any(not isinstance(getattr(instance, field), (int, float)) or isinstance(getattr(instance, field), bool) or not math.isfinite(getattr(instance, field)) for field in numeric_fields):
@@ -48,6 +51,7 @@ def _instance(instance):
 
 
 def _owned(model, object_id, owner_id, error_code):
+    # 材料与截面必须属于项目所有者，防止通过外部主键引用他人的资源。
     try:
         obj = model.objects.get(id=object_id, owner_user_id=owner_id)
     except (model.DoesNotExist, TypeError, ValueError) as exc:
@@ -75,6 +79,7 @@ def save_physical_draft(*, actor, project, payload):
     loads = _keyed(_items(payload, "node_loads"))
 
     with transaction.atomic():
+        # 行锁把版本检查、删除旧图和写入新图合并成一次原子草稿替换。
         project = type(project).objects.select_for_update().get(pk=project.pk)
         if project.draft_version != expected_version:
             raise DraftSaveError("STALE_DRAFT")

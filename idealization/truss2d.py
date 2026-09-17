@@ -3,6 +3,9 @@ from dataclasses import dataclass
 from math import hypot
 from mechanics.truss2d.model import Member, Node, NodalLoad, Support, TrussModel
 
+
+# 閱讀提示：這裡把學生看到的物理結構，整理成 Solver 看得懂的節點與構件。
+
 class IdealizationError(ValueError): pass
 @dataclass(frozen=True)
 class IdealizationResult:
@@ -12,6 +15,7 @@ class IdealizationResult:
     physical_member_to_analysis: dict
 
 def idealize(snapshot):
+    # 理想化把物理杆件按显式连接点切分为分析杆件，避免在求解器内猜测拓扑。
     if snapshot.get('schema_version')!='physical-snapshot-v1': raise IdealizationError('UNSUPPORTED_SNAPSHOT_SCHEMA')
     nodes={x['id']:x for x in snapshot['nodes']}; members=sorted(snapshot['physical_members'],key=lambda x:x['id'])
     connections={x['id']:x for x in snapshot['connections']}
@@ -23,6 +27,7 @@ def idealize(snapshot):
         if key not in node_map: output_nodes.append(Node(key,x,y)); node_map[key]=ref
         return key
     for m in members:
+        # 每根物理杆件的端点和连接点按参数 t 排序，之后再生成连续分析段。
         a,b=nodes[m['start_node_id']],nodes[m['end_node_id']]; dx=b['x_mm']-a['x_mm']; dy=b['y_mm']-a['y_mm']; length=dx*dx+dy*dy
         points=[(0.0,'free:'+m['id']+':START',a),(1.0,'free:'+m['id']+':END',b)]
         for c in participation.get(m['id'],[]):
@@ -40,6 +45,7 @@ def idealize(snapshot):
             mid=m['id']+':'+str(i+1); output_members.append(Member(mid,left,right,m['material']['E_MPa'],m['section']['A_mm2'])); member_map[mid]=m['id']; seg.append(mid)
         reverse[m['id']]=seg
     supports=[]
+    # 支座与荷载只作用于 Connection；自由端不会被隐式提升为分析节点。
     for s in snapshot['supports']:
         key='connection:'+s['connection_id']; supports.append(Support(key,s['support_type']=='PINNED' or s['restrained_axis']=='X',s['support_type']=='PINNED' or s['restrained_axis']=='Y'))
     loads=[]

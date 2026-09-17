@@ -24,6 +24,8 @@ class MemberMass:
 def member_stress(member_id: str, axial_force_N: float, A_mm2: float,
                   *, zero_force_atol_N: float = 1e-9) -> MemberStress:
     """σ=N/A：N/mm²=MPa，受拉正、受壓負；零分類容差以 N 為單位。"""
+    # 這一步只把已求得的軸力轉成便於學生閱讀的應力與拉／壓標籤，
+    # 不判斷材料是否安全，也不把分類標籤當成屈曲或破壞結論。
     force=finite_value(axial_force_N,'axial_force_N')
     area=finite_value(A_mm2,'A_mm2',positive=True)
     tolerance=finite_value(zero_force_atol_N,'zero_force_atol_N',nonnegative=True)
@@ -43,6 +45,8 @@ def member_mass(member_id: str, density_g_per_mm3: float, A_mm2: float,
 
 def total_mass_g(members: Sequence[MemberMass]) -> float:
     """加總互不重複的 analysis member；physical 拆分回映由未來 Idealization 負責。"""
+    # 理想化後一根物理杆件可能被切成多段，因此這裡加總的是分析杆件，
+    # 呼叫端若要回到物理杆件層級，必須使用理想化階段保留的對應關係。
     if len({m.member_id for m in members}) != len(members):
         raise ValueError('DUPLICATE_MEMBER_ID')
     values=[finite_value(m.mass_g,'mass_g',nonnegative=True) for m in members]

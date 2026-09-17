@@ -14,6 +14,8 @@ def _axes(Ix_mm4: float, Iy_mm4: float) -> tuple[str, str]:
 
 def rectangle_properties(rectangle: Rectangle) -> SectionProperties:
     """計算矩形重心性質；b/h 為 mm，A 為 mm²、Ix/Iy 為 mm⁴。"""
+    # 截面性質會被桿件剛度、應力與理論質量使用；這個純函數只計算幾何／質量
+    # 結果，不替上層決定材料強度、容許應力或哪個方向控制屈曲。
     validate_rectangle(rectangle)
     b, h = rectangle.width_mm, rectangle.height_mm
     # Ix 積分 y² dA，故高度 h 是三次方；Iy 則積分 x² dA。
@@ -53,6 +55,8 @@ def _overlaps(a: Rectangle, b: Rectangle) -> bool:
 
 def composite_properties(components: Sequence[Rectangle]) -> SectionProperties:
     """非重疊矩形的面積重心與平行軸定理；重疊回報不支援，保留 O-005。"""
+    # 組合截面先把各矩形的面積與慣性矩移到共同重心，再相加；
+    # 因此輸入中的每個矩形必須代表不重疊的實體區塊，重疊處理不在目前契約內。
     if not components:
         raise ValueError('EMPTY_SECTION')
     parts = [rectangle_properties(r) for r in components]

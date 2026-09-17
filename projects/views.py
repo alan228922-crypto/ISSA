@@ -21,6 +21,9 @@ from .models import Project
 from .services import can_view_project, preview_section
 
 
+# 閱讀提示：View 主要處理瀏覽器請求；真正的模型與力學規則在 service 層。
+
+
 MESSAGES = {
     'MALFORMED_JSON': '请求内容不是有效的 JSON。',
     'INVALID_REQUEST': '请求字段不完整或格式不正确。',
@@ -46,6 +49,7 @@ def _error(code, status, *, details=None):
 
 
 def _json_body(request):
+    # View 只負責把 HTTP body 轉成字典；欄位語意與業務驗證交給下層服務。
     try:
         payload = json.loads(request.body)
     except (TypeError, UnicodeDecodeError, json.JSONDecodeError):
@@ -60,6 +64,7 @@ def _project(project_id):
 @login_required
 @require_POST
 def model_save(request, project_id):
+    # 這個端點接收前端整份 physical draft，服務層會以版本號保護原子替換。
     project = _project(project_id)
     if project is None:
         return _error('PROJECT_NOT_FOUND', 404)
@@ -77,6 +82,7 @@ def model_save(request, project_id):
 @login_required
 @require_POST
 def model_check(request, project_id):
+    # Check 是不產生 Revision／AnalysisRun 的前置檢查，讓前端先取得可讀的模型問題。
     project = _project(project_id)
     if project is None:
         return _error('PROJECT_NOT_FOUND', 404)
@@ -95,6 +101,7 @@ def model_check(request, project_id):
 @login_required
 @require_POST
 def analyze(request, project_id):
+    # 正式分析端點只做 HTTP 適配；快照、預測時序、理想化與 Solver 流程由 orchestration 負責。
     project = _project(project_id)
     if project is None:
         return _error('PROJECT_NOT_FOUND', 404)
@@ -129,6 +136,7 @@ def analyze(request, project_id):
 @login_required
 @require_GET
 def analysis_data(request, project_id, run_id):
+    # 成功結果在交付給前端前會記錄學生查看結果的事件，支援預測揭示與學習流程追蹤。
     project = _project(project_id)
     if project is None:
         return _error('PROJECT_NOT_FOUND', 404)
@@ -150,6 +158,7 @@ def analysis_data(request, project_id, run_id):
 @login_required
 @require_GET
 def analysis_comparison(request, project_id, run_id):
+    # 比較資料必須經 disclosure service 重新確認權限與生命週期，View 不自行重算力學結果。
     project = _project(project_id)
     if project is None:
         return _error('PROJECT_NOT_FOUND', 404)
@@ -172,6 +181,7 @@ def analysis_comparison(request, project_id, run_id):
 @login_required
 @require_GET
 def analysis_explanation(request, project_id, run_id):
+    # Explanation 將已確認的分析證據整理成教學區塊，這裡只負責回傳 JSON 協議。
     project = _project(project_id)
     if project is None:
         return _error('PROJECT_NOT_FOUND', 404)
@@ -194,6 +204,7 @@ def analysis_explanation(request, project_id, run_id):
 @login_required
 @require_POST
 def section_preview(request, project_id):
+    # 截面預覽只計算暫存定義，不會直接建立或修改持久化 Section。
     project = _project(project_id)
     if project is None:
         return _error('PROJECT_NOT_FOUND', 404)

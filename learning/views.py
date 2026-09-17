@@ -17,6 +17,9 @@ from .services import (
 )
 
 
+# 閱讀提示：這裡只負責接收預測／反思請求，生命週期規則交給 learning service。
+
+
 MESSAGES = {
     "MALFORMED_JSON": "请求内容不是有效的 JSON。",
     "INVALID_REQUEST": "请求字段不完整或格式不正确。",
@@ -69,6 +72,7 @@ def _error(code, status):
 
 
 def _json_body(request):
+    # 先限制輸入為 JSON object；預測與反思的細節驗證由 lifecycle service 統一處理。
     try:
         payload = json.loads(request.body)
     except (TypeError, UnicodeDecodeError, json.JSONDecodeError):
@@ -85,6 +89,7 @@ def _project(project_id):
 
 
 def _prediction_response(prediction, *, status=200):
+    # 將 Prediction 的狀態與版本欄位固定成前端可依賴的回應格式。
     return JsonResponse(
         {
             "ok": True,
@@ -113,6 +118,7 @@ def _service_error(exc):
 
 
 def _reflection_response(reflection, *, status=200):
+    # 反思回應保留其綁定的分析版本，讓前端知道這段學習紀錄對應哪一次分析。
     return JsonResponse({
         "ok": True,
         "analysis_run_id": reflection.analysis_run_id,
@@ -140,6 +146,7 @@ def _reflection_error(exc):
 @login_required
 @require_POST
 def prediction_create(request, project_id):
+    # 建立的是綁定目前草稿版本的空白預測，不在這個端點直接接受預測內容。
     try:
         project = _project(project_id)
         if project is None:
@@ -166,6 +173,7 @@ def prediction_create(request, project_id):
 @login_required
 @require_POST
 def prediction_complete(request, project_id, prediction_id):
+    # 完成預測前由服務層再次檢查草稿版本、拓撲與揭示狀態，避免答案時序被繞過。
     try:
         project = _project(project_id)
         if project is None:
@@ -202,6 +210,7 @@ def prediction_complete(request, project_id, prediction_id):
 @login_required
 @require_GET
 def prediction_detail(request, project_id, prediction_id):
+    # 詳細資料可供預測頁恢復草稿；是否可編輯仍由回應狀態與服務層規則決定。
     try:
         project = _project(project_id)
         if project is None:

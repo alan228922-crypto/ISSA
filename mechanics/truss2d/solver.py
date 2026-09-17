@@ -7,6 +7,9 @@ from .model import (TrussModel, TrussSolveResult, NodeDisplacement, SupportReact
                     MemberAxialForce, SolveDiagnostics)
 
 
+# 閱讀提示：Solver 的主要任務是由荷載和支承條件求出節點位移。
+
+
 class Truss2DSolver:
     """只解 ux/uy 與軸力的小位移線彈性桁架；所有支承位移為零。"""
     version = 'truss2d-0.1.0'
@@ -20,12 +23,17 @@ class Truss2DSolver:
                 raise MechanicsError((ValidationIssue('NUMERIC_RANGE'),)) from exc
 
     def _solve(self, model: TrussModel) -> TrussSolveResult:
+        # 流程順序是「驗證 → 組裝 K/P → 套用支承 → 求自由 DOF 位移 → 回算反力與軸力」。
+        # 這裡使用小位移、線彈性直接剛度法；若結構沒有唯一解，會回報機器碼，
+        # 不以人工彈簧或偽逆製造一個看似合理的答案。
         system=assemble_global_stiffness(model)
         matrix,loads=system.K_N_per_mm,system.P_N
         restrained=set(system.restrained_dofs)
         free=[i for i in range(len(loads)) if i not in restrained]
         displacements=np.zeros_like(loads)
         if free:
+            # 受約束 DOF 的位移已知為零，因此只解未受約束的縮減方程。
+            # 先做對角尺度化是為了減少數值量級差，還原後的位移仍以 mm 表示。
             reduced=matrix[np.ix_(free,free)]
             diagonal=np.diag(reduced)
             if np.any(diagonal<=0):

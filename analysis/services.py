@@ -7,6 +7,7 @@ from .models import ModelRevision
 class RevisionError(ValueError): pass
 
 def get_or_create_revision(*,project,actor):
+    # Revision 是不可变分析输入的边界：只有快照哈希或草稿版本变化才创建新版本。
     if not can_modify_project(actor,project): raise RevisionError('PROJECT_WRITE_DENIED')
     with transaction.atomic():
         project=type(project).objects.select_for_update().get(pk=project.pk)

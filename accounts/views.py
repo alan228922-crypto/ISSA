@@ -15,6 +15,7 @@ class AccountLogoutView(LogoutView):
 
 @login_required
 def password_change(request):
+    # 強制改密完成後同步更新 session，避免使用者已換密碼卻被舊 session 立即登出。
     if request.method=='POST':
         form=ForcedPasswordChangeForm(request.user,request.POST)
         if form.is_valid():
