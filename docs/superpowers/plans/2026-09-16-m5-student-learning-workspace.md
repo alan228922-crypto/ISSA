@@ -56,12 +56,12 @@ Each task uses its row's exact commands; browser node IDs run through `workspace
 | Task | RED command / reason | PASS command | Regression command | Commit |
 |---|---|---|---|---|
 | 1 | `pytest tests/endpoints/test_workspace.py::test_owner_gets_bootstrap_and_manager_gets_read_only -q` / route 404 | same command | `pytest tests/permissions/test_event_project_access.py -q` | `feat: add workspace shell` |
-| 2 | `pytest tests/browser/test_workspace.py::test_renderer_emits_stable_physical_svg -q` / module unavailable | same command | `pytest tests/endpoints/test_workspace.py -q` | `feat: render physical draft SVG` |
-| 3 | `pytest tests/browser/test_workspace.py::test_cad_parser_and_state_transitions -q` / exports unavailable | same command | `pytest tests/browser/test_workspace.py::test_cad_keyboard_tab_accessibility -q` | `feat: add CAD parser and state` |
-| 4 | `pytest tests/browser/test_workspace.py::test_snap_resolver_priority_grid_and_intersection_boundary -q` / resolver unavailable | same command | `pytest tests/browser/test_workspace.py::test_grid_midpoint_and_ortho_resolution -q` | `feat: add deterministic snap resolver` |
-| 5 | `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q` / editor unavailable | same command | `pytest tests/browser/test_workspace.py::test_editor_mutations_are_immutable -q` | `feat: add structural editor mutations` |
-| 6 | `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q` / interaction module unavailable | same command | `pytest tests/browser/test_workspace.py::test_svg_objects_are_keyboard_focusable -q` | `feat: add canvas navigation` |
-| 7 | `pytest tests/browser/test_workspace.py::test_save_check_error_presentation -q` / API workflow unavailable | same command | `pytest tests/endpoints/test_project_json.py -q` | `feat: add workspace save and model check` |
+| 2 | `pytest tests/browser/test_workspace.py::test_renderer_emits_stable_physical_svg -q` / module unavailable | `pytest tests/browser/test_workspace.py::test_renderer_emits_stable_physical_svg -q` | `pytest tests/endpoints/test_workspace.py -q` | `feat: render physical draft SVG` |
+| 3 | `pytest tests/browser/test_workspace.py::test_cad_parser_and_state_transitions -q` / exports unavailable | `pytest tests/browser/test_workspace.py::test_cad_parser_and_state_transitions -q` | `pytest tests/browser/test_workspace.py::test_cad_keyboard_tab_accessibility -q` | `feat: add CAD parser and state` |
+| 4 | `pytest tests/browser/test_workspace.py::test_snap_resolver_priority_grid_and_intersection_boundary -q` / resolver unavailable | `pytest tests/browser/test_workspace.py::test_snap_resolver_priority_grid_and_intersection_boundary -q` | `pytest tests/browser/test_workspace.py::test_grid_midpoint_and_ortho_resolution -q` | `feat: add deterministic snap resolver` |
+| 5 | `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q` / editor unavailable | `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q` | `pytest tests/browser/test_workspace.py::test_editor_mutations_are_immutable -q` | `feat: add structural editor mutations` |
+| 6 | `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q` / interaction module unavailable | `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q` | `pytest tests/browser/test_workspace.py::test_svg_objects_are_keyboard_focusable -q` | `feat: add canvas navigation` |
+| 7 | `pytest tests/browser/test_workspace.py::test_save_check_error_presentation -q` / API workflow unavailable | `pytest tests/browser/test_workspace.py::test_save_check_error_presentation -q` | `pytest tests/endpoints/test_project_json.py -q` | `feat: add workspace save and model check` |
 | 8 | `pytest tests/application/test_prediction.py::test_current_prediction_singleton -q` / service absent | same command | `pytest tests/endpoints/test_prediction_json.py -q` | `feat: add prediction discovery` |
 | 9 | `pytest tests/browser/test_workspace.py::test_prediction_workspace_states_and_skip -q` / prediction module unavailable | same command | `pytest tests/application/test_prediction.py tests/endpoints/test_prediction_json.py -q` | `feat: add prediction workspace UI` |
 | 10 | `pytest tests/browser/test_workspace.py::test_analyze_level_one_and_stale_run -q` / results module unavailable | same command | `pytest tests/endpoints/test_project_json.py -q` | `feat: add analyze result level one` |
@@ -78,40 +78,154 @@ Each task uses its row's exact commands; browser node IDs run through `workspace
 - [ ] Commit `feat: add workspace shell`.
 
 ### Task 2 (Gate 2A): Deterministic SVG renderer
-**Files:** Create `renderer.js`; modify template/state; test `tests/browser/test_workspace.py`.
-**Interfaces:** `renderWorkspace(svg, draft, uiState)`; emits nodes/members/connections/supports/loads keyed by client key.
-- [ ] Write renderer fixture test asserting stable keyed SVG and no analysis-element label; RED.
-- [ ] Render physical objects only, text/non-color selection; PASS and Task 1 test; commit.
+
+**Files:**
+- Create: `projects/static/projects/workspace/renderer.js`
+- Modify: `templates/projects/workspace.html`; `projects/static/projects/workspace/state.js`
+- Test: `tests/browser/test_workspace.py`
+
+**Consumes:** `workspace-bootstrap-v1.draft`; `#workspace-canvas`; the Stable Workspace DOM Contract; the accessible SVG object contract.
+
+**Produces:** `renderWorkspace(svg, draft, uiState) -> void`, rendering `GeometryNode`, `PhysicalMember`, `Connection`, `Support`, and `NodeLoad`. Every selectable SVG object has `data-client-key`, `data-object-kind`, `tabindex="0"`, and an accessible `aria-label`.
+
+**Test to create:** `test_renderer_emits_stable_physical_svg` asserts stable keyed physical objects, no student-visible `AnalysisElement` label, and the selectable-object accessibility contract.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_renderer_emits_stable_physical_svg -q`
+
+**Expected RED:** renderer module/export does not yet exist.
+
+**Implementation boundary:** Render only the physical draft into the supplied SVG; preserve the input draft without mutation; do not infer mechanics, classify member force, create a `Connection`, or expose analysis-element identity as a student object.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_renderer_emits_stable_physical_svg -q`
+
+**Regression command:** `pytest tests/endpoints/test_workspace.py -q`
+
+**Commit:** `feat: render physical draft SVG`
 
 ### Task 3 (Gate 2B-1): Pure CAD parser and drawing state
-**Files:** Create `cad-input.js`, `cad-state.js`; test `tests/browser/test_workspace.py`.
-**Interfaces:** `parseCadInput(text, origin) -> {ok:true,kind:"ABSOLUTE"|"RELATIVE"|"POLAR",point:{x:number,y:number}}|{ok:false,code:"EMPTY"|"INCOMPLETE"|"MALFORMED"}`; `transition(state,event) -> {state,fieldIndex}`. Events are `SELECT_TOOL`, `POINTER_POINT`, `INPUT_CHANGE`, `TAB`, `ENTER`, `ESC`; Esc returns `IDLE`, and Tab is intercepted only in `DYNAMIC_INPUT`.
-- [ ] Test `1000,500`, `@-2.5, 3`, `1000<30`, whitespace, malformed/partial, Enter/Esc/Tab states; RED.
-- [ ] Implement DOM-free parser and enum states `IDLE,SELECTING,DRAW_NODE,DRAW_MEMBER_WAIT_START,DRAW_MEMBER_WAIT_END,DYNAMIC_INPUT`; Tab only intercepts dynamic input; PASS; commit.
+
+**Files:**
+- Create: `projects/static/projects/workspace/cad-input.js`; `projects/static/projects/workspace/cad-state.js`
+- Modify: None
+- Test: `tests/browser/test_workspace.py`
+
+**Consumes:** the frozen CAD input grammar; the Dynamic Input DOM Contract; the angle convention `0° = +X` and positive counter-clockwise.
+
+**Produces:** `parseCadInput(text, origin) -> {ok:true,kind:"ABSOLUTE"|"RELATIVE"|"POLAR",point:{x:number,y:number}}|{ok:false,code:"EMPTY"|"INCOMPLETE"|"MALFORMED"}` and `transition(state, event) -> {state, fieldIndex}`. States are `IDLE`, `SELECTING`, `DRAW_NODE`, `DRAW_MEMBER_WAIT_START`, `DRAW_MEMBER_WAIT_END`, and `DYNAMIC_INPUT`; events are `SELECT_TOOL`, `POINTER_POINT`, `INPUT_CHANGE`, `TAB`, `ENTER`, and `ESC`.
+
+**Test to create:** `test_cad_parser_and_state_transitions` asserts `1000,500`, `@-2.5, 3`, `1000<30`, whitespace, malformed and partial input, and Enter/Esc/Tab transitions. `test_cad_keyboard_tab_accessibility` asserts that Tab switches fields only in `DYNAMIC_INPUT`.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_cad_parser_and_state_transitions -q`
+
+**Expected RED:** CAD parser/state exports do not exist.
+
+**Implementation boundary:** Keep parsing DOM-independent; Esc returns in-progress drawing to stable `IDLE`; intercept Tab only in `DYNAMIC_INPUT` and leave browser Tab navigation untouched in every other state; do not render SVG, mutate drafts, resolve pointer snaps, or perform mechanics operations.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_cad_parser_and_state_transitions -q`
+
+**Regression command:** `pytest tests/browser/test_workspace.py::test_cad_keyboard_tab_accessibility -q`
+
+**Commit:** `feat: add CAD parser and state`
 
 ### Task 4 (Gate 2B-2): Geometry, SNAP, Grid, and topology boundary
-**Files:** Create `geometry.js`; modify renderer; test `tests/browser/test_workspace.py`.
-**Interfaces:** `resolvePointerPoint({worldPointer,screenPointer,candidates,origin,ortho,gridEnabled,explicitNumeric}) -> {point:{x,y},snapType:"NODE"|"INT"|"GRID"|null,candidateKey:string|null}`; `gridNearest(value) -> number` uses 100 mm/global origin/positive midpoint.
-- [ ] Test 12 CSS px, priority/nearest/canonical tie, `493→500`, `50→100`, `-50→0`, ORTHO free axis, numeric bypass, intersection candidate without Connection mutation; RED.
-- [ ] Implement single resolver and visible `NODE|INT|GRID`; keep `createConnection` solely in editor; PASS; commit.
+
+**Files:**
+- Create: `projects/static/projects/workspace/geometry.js`
+- Modify: `projects/static/projects/workspace/renderer.js`
+- Test: `tests/browser/test_workspace.py`
+
+**Consumes:** O-M5-CAD-01; O-M5-CAD-02; a world pointer; a screen pointer; a candidate list; drawing origin; ORTHO state; Grid Snap state; and the world/screen transform.
+
+**Produces:** `resolvePointerPoint({worldPointer,screenPointer,candidates,origin,ortho,gridEnabled,explicitNumeric}) -> {point:{x:number,y:number},snapType:"NODE"|"INT"|"GRID"|null,candidateKey:string|null}` and `gridNearest(value) -> number`.
+
+**Test to create:** `test_snap_resolver_priority_grid_and_intersection_boundary` asserts Node/Endpoint > Intersection > Grid priority, 12 CSS px screen tolerance, nearest same-class candidate, deterministic canonical-key tie break, explicit-numeric bypass, and no `Connection` count mutation for an intersection candidate. `test_grid_midpoint_and_ortho_resolution` asserts `493 -> 500`, `247 -> 200`, `50 -> 100`, `-50 -> 0`, `-150 -> -100`, and ORTHO free-axis-only Grid behavior.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_snap_resolver_priority_grid_and_intersection_boundary -q`
+
+**Expected RED:** geometry resolver export does not exist.
+
+**Implementation boundary:** Implement geometry only through one final-point resolver; use the fixed 100 mm global-origin grid and frozen priority/tolerance rules; explicit numeric input bypasses pointer SNAP; do not mutate the draft or Connections, invoke editor actions, render analysis, or perform mechanics.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_snap_resolver_priority_grid_and_intersection_boundary -q`
+
+**Regression command:** `pytest tests/browser/test_workspace.py::test_grid_midpoint_and_ortho_resolution -q`
+
+**Commit:** `feat: add deterministic snap resolver`
 
 ### Task 5 (Gate 2B-3): Structural editor mutation bridge
-**Files:** Create `editor.js`; modify state/renderer; test browser file.
-**Interfaces:** `applyEditorAction(draft, action) -> draft`; actions include explicit `CREATE_CONNECTION` only.
-- [ ] Test node/member/property edits and crossing-members preserve connection count; RED.
-- [ ] Implement immutable local draft actions only; PASS; commit.
+
+**Files:**
+- Create: `projects/static/projects/workspace/editor.js`
+- Modify: `projects/static/projects/workspace/state.js`; `projects/static/projects/workspace/renderer.js`
+- Test: `tests/browser/test_workspace.py`
+
+**Consumes:** the current local Physical Draft and resolved geometric points from Task 4.
+
+**Produces:** `applyEditorAction(draft, action) -> newDraft` with the action discriminators `CREATE_NODE`, `CREATE_MEMBER`, `UPDATE_OBJECT`, `DELETE_OBJECT`, and `CREATE_CONNECTION`.
+
+**Test to create:** `test_editor_crossing_members_do_not_create_connection` asserts crossing members do not add a Connection unless the action is explicit. `test_editor_mutations_are_immutable` asserts each supported action returns an updated local draft without mutating the input draft.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q`
+
+**Expected RED:** editor module/export does not exist.
+
+**Implementation boundary:** Return immutable updated local drafts for the named editor actions; permit `CREATE_CONNECTION` only on an explicit user action; never derive a Connection from a geometric crossing; do not save to the server, resolve snaps, render mechanics, or run solver behavior.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_editor_crossing_members_do_not_create_connection -q`
+
+**Regression command:** `pytest tests/browser/test_workspace.py::test_editor_mutations_are_immutable -q`
+
+**Commit:** `feat: add structural editor mutations`
 
 ### Task 6 (Gate 2B-4): Canvas navigation and picking
-**Files:** Create `canvas-interaction.js`; modify renderer/state; test `tests/browser/test_workspace.py`.
-**Interfaces:** `pickAt(screenPoint, renderedObjects) -> clientKey|null`; `reduceView(view,event) -> view` for `PAN`,`ZOOM`,`FIT_VIEW`.
-- [ ] Test keyboard-accessible selected SVG items, pan/zoom/fit retain world Grid origin; run `pytest tests/browser/test_workspace.py -q` (RED: module unavailable).
-- [ ] Implement view transform only; PASS and Task 4 regression; commit `feat: add canvas navigation`.
+
+**Files:**
+- Create: `projects/static/projects/workspace/canvas-interaction.js`
+- Modify: `projects/static/projects/workspace/renderer.js`; `projects/static/projects/workspace/state.js`
+- Test: `tests/browser/test_workspace.py`
+
+**Consumes:** rendered keyed SVG physical objects; the current view transform; and a screen-space pointer.
+
+**Produces:** `pickAt(screenPoint, renderedObjects) -> clientKey | null` and `reduceView(view, event) -> view` for `PAN`, `ZOOM`, and `FIT_VIEW` events.
+
+**Test to create:** `test_canvas_picking_pan_zoom_and_fit` asserts picking returns the keyed physical object and pan, zoom, and fit update navigation without changing the world Grid origin. `test_svg_objects_are_keyboard_focusable` asserts rendered SVG objects meet the keyboard-focusable contract.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q`
+
+**Expected RED:** canvas interaction module does not exist.
+
+**Implementation boundary:** Change view/navigation state only; do not mutate the structural draft, alter the global Grid origin, create Connections, resolve mechanics, or run solver operations.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q`
+
+**Regression command:** `pytest tests/browser/test_workspace.py::test_svg_objects_are_keyboard_focusable -q`
+
+**Commit:** `feat: add canvas navigation`
 
 ### Task 7 (Gate 2C): Save, check, and error boundary
-**Files:** Create `errors.js`; modify `api.js`, `workflow.js`, template; tests `test_workspace.py`, `test_project_json.py`.
-**Interfaces:** `normalizeApiError(response) -> {code,message,details}`; `presentWorkspaceError(error) -> {what,why,nextAction,technicalCode}`; `saveDraft(draft)`, `checkModel(version)`.
-- [ ] Test dirty/version update, stale reload advice, check issue focus, and no JS mechanics diagnosis; RED.
-- [ ] Use existing save/check endpoints, CSRF client, three-part zh-CN error presentation; PASS plus endpoint regression; commit.
+
+**Files:**
+- Create: `projects/static/projects/workspace/errors.js`; `projects/static/projects/workspace/workflow.js`
+- Modify: `projects/static/projects/workspace/api.js`; `projects/static/projects/workspace/state.js`; `templates/projects/workspace.html`
+- Test: `tests/browser/test_workspace.py`; `tests/endpoints/test_project_json.py`
+
+**Consumes:** a local dirty draft; bootstrap `urls.save`; bootstrap `urls.check`; existing backend save/check contracts; a CSRF-capable API client; and backend machine error codes.
+
+**Produces:** `normalizeApiError(response) -> {code, message, details}`; `presentWorkspaceError(error) -> {what, why, nextAction, technicalCode}`; and workflow functions that save the current draft and model-check the current server draft version.
+
+**Test to create:** `test_save_check_error_presentation` asserts dirty -> successful save -> new server version, stale-draft advice, model-check issue focus, and no JavaScript mechanics diagnosis.
+
+**RED command:** `pytest tests/browser/test_workspace.py::test_save_check_error_presentation -q`
+
+**Expected RED:** workspace save/check workflow and error boundary do not exist.
+
+**Implementation boundary:** Treat the server as authoritative for draft version; do not increment it in the frontend; clear dirty state only after successful save; call only existing save/check endpoints using the CSRF-capable client; present what happened, why, and next action while retaining the technical machine code in details; do not diagnose mechanics in JavaScript.
+
+**PASS command:** `pytest tests/browser/test_workspace.py::test_save_check_error_presentation -q`
+
+**Regression command:** `pytest tests/endpoints/test_project_json.py -q`
+
+**Commit:** `feat: add workspace save and model check`
 
 ### Task 8 (Gate 3A, BCG-02): Prediction cardinality, migration, discovery
 **Files:** Modify `learning/{models,services,views,urls}.py`; create migration `learning/migrations/0004_prediction_project_draft_unique.py`; tests `test_prediction.py`, `test_prediction_json.py`.
