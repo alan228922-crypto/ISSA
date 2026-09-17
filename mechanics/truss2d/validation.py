@@ -5,6 +5,16 @@ import numpy as np
 from .model import TrussModel
 from .errors import ValidationIssue
 
+
+# ============================================================
+# 檔案閱讀指南
+#
+# 這裡檢查 TrussModel 能否安全進入剛度組裝和 Solver。
+# 檢查內容包括資料格式、節點與構件關係、支承、荷載、連通性和明顯的剛體運動。
+# 輸出是 ValidationIssue 清單；本檔案只報告問題，不修正使用者模型。
+# 即使通過這裡，數值求解時仍可能發現矩陣沒有唯一解。
+# ============================================================
+
 # mm 單位下的最小可接受長度；不以畫面像素或 benchmark 容差決定。
 LENGTH_ATOL_MM = 1e-9
 
@@ -19,7 +29,8 @@ def _finite(value: object) -> bool:
 
 def validate_truss_model(model: TrussModel) -> tuple[ValidationIssue, ...]:
     """回傳 deterministic issues；重複桿件拒絕，重複支承以 DOF 聯集解讀。"""
-    # 验证阶段只报告问题，不修正输入；调用方可据此决定是否进入求解。
+    # 這個函數是 Solver 前的第一道檢查；它把問題整理成穩定代碼，讓上層可以顯示或記錄。
+    # 這一步只找出模型問題，不會替使用者偷偷修改資料。
     issues: list[ValidationIssue] = []
     def add(code: str, kind: str = 'model', ids: tuple[str,...] = (), field: str | None = None) -> None:
         issues.append(ValidationIssue(code, 'ERROR', kind, ids, field))

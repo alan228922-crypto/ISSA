@@ -7,7 +7,7 @@ from .provisioning import ProvisioningError,confirm_team_import,preview_team_imp
 
 @login_required
 def provision_preview(request,event_id):
-    # 預覽階段只解析 CSV 並產生短期確認資料，不在這一步建立帳戶或活動成員。
+    # 預覽只讀取 CSV 並顯示檢查結果，不會在這一步建立帳戶。
     event=get_object_or_404(CompetitionEvent,pk=event_id)
     if request.method!='POST' or 'csv_file' not in request.FILES:
         return HttpResponseForbidden('请上传 CSV 文件。')
@@ -20,7 +20,7 @@ def provision_preview(request,event_id):
 
 @login_required
 def provision_confirm(request,event_id):
-    # 確認端點把短期 token 交給服務層；真正的重驗證與批次寫入不放在 View。
+    # 確認時把 token 交給服務層處理；服務層會重新檢查資料，再一次寫入整批帳戶。
     event=get_object_or_404(CompetitionEvent,pk=event_id)
     try:
         result=confirm_team_import(request.user,event,request.POST['token'])

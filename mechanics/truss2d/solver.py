@@ -7,7 +7,10 @@ from .model import (TrussModel, TrussSolveResult, NodeDisplacement, SupportReact
                     MemberAxialForce, SolveDiagnostics)
 
 
-# 閱讀提示：Solver 的主要任務是由荷載和支承條件求出節點位移。
+# 閱讀提示：Solver 的主要任務是根據荷載和支承條件，算出每個節點移動多少。
+
+# Solver 接收的是已經理想化和驗證過的 TrussModel，輸出的是位移、反力、軸力和數值診斷。
+# 它不讀取 Django ORM，也不負責把結果翻譯成畫面文字。
 
 
 class Truss2DSolver:
@@ -16,6 +19,7 @@ class Truss2DSolver:
 
     def solve(self, model: TrussModel) -> TrussSolveResult:
         """先驗證、再組裝與縮減；singular 或非有限計算輸出均回機器代碼。"""
+        # 對外入口統一攔截數值溢位等計算錯誤，讓上層收到穩定的 MechanicsError。
         with np.errstate(over='raise',invalid='raise',divide='raise'):
             try:
                 return self._solve(model)
@@ -23,17 +27,17 @@ class Truss2DSolver:
                 raise MechanicsError((ValidationIssue('NUMERIC_RANGE'),)) from exc
 
     def _solve(self, model: TrussModel) -> TrussSolveResult:
-        # 流程順序是「驗證 → 組裝 K/P → 套用支承 → 求自由 DOF 位移 → 回算反力與軸力」。
-        # 這裡使用小位移、線彈性直接剛度法；若結構沒有唯一解，會回報機器碼，
-        # 不以人工彈簧或偽逆製造一個看似合理的答案。
+        # 流程是：檢查模型 → 整理剛度和荷載 → 套用支承 → 求位移 → 求反力和軸力。
+        # 如果模型沒有唯一答案，程式會回報錯誤，不會硬湊出一個答案。
+        # assemble_global_stiffness() 會把節點荷載和支承限制整理成可解的矩陣資料。
         system=assemble_global_stiffness(model)
         matrix,loads=system.K_N_per_mm,system.P_N
         restrained=set(system.restrained_dofs)
         free=[i for i in range(len(loads)) if i not in restrained]
         displacements=np.zeros_like(loads)
         if free:
-            # 受約束 DOF 的位移已知為零，因此只解未受約束的縮減方程。
-            # 先做對角尺度化是為了減少數值量級差，還原後的位移仍以 mm 表示。
+            # 被支承固定的方向位移是零，所以只需要計算其他可以移動的方向。
+            # 計算完成後，位移仍以 mm 表示。
             reduced=matrix[np.ix_(free,free)]
             diagonal=np.diag(reduced)
             if np.any(diagonal<=0):
@@ -54,6 +58,7 @@ class Truss2DSolver:
         # 原完整方程的內力為 Ku；扣掉外載 P，受約束方向剩餘量即支座反力。
         # 必須使用完整 P，包含直接作用在支承節點上的力。
         residual=matrix@displacements-loads
+        # residual 在自由方向應接近零；在受約束方向則代表支座需要提供的反力。
         reactions=np.zeros_like(loads)
         reactions[list(restrained)]=residual[list(restrained)]
         nodes={n.id:n for n in model.nodes}

@@ -6,7 +6,7 @@ from django.db import models
 
 
 class Material(models.Model):
-    # Material 保存材料數值與來源資訊；E 以 MPa、密度以 g/mm³，供截面與分析快照使用。
+    # Material 保存材料名稱、彈性模數和密度，之後會被截面與分析模型使用。
     owner_user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='materials')
     name=models.CharField(max_length=200)
     E_MPa=models.DecimalField(max_digits=18,decimal_places=6,validators=[MinValueValidator(Decimal('0.000001'))])
@@ -20,7 +20,7 @@ class Material(models.Model):
 
 
 class Strip(models.Model):
-    # Strip 是可重用的條材資料，仍受材料與擁有者一致性限制；它不是 Solver 的直接輸入。
+    # Strip 是可重複使用的條材資料；它必須使用同一位擁有者的材料，但不是 Solver 直接讀取的資料。
     owner_user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='strips')
     material=models.ForeignKey(Material,on_delete=models.PROTECT,related_name='strips')
     name=models.CharField(max_length=200)
@@ -36,7 +36,7 @@ class Strip(models.Model):
 
 class Section(models.Model):
     """持久化截面定义和由纯 Python 引擎计算出的性质。"""
-    # definition_json 保存輸入語意，properties_json 保存當時的計算結果；兩者分開以便追溯。
+    # definition_json 保存使用者輸入，properties_json 保存計算後的截面結果，方便日後追查。
     owner_user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='sections')
     name=models.CharField(max_length=200)
     section_type=models.CharField(max_length=32)

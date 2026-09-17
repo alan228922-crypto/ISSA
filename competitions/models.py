@@ -4,7 +4,11 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 
+# 閱讀提示：這裡保存競賽活動、活動成員，以及批次建立帳戶的紀錄。
+
+
 class CompetitionEvent(models.Model):
+    # 活動狀態會影響目前能做的事情，例如是否可以建立參賽帳戶。
     class Status(models.TextChoices):
         DRAFT='DRAFT','草稿'
         ACTIVE='ACTIVE','进行中'
@@ -33,6 +37,7 @@ class CompetitionEvent(models.Model):
 
 
 class EventMembership(models.Model):
+    # 這筆資料表示某位使用者在某場活動中的身分，以及該身分是否仍有效。
     class Type(models.TextChoices):
         PARTICIPANT='PARTICIPANT','参赛队伍'
         MANAGER='MANAGER','赛事管理员'
@@ -48,6 +53,7 @@ class EventMembership(models.Model):
 
 
 class BulkImportBatch(models.Model):
+    # 保存 CSV 批次處理的結果，但不保存隊長學號等敏感輸入內容。
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     event=models.ForeignKey(CompetitionEvent,on_delete=models.PROTECT)
     source_filename=models.CharField(max_length=255)

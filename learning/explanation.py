@@ -11,6 +11,15 @@ from .comparison import (
 )
 
 
+# 閱讀提示：這個檔案把分析數值整理成學生看得懂的說明，不會重新計算結構力學。
+
+# ============================================================
+# 它接收已驗證的比較資料和 AnalysisRun，輸出 explanation-v1 的多個說明區塊。
+# 每個區塊同時保留白話訊息與專業數值，讓學生先理解現象，再需要時查看細節。
+# 如果結果來源、版本或對應關係不符合契約，這裡會停止產生說明，不猜測缺少的資料。
+# ============================================================
+
+
 class ExplanationError(ValueError):
     """A fail-closed explanation-contract violation."""
 
@@ -65,6 +74,7 @@ def _member_message(actual_state):
 
 
 def _member_blocks(physical_evidence):
+    # 先逐根物理構件整理受拉、受壓或混合狀態，再附上對應的軸力數值。
     blocks = []
     for physical_id in sorted(physical_evidence):
         evidence = physical_evidence[physical_id]
@@ -80,6 +90,7 @@ def _member_blocks(physical_evidence):
 
 
 def _maximum_displacement_block(*, run, comparison, idealization):
+    # 從分析結果找出位移最大的節點，並在有預測時比較學生預測的位置是否相同。
     displacements = run.result_json.get("node_displacements")
     if not isinstance(displacements, list) or not displacements:
         _fail("EXPLANATION_RESULT_INVALID")
@@ -238,6 +249,7 @@ def _comparison_for(*, run, comparison):
 
 
 def build_explanation(*, run, comparison=None):
+    # 依序建立構件受力、最大位移、預測比較和傳力路徑等教學區塊。
     """Return deterministic `explanation-v1` blocks without mechanics recomputation."""
     try:
         physical_evidence = build_teaching_member_evidence(run=run)

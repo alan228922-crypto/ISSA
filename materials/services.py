@@ -18,7 +18,7 @@ def can_manage_material(actor,material):
 
 
 def _canonical_definition(definition):
-    # 以固定排序與 JSON 表示保存截面定義，讓同一語意的定義產生可追蹤的 hash。
+    # 先用固定格式整理截面資料，再產生指紋，讓相同定義可以被辨認出來。
     try:
         encoded = json.dumps(definition, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError) as exc:
@@ -49,7 +49,7 @@ def _properties_json(properties):
 
 def create_section(*, owner, name, definition):
     """规范化定义、调用 mechanics.sections，并保存其权威计算结果。"""
-    # Service 是持久化邊界：純截面引擎負責計算，這裡負責所有權、版本與結果保存。
+    # 截面計算由純計算模組負責；這裡負責檢查擁有者、整理資料並保存結果。
     canonical_definition, definition_hash = _canonical_definition(definition)
     strip_id = canonical_definition.get("strip_id")
     if strip_id is not None and not Strip.objects.filter(id=strip_id, owner_user=owner).exists():

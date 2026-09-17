@@ -4,6 +4,9 @@ from django.db import models
 from competitions.models import CompetitionEvent
 
 
+# 閱讀提示：Project 把一場活動、使用者和一份結構設計連在一起。
+
+
 class Project(models.Model):
     class AnalysisType(models.TextChoices):
         TRUSS_2D = "TRUSS_2D", "二维桁架"
@@ -19,6 +22,7 @@ class Project(models.Model):
 
 
 class ProjectOperationalPurgeAudit(models.Model):
+    # 專案刪除後只保留這份簡短紀錄，方便確認清理是否已完成。
     """Minimal durable purge receipt; no FK or payload from deleted operational data."""
 
     project_id = models.PositiveBigIntegerField(unique=True)

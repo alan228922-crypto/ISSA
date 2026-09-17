@@ -3,7 +3,7 @@ from django.db import models
 from projects.models import Project
 
 class ModelRevision(models.Model):
-    # Revision 是可追溯的不可變物理快照；分析不直接依賴之後可能被編輯的 mutable draft。
+    # Revision 是某一版模型的固定副本。之後即使學生繼續編輯，也不會改變這次分析使用的資料。
     project=models.ForeignKey(Project,on_delete=models.CASCADE,related_name='model_revisions')
     revision_number=models.PositiveIntegerField()
     analysis_type=models.CharField(max_length=20)
@@ -40,7 +40,7 @@ class AnalysisRun(models.Model):
     result_json=models.JSONField(null=True,blank=True); diagnostics_json=models.JSONField(default=dict); failure_code=models.CharField(max_length=128,null=True,blank=True)
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='analysis_runs')
 
-    # 一次 Run 同時保存輸入雜湊、Solver 版本與結果，讓歷史結果能與當時使用的實作隔離。
+    # AnalysisRun 記錄一次完整分析：使用哪個模型、哪個 Solver，以及最後得到什麼結果。
 
 class ValidationLog(models.Model):
     project=models.ForeignKey(Project,on_delete=models.CASCADE,related_name='validation_logs')

@@ -19,7 +19,7 @@ class DraftSaveError(ValueError):
 
 
 def _items(payload, key):
-    # 顶层集合必须是数组；后续 keyed 校验再负责元素身份与去重。
+    # 節點、構件等主要資料必須以清單傳入，之後再檢查每個項目的識別名稱。
     value = payload.get(key)
     if not isinstance(value, list):
         raise DraftSaveError("INVALID_DRAFT")
@@ -27,7 +27,7 @@ def _items(payload, key):
 
 
 def _keyed(items, key="client_key"):
-    # client_key 是一次草稿替换中的稳定引用，重复键会破坏跨实体关联。
+    # client_key 是前端用來辨認同一個項目的名稱；重複名稱會讓資料彼此對不上。
     result = {}
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get(key), str) or not item[key] or item[key] in result:
@@ -37,7 +37,7 @@ def _keyed(items, key="client_key"):
 
 
 def _instance(instance):
-    # 统一执行数值有限性、Django 模型校验和保存，避免单个分支遗漏校验。
+    # 集中檢查數值和模型規則，再保存資料，避免不同流程漏掉檢查。
     numeric_fields = (("x_mm", "y_mm") if isinstance(instance, GeometryNode) else
                       ("fx_N", "fy_N") if isinstance(instance, NodeLoad) else ())
     if any(not isinstance(getattr(instance, field), (int, float)) or isinstance(getattr(instance, field), bool) or not math.isfinite(getattr(instance, field)) for field in numeric_fields):
@@ -51,7 +51,7 @@ def _instance(instance):
 
 
 def _owned(model, object_id, owner_id, error_code):
-    # 材料与截面必须属于项目所有者，防止通过外部主键引用他人的资源。
+    # 材料和截面必須屬於專案擁有者，不能直接引用別人的資料。
     try:
         obj = model.objects.get(id=object_id, owner_user_id=owner_id)
     except (model.DoesNotExist, TypeError, ValueError) as exc:
@@ -61,6 +61,13 @@ def _owned(model, object_id, owner_id, error_code):
 
 def save_physical_draft(*, actor, project, payload):
     """原子替换 mutable physical-draft-v1，物理层不创建任何 solver 实体。"""
+    # ========================================================
+    # 函數用途：用前端送來的完整資料，替換 Project 目前的 physical draft。
+    #
+    # 輸入是包含節點、物理構件、連接點、支承和荷載的字典；輸出是新的 draft_version。
+    # 函數會先檢查權限、格式、數值和跨資料關係，再在同一個 transaction 中重建資料。
+    # 這裡保存的是學生可編輯的設計草稿，不會直接建立 Solver 的分析物件。
+    # ========================================================
     if not can_modify_project(actor, project):
         raise DraftSaveError("PROJECT_WRITE_DENIED")
     if not isinstance(payload, dict) or payload.get("schema_version") != "physical-draft-v1":
@@ -79,12 +86,14 @@ def save_physical_draft(*, actor, project, payload):
     loads = _keyed(_items(payload, "node_loads"))
 
     with transaction.atomic():
-        # 行锁把版本检查、删除旧图和写入新图合并成一次原子草稿替换。
+        # 從這裡開始把整份草稿視為一次替換：舊圖刪除、新圖寫入、版本增加要一起成功。
+        # 鎖住專案後，檢查版本、刪除舊草稿、寫入新草稿會一起完成，避免只完成一半。
         project = type(project).objects.select_for_update().get(pk=project.pk)
         if project.draft_version != expected_version:
             raise DraftSaveError("STALE_DRAFT")
 
         GeometryNode.objects.filter(project=project).delete()
+        # 先建立節點，後面構件、連接點和荷載才能用 client_key 找到正確的資料。
         node_objects = {}
         for key, data in nodes.items():
             node_objects[key] = _instance(GeometryNode(
@@ -92,6 +101,7 @@ def save_physical_draft(*, actor, project, payload):
             ))
 
         member_objects = {}
+        # 構件會引用前面建立的節點，並且必須引用專案擁有者自己的材料和截面。
         for key, data in members.items():
             try:
                 start = node_objects[data["start_node_client_key"]]
@@ -106,6 +116,7 @@ def save_physical_draft(*, actor, project, payload):
             ))
 
         connection_objects = {}
+        # Connection 把幾何節點和參與的物理構件連起來，是支承與荷載的定位依據。
         for key, data in connections.items():
             try:
                 node = node_objects[data["geometry_node_client_key"]]
@@ -121,6 +132,7 @@ def save_physical_draft(*, actor, project, payload):
             connection_objects[key] = connection
 
         for data in supports:
+            # 支承只能指向已存在的 Connection，不能直接指向任意座標。
             if not isinstance(data, dict):
                 raise DraftSaveError("INVALID_DRAFT")
             try:
@@ -130,6 +142,7 @@ def save_physical_draft(*, actor, project, payload):
             _instance(Support(project=project, target_connection=connection, support_type=data.get("support_type"), restrained_axis=data.get("restrained_axis")))
 
         for key, data in loads.items():
+            # 荷載同樣綁定 Connection，保存 fx_N / fy_N 兩個全域方向的節點外力。
             try:
                 connection = connection_objects[data["target_connection_client_key"]]
             except KeyError as exc:

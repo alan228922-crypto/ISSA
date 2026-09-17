@@ -9,8 +9,8 @@ def euler_critical_load(*, E_MPa: float, I_mm4: float, L_mm: float, K: float) ->
     Pcr=π²EI/(KL)²；E=N/mm²、I=mm⁴、L=mm、K 無因次，結果為 N。
     僅是公式驗證；O-001 的有效長度、控制 I 與教學風險政策仍需審查。
     """
-    # 結果是理想細長壓桿在給定有效長度係數下的理論臨界荷載；
-    # 函數刻意要求呼叫端明確提供 K 與 I，避免在沒有支承或方向資訊時自行猜測。
+    # 這裡只依照傳入的 E、I、L 和 K 計算理論臨界荷載。
+    # 程式不會自行猜測構件的支承方式或屈曲方向。
     e=finite_value(E_MPa,'E_MPa',positive=True)
     inertia=finite_value(I_mm4,'I_mm4',positive=True)
     length=finite_value(L_mm,'L_mm',positive=True)

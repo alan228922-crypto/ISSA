@@ -5,6 +5,17 @@ from math import hypot, isfinite
 from idealization.truss2d import IdealizationError, idealize
 
 
+# 閱讀提示：這個檔案把學生的預測和已保存的分析結果放在一起比較，不修改原始結果。
+
+# ============================================================
+# 這裡的資料流程是：Prediction payload + 成功的 AnalysisRun
+# → 檢查兩者是否屬於同一個 Project 和模型版本
+# → 把分析構件軸力回映到 PhysicalMember
+# → 產生受拉／受壓、最大位移和傳力路徑的比較資料。
+# 比較結果是暫時整理出的教學資料，不會改寫原本保存的 Solver result。
+# ============================================================
+
+
 class ComparisonError(ValueError):
     """A fail-closed comparison-contract violation."""
 
@@ -29,6 +40,7 @@ def _idealization(snapshot):
 
 
 def _segment_evidence(*, result, idealization):
+    # 先確認每個分析構件都能對回原本的物理構件，再把分析軸力整理成教學用狀態。
     member_results = result.get("member_results")
     if not isinstance(member_results, list):
         _fail("COMPARE_RESULT_INVALID")
@@ -99,6 +111,7 @@ def _prediction_node_id(*, point, idealization):
 
 
 def _maximum_displacement(*, result, idealization, point):
+    # 找出位移最大的分析節點，再確認學生預測的位置能對應到模型中的節點。
     displacements = result.get("node_displacements")
     if not isinstance(displacements, list) or not displacements:
         _fail("COMPARE_RESULT_INVALID")
@@ -178,6 +191,7 @@ def _load_path_evidence(*, payload, physical_evidence):
 
 
 def build_teaching_member_evidence(*, run):
+    # 只使用成功分析的固定結果，產生學生可以理解的物理構件受力證據。
     """Project authoritative segment forces into PhysicalMember teaching evidence."""
     if run.status != "SUCCESS" or run.result_schema_version != "truss2d-result-v1":
         _fail("COMPARE_RUN_NOT_SUCCESS")
@@ -191,6 +205,7 @@ def build_teaching_member_evidence(*, run):
 
 
 def build_comparison(*, run):
+    # 將預測內容和同一模型版本的分析結果比較，最後回傳固定格式的比較資料。
     """Return the minimum `comparison-v1` facts from immutable run evidence."""
     prediction = run.prediction
     if prediction is None:

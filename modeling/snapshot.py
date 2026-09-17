@@ -1,9 +1,19 @@
 """从 mutable ORM draft 生成纯 physical-snapshot-v1。"""
 
-# 閱讀提示：snapshot 是把目前草稿固定下來的一份資料副本，供後續分析使用。
+# ============================================================
+# 檔案閱讀指南
+#
+# 這個檔案把資料庫中的 mutable draft 讀出來，整理成單純的 Python 字典。
+# 這份字典包含節點、物理構件、連接點、支承、荷載、材料和截面數值。
+# 它是 Revision 和 Solver 之間的資料邊界：之後材料或截面被修改，舊 Snapshot 仍不變。
+# ============================================================
+
+# 閱讀提示：snapshot 是目前草稿的固定副本，後續分析會使用這份副本。
 def build_physical_snapshot(project):
     """冻结数值，避免之后 Material/Section 的修改改变旧 Revision。"""
-    # 关系字段先按 client_key 排序，保证同一业务图每次序列化结果稳定。
+    # 函數輸入是 ORM Project；輸出是 physical-snapshot-v1 字典，不會建立 Solver 物件。
+    # 讀取關聯資料時固定排序，讓相同的設計每次都能產生相同內容，方便產生穩定 hash。
+    # 先固定資料順序，確保同一個模型每次產生的 snapshot 都相同。
     nodes=sorted(project.geometry_nodes.all(),key=lambda x:x.client_key)
     members=sorted(project.physical_members.select_related('material','section').all(),key=lambda x:x.client_key)
     connections=sorted(project.connections.prefetch_related('participating_members').all(),key=lambda x:x.client_key)
