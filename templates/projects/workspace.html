@@ -12,7 +12,7 @@
   <main id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}">
     <header id="workspace-project-header">
       <h1>{{ bootstrap.project.name }}</h1>
-      <p>当前草稿 v{{ bootstrap.draft.version }}</p>
+      <p id="workspace-draft-version">当前草稿 v{{ bootstrap.draft.version }}</p>
       <p id="workspace-read-only"{% if not bootstrap.read_only %} hidden{% endif %}>只读查看</p>
     </header>
     <section class="workspace-layout" aria-label="结构学习工作区">
@@ -47,17 +47,38 @@
       <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 关</span>
       <span id="workspace-save-status">未保存修改：无</span>
     </footer>
+    <section id="workspace-error" hidden aria-live="polite"></section>
+    <section id="workspace-check-issues" aria-live="polite"></section>
   </main>
   {{ bootstrap|json_script:"workspace-bootstrap" }}
   <script type="module">
-    import { createWorkspaceState, readWorkspaceBootstrap } from "{% static 'projects/workspace/state.js' %}";
+    import { applyWorkspaceSaveSuccess, createWorkspaceState, focusWorkspaceIssue, readWorkspaceBootstrap } from "{% static 'projects/workspace/state.js' %}";
     import { renderWorkspace } from "{% static 'projects/workspace/renderer.js' %}";
     import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
+    import { createWorkspaceWorkflow } from "{% static 'projects/workspace/workflow.js' %}";
+    import { presentWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
     const bootstrap = readWorkspaceBootstrap();
     const canvas = document.getElementById("workspace-canvas");
     const state = createWorkspaceState(bootstrap);
     renderWorkspace(canvas, state.draft, state);
-    bindCanvasInteractions(canvas, state, renderWorkspace);
+    const canvasController = bindCanvasInteractions(canvas, state, renderWorkspace);
+    const workflow = createWorkspaceWorkflow({ urls: bootstrap.urls });
+    const errorPanel = document.getElementById("workspace-error");
+    const issuePanel = document.getElementById("workspace-check-issues");
+    const showError = (error) => { const view = presentWorkspaceError(error); errorPanel.hidden = false; errorPanel.textContent = `${view.what}：${view.why} ${view.nextAction}（${view.technicalCode}）`; };
+    document.getElementById("workspace-save").addEventListener("click", async () => {
+      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState(next); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
+      catch (error) { showError(error); }
+    });
+    document.getElementById("workspace-model-check").addEventListener("click", async () => {
+      const current = canvasController.getState();
+      if (current.dirty) { showError({ code: "UNSAVED_DRAFT", message: "本地修改尚未保存，服务器无法检查这些修改。" }); return; }
+      try {
+        const result = await workflow.checkModel(current.draftVersion); errorPanel.hidden = true; issuePanel.replaceChildren();
+        if (result.ok) { issuePanel.textContent = "模型检查通过。"; return; }
+        for (const issue of result.issues || []) { const button = document.createElement("button"); button.type = "button"; button.textContent = issue.human_message || "模型检查发现问题。"; button.addEventListener("click", () => canvasController.replaceState(focusWorkspaceIssue(canvasController.getState(), issue))); issuePanel.append(button); }
+      } catch (error) { showError(error); }
+    });
   </script>
   <script type="module" src="{% static 'projects/workspace/api.js' %}"></script>
 </body>

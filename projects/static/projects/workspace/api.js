@@ -11,3 +11,7 @@ export async function requestJson(url, options = {}, documentRef = document) {
   const body = await response.json();
   return { response, body };
 }
+
+export function postJson(url, payload, documentRef = document) {
+  return requestJson(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }, documentRef);
+}

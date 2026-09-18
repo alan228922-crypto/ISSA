@@ -130,5 +130,9 @@ export function bindCanvasInteractions(svg, initialState, render) {
     panStart = { x: event.clientX, y: event.clientY };
   });
   svg.addEventListener("pointerup", () => { panStart = null; });
-  return Object.freeze({ dispatchViewEvent, getState: () => state });
+  const replaceState = (nextState) => {
+    state = nextState;
+    redraw();
+  };
+  return Object.freeze({ dispatchViewEvent, getState: () => state, replaceState });
 }

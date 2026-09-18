@@ -25,3 +25,16 @@ export function applyWorkspaceEditorAction(state, action) {
 export function applyWorkspaceViewEvent(state, event) {
   return Object.freeze({ ...state, viewTransform: reduceView(state.viewTransform, event) });
 }
+
+export function applyWorkspaceSaveSuccess(state, response, submittedDraft = state.draft) {
+  const draft = Object.freeze({ ...state.draft, version: response.draft_version });
+  return Object.freeze({ ...state, draft, draftVersion: response.draft_version, dirty: state.draft !== submittedDraft });
+}
+
+export function focusWorkspaceIssue(state, issue) {
+  const target = issue?.physical_object;
+  const validKinds = ["GEOMETRY_NODE", "PHYSICAL_MEMBER", "CONNECTION", "SUPPORT", "NODE_LOAD"];
+  if (!target || !validKinds.includes(target.kind) || typeof target.client_key !== "string" || !target.client_key) return state;
+  const object = Object.freeze({ kind: target.kind, clientKey: target.client_key });
+  return Object.freeze({ ...state, selectedObject: object, focusedObject: object });
+}
