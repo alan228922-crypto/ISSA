@@ -200,17 +200,17 @@ Each task uses its row's exact commands; browser node IDs run through `workspace
 - Modify: `projects/static/projects/workspace/renderer.js`; `projects/static/projects/workspace/state.js`
 - Test: `tests/browser/test_workspace.py`
 
-**Consumes:** rendered keyed SVG physical objects; the current view transform; and a screen-space pointer.
+**Consumes:** O-M5-CAD-06 rendered-object CSS-pixel hit geometry, the sole affine world-to-screen view `{a,b,c,d,e,f}`, and a screen-space pointer.
 
-**Produces:** `pickAt(screenPoint, renderedObjects) -> clientKey | null` and `reduceView(view, event) -> view` for `PAN`, `ZOOM`, and `FIT_VIEW` events.
+**Produces:** `pickAt(screenPoint, renderedObjects) -> {kind,clientKey}|null`, using O-M5-CAD-06 POINT/SEGMENT tolerance, priority, nearest, and lexical tie rules; and immutable `reduceView(view,event) -> view` for `PAN {deltaScreen}`, anchored clamped `ZOOM {factor,anchorScreen}`, and padded/minimum-extent `FIT_VIEW {worldBounds,viewport}`.
 
-**Test to create:** `test_canvas_picking_pan_zoom_and_fit` asserts picking returns the keyed physical object and pan, zoom, and fit update navigation without changing the world Grid origin. `test_svg_objects_are_keyboard_focusable` asserts rendered SVG objects meet the keyboard-focusable contract.
+**Test to create:** `test_canvas_picking_pan_zoom_and_fit` covers POINT/SEGMENT priority, nearest/tie/order independence, empty pick, PAN/anchor ZOOM/clamps/FIT/null Fit/minimum 100-mm bounds/padding, immutable draft, and unchanged world Grid origin/100-mm spacing. `test_svg_objects_are_keyboard_focusable` asserts accessible keyed SVG focus yields the same `{kind,clientKey}` shape without `pickAt`.
 
 **RED command:** `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q`
 
 **Expected RED:** canvas interaction module does not exist.
 
-**Implementation boundary:** Change view/navigation state only; do not mutate the structural draft, alter the global Grid origin, create Connections, resolve mechanics, or run solver operations.
+**Implementation boundary:** Use one O-M5-CAD-06 affine transform in renderer, SNAP, and picking; render physical world geometry/Grid under that transform and preserve screen overlays. Change navigation/selection state only; do not mutate the structural draft, alter the global Grid origin/spacing, create Connections, resolve mechanics, or run solver operations.
 
 **PASS command:** `pytest tests/browser/test_workspace.py::test_canvas_picking_pan_zoom_and_fit -q`
 
