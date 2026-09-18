@@ -7,8 +7,9 @@ function element(name, attributes = {}) {
 }
 
 function selectable(kind, key, label, uiState) {
-  const selected = uiState.selectedObject?.kind === kind && uiState.selectedObject?.clientKey === key;
-  const focused = uiState.focusedObject?.kind === kind && uiState.focusedObject?.clientKey === key;
+  const stateKind = { GeometryNode: "GEOMETRY_NODE", PhysicalMember: "PHYSICAL_MEMBER", Connection: "CONNECTION", Support: "SUPPORT", NodeLoad: "NODE_LOAD" }[kind];
+  const selected = [kind, stateKind].includes(uiState.selectedObject?.kind) && uiState.selectedObject?.clientKey === key;
+  const focused = [kind, stateKind].includes(uiState.focusedObject?.kind) && uiState.focusedObject?.clientKey === key;
   return element("g", {
     "data-object-kind": kind,
     "data-client-key": key,
@@ -25,7 +26,12 @@ function ordered(items) {
 }
 
 function pointMap(nodes) {
-  return new Map(nodes.map((node) => [node.client_key, { x: node.x_mm, y: -node.y_mm }]));
+  return new Map(nodes.map((node) => [node.client_key, { x: node.x_mm, y: node.y_mm }]));
+}
+
+function viewTransform(view = {}) {
+  const { a = 1, b = 0, c = 0, d = -1, e = 0, f = 0 } = view;
+  return `matrix(${a} ${b} ${c} ${d} ${e} ${f})`;
 }
 
 function position(connection, nodePositions) {
@@ -97,5 +103,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   const marker = element("marker", { id: "workspace-load-arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" });
   marker.append(element("path", { d: "M 0 0 L 8 4 L 0 8 z", fill: "currentColor" }));
   defs.append(marker);
-  svg.replaceChildren(defs, ...layers);
+  const world = element("g", { "data-world-layer": "true", transform: viewTransform(uiState.viewTransform) });
+  world.append(...layers);
+  svg.replaceChildren(defs, world);
 }

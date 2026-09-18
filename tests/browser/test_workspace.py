@@ -191,3 +191,34 @@ def test_editor_enforces_full_reference_update_and_delete_matrix(context, worksp
         'connectionDependency': {'code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True},
         'unknownKind': {'code':'EDITOR_INVALID_ACTION','unchanged':True},
     }
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_canvas_picking_pan_zoom_and_fit(context, workspace_page):
+    owner, project, _, _ = context; page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => { const { pickAt, reduceView, GRID_ORIGIN, GRID_SPACING } = await import('/static/projects/workspace/canvas-interaction.js'); const objects=[{kind:'PHYSICAL_MEMBER',clientKey:'m1',hit:{type:'SEGMENT',start:{x:0,y:0},end:{x:100,y:0}}},{kind:'GEOMETRY_NODE',clientKey:'n1',hit:{type:'POINT',point:{x:10,y:10}}},{kind:'SUPPORT',clientKey:'s2',hit:{type:'POINT',point:{x:15,y:10}}},{kind:'SUPPORT',clientKey:'s1',hit:{type:'POINT',point:{x:15,y:10}}},{kind:'NODE_LOAD',clientKey:'l1',hit:{type:'POINT',point:{x:15,y:10}}}]; const draft={nodes:[{client_key:'n1',x_mm:1,y_mm:2}],connections:[]}; const before=JSON.stringify(draft); const view={a:1,b:0,c:0,d:-1,e:10,f:20}; let invalid=null;try{reduceView(view,{type:'ZOOM',factor:0,anchorScreen:{x:0,y:0}})}catch(error){invalid=error.message}; return {point:pickAt({x:15,y:10},objects), nearest:pickAt({x:11,y:10},[{kind:'SUPPORT',clientKey:'far',hit:{type:'POINT',point:{x:15,y:10}}},{kind:'SUPPORT',clientKey:'near',hit:{type:'POINT',point:{x:10,y:10}}}]), segment:pickAt({x:50,y:6},objects), empty:pickAt({x:500,y:500},objects), reversed:pickAt({x:15,y:10},[...objects].reverse()), pan:reduceView(view,{type:'PAN',deltaScreen:{x:5,y:-3}}), zoom:reduceView(view,{type:'ZOOM',factor:2,anchorScreen:{x:100,y:50}}), max:reduceView(view,{type:'ZOOM',factor:100,anchorScreen:{x:0,y:0}}), min:reduceView(view,{type:'ZOOM',factor:.00001,anchorScreen:{x:0,y:0}}), fit:reduceView(view,{type:'FIT_VIEW',worldBounds:{minX:0,minY:0,maxX:100,maxY:0},viewport:{width:400,height:300}}), emptyFit:reduceView(view,{type:'FIT_VIEW',worldBounds:null,viewport:{width:400,height:300}}), grid:{origin:GRID_ORIGIN,spacing:GRID_SPACING}, unchanged:before===JSON.stringify(draft),invalid}; }""")
+    assert result['point'] == {'kind':'SUPPORT','clientKey':'s1'} and result['reversed'] == result['point']
+    assert result['nearest'] == {'kind':'SUPPORT','clientKey':'near'} and result['segment'] == {'kind':'PHYSICAL_MEMBER','clientKey':'m1'} and result['empty'] is None
+    assert result['pan'] == {'a':1,'b':0,'c':0,'d':-1,'e':15,'f':17}
+    assert result['zoom'] == {'a':2,'b':0,'c':0,'d':-2,'e':-80,'f':-10}
+    assert result['max']['a'] == 20 and result['min']['a'] == .05
+    assert result['invalid'] == 'ZOOM_FACTOR_INVALID'
+    assert result['fit'] == {'a':2.2,'b':0,'c':0,'d':-2.2,'e':90,'f':150} and result['emptyFit'] == {'a':1,'b':0,'c':0,'d':-1,'e':10,'f':20}
+    assert result['grid'] == {'origin':{'x':0,'y':0},'spacing':100} and result['unchanged'] is True
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_svg_objects_are_keyboard_focusable(context, workspace_page):
+    owner, project, material, section = context; save_physical_draft(actor=owner,project=project,payload=valid_payload(material,section)); page=workspace_page(user=owner,project=project)
+    result=page.evaluate("""async()=>{const {renderWorkspace}=await import('/static/projects/workspace/renderer.js');const {selectionFromElement}=await import('/static/projects/workspace/canvas-interaction.js');const svg=document.querySelector('#workspace-canvas');const draft=JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft;renderWorkspace(svg,draft,{viewTransform:{a:2,b:0,c:0,d:-2,e:10,f:20}});const member=svg.querySelector('[data-client-key="m1"]');return {selection:selectionFromElement(member),tabindex:member.getAttribute('tabindex'),role:member.getAttribute('role'),transform:svg.querySelector('[data-world-layer]').getAttribute('transform')};}""")
+    assert result == {'selection':{'kind':'PHYSICAL_MEMBER','clientKey':'m1'},'tabindex':'0','role':'button','transform':'matrix(2 0 0 -2 10 20)'}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workspace_canvas_binds_mouse_keyboard_and_view_events(context, workspace_page):
+    owner, project, material, section = context; save_physical_draft(actor=owner,project=project,payload=valid_payload(material,section)); page=workspace_page(user=owner,project=project)
+    result=page.evaluate("""()=>{const svg=document.querySelector('#workspace-canvas');const member=svg.querySelector('[data-client-key="m1"]');const box=member.getBoundingClientRect();member.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:box.left+box.width/2,clientY:box.top+box.height/2}));const mouse=svg.querySelector('[data-client-key="m1"]').dataset.selected;const keyboard=svg.querySelector('[data-client-key="m1"]');keyboard.focus();keyboard.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));const key=svg.querySelector('[data-client-key="m1"]').dataset.selected;svg.dispatchEvent(new WheelEvent('wheel',{deltaY:-100,clientX:100,clientY:50,bubbles:true,cancelable:true}));return {mouse,key,transform:svg.querySelector('[data-world-layer]').getAttribute('transform')};}""")
+    assert result['mouse'] == 'true' and result['key'] == 'true' and result['transform'] == 'matrix(1.1 0 0 -1.1 -10 -5)'

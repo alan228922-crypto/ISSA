@@ -52,8 +52,12 @@
   <script type="module">
     import { createWorkspaceState, readWorkspaceBootstrap } from "{% static 'projects/workspace/state.js' %}";
     import { renderWorkspace } from "{% static 'projects/workspace/renderer.js' %}";
+    import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
     const bootstrap = readWorkspaceBootstrap();
-    renderWorkspace(document.getElementById("workspace-canvas"), bootstrap.draft, createWorkspaceState(bootstrap));
+    const canvas = document.getElementById("workspace-canvas");
+    const state = createWorkspaceState(bootstrap);
+    renderWorkspace(canvas, state.draft, state);
+    bindCanvasInteractions(canvas, state, renderWorkspace);
   </script>
   <script type="module" src="{% static 'projects/workspace/api.js' %}"></script>
 </body>
