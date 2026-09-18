@@ -1,6 +1,8 @@
 """Prediction evidence validation and lifecycle; deliberately independent of mechanics."""
 
-from django.db import transaction
+from time import sleep
+
+from django.db import IntegrityError, OperationalError, transaction
 from django.utils import timezone
 
 from accounts.models import User
@@ -39,6 +41,7 @@ class ReflectionError(ValueError):
 
 
 _STATES = {"TENSION", "COMPRESSION", "ZERO_FORCE", "UNSURE"}
+_PREDICTION_LOCK_RETRY_ATTEMPTS = 5
 
 
 def _schema_error():
@@ -307,20 +310,60 @@ def get_reflection_for_read(*, reflection, actor):
     raise ReflectionError("REFLECTION_READ_DENIED", 403)
 
 
-def create_prediction(*, project, actor, expected_draft_version):
-    """Create a server-bound DRAFT for the Project's current draft version."""
+def _current_predictions(project):
+    return list(Prediction.objects.filter(
+        project=project, source_draft_version=project.draft_version,
+    ).order_by("id"))
+
+
+def discover_current_prediction(project, actor=None):
+    """Return the sole current-draft Prediction, or fail closed on ambiguity."""
+    predictions = _current_predictions(project)
+    if not predictions:
+        return {"state": "NONE", "source_draft_version": project.draft_version}
+    if len(predictions) != 1 or predictions[0].status not in {Prediction.Status.DRAFT, Prediction.Status.COMPLETED}:
+        raise PredictionError("PREDICTION_AMBIGUOUS", 409)
+    return {"state": predictions[0].status, "prediction": predictions[0]}
+
+
+def _create_prediction_once(*, project, actor, expected_draft_version):
     with transaction.atomic():
         project = Project.objects.select_for_update().select_related("event").get(pk=project.pk)
         _authorize_student_owner(project, actor)
         if project.draft_version != expected_draft_version:
             raise PredictionError("PREDICTION_STALE_DRAFT", 409)
-        return Prediction.objects.create(
-            project=project,
-            source_draft_version=project.draft_version,
-            created_by=actor,
-            prediction_schema_version="prediction-v1",
-            payload_json={},
-        )
+        current = discover_current_prediction(project)
+        if current["state"] != "NONE":
+            current["prediction"]._created_for_current_draft = False
+            return current["prediction"]
+        try:
+            with transaction.atomic():
+                prediction = Prediction.objects.create(
+                    project=project,
+                    source_draft_version=project.draft_version,
+                    created_by=actor,
+                    prediction_schema_version="prediction-v1",
+                    payload_json={},
+                )
+                prediction._created_for_current_draft = True
+                return prediction
+        except IntegrityError:
+            current = discover_current_prediction(project)
+            if current["state"] == "NONE":
+                raise
+            current["prediction"]._created_for_current_draft = False
+            return current["prediction"]
+
+
+def create_prediction(*, project, actor, expected_draft_version):
+    """Create or resume the sole server-bound Prediction for the current draft."""
+    for attempt in range(_PREDICTION_LOCK_RETRY_ATTEMPTS):
+        try:
+            return _create_prediction_once(project=project, actor=actor, expected_draft_version=expected_draft_version)
+        except OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == _PREDICTION_LOCK_RETRY_ATTEMPTS - 1:
+                raise
+            sleep(0.05 * (attempt + 1))
 
 
 def complete_prediction(*, prediction, actor, expected_draft_version, payload):

@@ -28,6 +28,10 @@ class Prediction(models.Model):
                 condition=models.Q(status__in=["DRAFT", "COMPLETED", "INVALIDATED"]),
                 name="prediction_status_is_valid",
             ),
+            models.UniqueConstraint(
+                fields=["project", "source_draft_version"],
+                name="unique_prediction_project_draft",
+            ),
         ]
 
 

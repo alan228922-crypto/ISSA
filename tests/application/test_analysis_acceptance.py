@@ -215,6 +215,24 @@ def test_analyze_rejects_non_completed_prediction_before_creating_history(contex
 
 
 @pytest.mark.django_db
+def test_analyze_rejects_ambiguous_current_prediction_before_creating_history(context, monkeypatch):
+    from analysis.models import AnalysisRun, ModelRevision
+    from analysis.orchestration import AnalysisError, analyze_project
+    from learning.services import PredictionError
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    prediction = completed_prediction_for(project, owner, 1)
+    monkeypatch.setattr("learning.services.discover_current_prediction", lambda project: (_ for _ in ()).throw(PredictionError("PREDICTION_AMBIGUOUS", 409)))
+    before = (ModelRevision.objects.count(), AnalysisRun.objects.count())
+
+    with pytest.raises(AnalysisError, match="PREDICTION_AMBIGUOUS") as error:
+        analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
+
+    assert error.value.status_code == 409 and (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
+
+
+@pytest.mark.django_db
 def test_analyze_rejects_stale_completed_prediction_before_creating_history(context):
     """Changing the prediction source-version check must reject old evidence."""
     from analysis.models import AnalysisRun, ModelRevision
@@ -287,15 +305,16 @@ def test_analyze_rejects_foreign_prediction_owner_or_unsupported_schema_before_c
     save_bt01_draft(owner, project, material, section)
     foreign_owner = User.objects.create_user("foreign-prediction-author")
     foreign_owner_prediction = completed_prediction_for(project, foreign_owner, 1)
-    unsupported_schema_prediction = completed_prediction_for(
-        project, owner, 1, prediction_schema_version="prediction-v2"
-    )
     before = (ModelRevision.objects.count(), AnalysisRun.objects.count())
 
-    for prediction in (foreign_owner_prediction, unsupported_schema_prediction):
-        with pytest.raises(AnalysisError, match="PREDICTION_NOT_ELIGIBLE") as error:
-            analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
-        assert error.value.status_code == 409
+    with pytest.raises(AnalysisError, match="PREDICTION_NOT_ELIGIBLE") as error:
+        analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=foreign_owner_prediction.id)
+    assert error.value.status_code == 409
+    foreign_owner_prediction.delete()
+    unsupported_schema_prediction = completed_prediction_for(project, owner, 1, prediction_schema_version="prediction-v2")
+    with pytest.raises(AnalysisError, match="PREDICTION_NOT_ELIGIBLE") as error:
+        analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=unsupported_schema_prediction.id)
+    assert error.value.status_code == 409
 
     assert (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
 
