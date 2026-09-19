@@ -7,6 +7,7 @@ from .forms import ForcedPasswordChangeForm
 
 class AccountLoginView(LoginView):
     template_name='accounts/login.html'
+    next_page='/events/'
 
 
 class AccountLogoutView(LogoutView):
