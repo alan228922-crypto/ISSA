@@ -15,3 +15,7 @@ export async function requestJson(url, options = {}, documentRef = document) {
 export function postJson(url, payload, documentRef = document) {
   return requestJson(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }, documentRef);
 }
+
+export function urlFromTemplate(template, values) {
+  return template.replace(/\{([^}]+)\}/g, (_, key) => encodeURIComponent(values[key]));
+}

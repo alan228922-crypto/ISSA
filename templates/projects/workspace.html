@@ -34,6 +34,19 @@
         <ol id="workspace-workflow-steps">
           <li>① 建模</li><li>② 预测</li><li>③ 分析</li><li>④ 理解</li><li>⑤ 反思</li>
         </ol>
+        <section id="workspace-prediction" aria-label="预测">
+          <h2>预测</h2>
+          <p data-prediction-status aria-live="polite">预测状态：加载中。</p>
+          <div data-prediction-members aria-label="构件受力状态预测"></div>
+          <p data-prediction-maximum>最大位移预测位置：请在画布选择连接后设置。</p>
+          <button type="button" data-prediction-maximum-select>用当前画布选择设置最大位移位置</button>
+          <p data-prediction-path>请选择你认为比较关键的一条传力路径。</p>
+          <button type="button" data-prediction-path-add>将当前画布选择加入路径</button>
+          <button type="button" data-prediction-path-clear>清空路径</button>
+          <button type="button" data-prediction-start>开始预测</button>
+          <button type="button" data-prediction-complete>完成预测</button>
+          <button type="button" data-prediction-skip>跳过预测，直接分析</button>
+        </section>
         <section id="workspace-results" aria-label="分析结果"></section>
         <section id="workspace-reflection" aria-label="反思"></section>
       </aside>
@@ -56,6 +69,7 @@
     import { renderWorkspace } from "{% static 'projects/workspace/renderer.js' %}";
     import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
     import { createWorkspaceWorkflow } from "{% static 'projects/workspace/workflow.js' %}";
+    import { bindPredictionWorkspace } from "{% static 'projects/workspace/prediction.js' %}";
     import { presentWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
     const bootstrap = readWorkspaceBootstrap();
     const canvas = document.getElementById("workspace-canvas");
@@ -66,8 +80,9 @@
     const errorPanel = document.getElementById("workspace-error");
     const issuePanel = document.getElementById("workspace-check-issues");
     const showError = (error) => { const view = presentWorkspaceError(error); errorPanel.hidden = false; errorPanel.textContent = `${view.what}：${view.why} ${view.nextAction}（${view.technicalCode}）`; };
+    const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly });
     document.getElementById("workspace-save").addEventListener("click", async () => {
-      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState(next); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
+      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState(next); await predictionWorkspace.refreshDraft(next.draft); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
       catch (error) { showError(error); }
     });
     document.getElementById("workspace-model-check").addEventListener("click", async () => {

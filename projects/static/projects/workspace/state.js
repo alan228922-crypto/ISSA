@@ -38,3 +38,9 @@ export function focusWorkspaceIssue(state, issue) {
   const object = Object.freeze({ kind: target.kind, clientKey: target.client_key });
   return Object.freeze({ ...state, selectedObject: object, focusedObject: object });
 }
+
+export function predictionCanvasSelection(state) {
+  const selected = state?.selectedObject;
+  if (!selected || !["CONNECTION", "PHYSICAL_MEMBER"].includes(selected.kind) || typeof selected.clientKey !== "string") return null;
+  return Object.freeze({ kind: selected.kind, clientKey: selected.clientKey });
+}

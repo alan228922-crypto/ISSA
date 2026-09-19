@@ -236,3 +236,75 @@ def test_save_check_error_presentation(context, workspace_page):
     assert result['check'] == {'url':'/check/','payload':{'expected_draft_version':7},'issues':1}
     assert result['focused'] == {'selected':{'kind':'PHYSICAL_MEMBER','clientKey':'m1'},'focused':{'kind':'PHYSICAL_MEMBER','clientKey':'m1'}}
     assert result['normalized'] == {'code':'INVALID_DRAFT','message':'x','details':{'field':'nodes'}} and result['calls'][0]['url'] == '/save/' and result['mechanics'] == 'undefined'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_prediction_workspace_states_and_skip(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { createPredictionWorkspace } = await import('/static/projects/workspace/prediction.js');
+      const draft = { version: 7, physical_members: [
+        {client_key:'m1', is_active:true}, {client_key:'m2', is_active:true}, {client_key:'inactive', is_active:false}
+      ]};
+      const urls = {current:'/current/', create:'/create/', completeTemplate:'/predictions/{prediction_id}/complete/'};
+      const ok = (body) => ({response:{ok:true}, body});
+      const none = createPredictionWorkspace({urls, draft, get:async()=>ok({ok:true,state:'NONE',source_draft_version:7}), post:async()=>{throw new Error('not called')}});
+      await none.loadPrediction();
+      const noneBefore = none.predictionForAnalyze();
+      const startCalls = [];
+      const draftFlow = createPredictionWorkspace({urls, draft, get:async()=>ok({ok:true,state:'DRAFT',prediction:{prediction_id:42,status:'DRAFT',payload:{}}}), post:async(url,payload)=>{startCalls.push({url,payload}); return ok({ok:true,prediction_id:42,status:'COMPLETED',payload:payload.payload});}});
+      await draftFlow.loadPrediction();
+      const choiceStates = draftFlow.memberChoices().map((choice)=>{draftFlow.setMemberJudgment('m1',choice);return draftFlow.state().judgments.m1});
+      draftFlow.setMemberJudgment('m1','TENSION');
+      draftFlow.setMemberJudgment('m2','ZERO_FORCE');
+      draftFlow.selectMaximumDisplacement({kind:'CONNECTION',clientKey:'c1'});
+      draftFlow.appendRepresentativePath({kind:'CONNECTION',clientKey:'c1'});
+      draftFlow.appendRepresentativePath({kind:'PHYSICAL_MEMBER',clientKey:'m1'});
+      draftFlow.appendRepresentativePath({kind:'CONNECTION',clientKey:'c2'});
+      const payload = draftFlow.predictionPayload();
+      const draftBeforeSkip = draftFlow.predictionForAnalyze();
+      draftFlow.skipPrediction();
+      const skipped = {state:draftFlow.state().state, keptId:draftFlow.state().prediction.prediction_id, binding:draftFlow.predictionForAnalyze()};
+      await draftFlow.completePrediction(payload);
+      const completed = {state:draftFlow.state().state, binding:draftFlow.predictionForAnalyze(), call:startCalls[0]};
+      const restored = createPredictionWorkspace({urls, draft, get:async()=>ok({ok:true,state:'COMPLETED',prediction:{prediction_id:43,status:'COMPLETED',payload}}), post:async()=>{throw new Error('readonly')}});
+      await restored.loadPrediction();
+      let prematurePosts = 0;
+      const loading = createPredictionWorkspace({urls, draft, get:async()=>ok({ok:true,state:'NONE'}), post:async()=>{prematurePosts += 1; return ok({ok:true,prediction_id:44,status:'DRAFT',payload:{}});}});
+      const whileLoading = await loading.startPrediction();
+      const refreshedCalls = [];
+      const refreshed = createPredictionWorkspace({urls, draft, get:async()=>ok({ok:true,state:'DRAFT',prediction:{prediction_id:51,status:'DRAFT',payload:{}}}), post:async(url,payload)=>{refreshedCalls.push({url,payload});return ok({ok:true,prediction_id:51,status:'COMPLETED',payload:payload.payload});}});
+      await refreshed.loadPrediction();
+      await refreshed.refreshDraft({version:8,physical_members:[{client_key:'m1',is_active:true},{client_key:'m3',is_active:true}]});
+      refreshed.selectMaximumDisplacement({kind:'CONNECTION',clientKey:'c1'});
+      refreshed.appendRepresentativePath({kind:'CONNECTION',clientKey:'c1'}); refreshed.appendRepresentativePath({kind:'PHYSICAL_MEMBER',clientKey:'m1'}); refreshed.appendRepresentativePath({kind:'CONNECTION',clientKey:'c2'});
+      await refreshed.completePrediction();
+      const ambiguous = createPredictionWorkspace({urls, draft, get:async()=>({response:{ok:false},body:{ok:false,error:{code:'PREDICTION_AMBIGUOUS',message:'ambiguous'}}}), post:async()=>{throw new Error('ambiguous')}});
+      await ambiguous.loadPrediction();
+      const completedStart = await restored.startPrediction();
+      return {none:none.state(), noneBefore, draft:{state:draftFlow.state().state,beforeSkip:draftBeforeSkip,payload}, skipped, completed, restored:{state:restored.state().state,binding:restored.predictionForAnalyze(),readonly:restored.state().readonly,startState:completedStart.state}, loading:{state:whileLoading.state,posts:prematurePosts}, refreshed:refreshedCalls[0], ambiguous:ambiguous.state(), choiceStates, mechanics:typeof window.Truss2DSolver};
+    }""")
+    assert result['none']['state'] == 'NONE' and result['noneBefore'] is None
+    assert result['draft']['beforeSkip'] is None
+    assert result['draft']['payload']['member_judgments'] == [
+        {'physical_member_client_key':'m1','predicted_state':'TENSION'},
+        {'physical_member_client_key':'m2','predicted_state':'ZERO_FORCE'},
+    ]
+    assert result['draft']['payload']['max_displacement_location'] == {'kind':'CONNECTION','connection_client_key':'c1'}
+    assert result['draft']['payload']['representative_load_path'] == [
+        {'kind':'CONNECTION','connection_client_key':'c1'}, {'kind':'PHYSICAL_MEMBER','physical_member_client_key':'m1'}, {'kind':'CONNECTION','connection_client_key':'c2'},
+    ]
+    assert result['skipped'] == {'state':'DRAFT','keptId':42,'binding':None}
+    assert result['completed']['state'] == 'COMPLETED' and result['completed']['binding'] == 42
+    assert result['completed']['call'] == {'url':'/predictions/42/complete/','payload':{'expected_draft_version':7,'payload':result['draft']['payload']}}
+    assert result['restored'] == {'state':'COMPLETED','binding':43,'readonly':True,'startState':'COMPLETED'}
+    assert result['loading'] == {'state':'NONE','posts':0}
+    assert result['refreshed']['payload']['expected_draft_version'] == 8
+    assert result['refreshed']['payload']['payload']['member_judgments'] == [
+        {'physical_member_client_key':'m1','predicted_state':'UNSURE'}, {'physical_member_client_key':'m3','predicted_state':'UNSURE'},
+    ]
+    assert result['ambiguous']['state'] == 'AMBIGUOUS' and result['ambiguous']['prediction'] is None
+    assert result['choiceStates'] == ['TENSION','COMPRESSION','ZERO_FORCE','UNSURE'] and result['mechanics'] == 'undefined'

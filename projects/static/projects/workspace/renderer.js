@@ -44,6 +44,11 @@ export function renderSnapIndicator(indicator, resolution) {
   indicator.dataset.snapType = snapType || "";
 }
 
+export function predictionSelectableObject(selection) {
+  if (!selection || !["CONNECTION", "PHYSICAL_MEMBER"].includes(selection.kind) || typeof selection.clientKey !== "string") return null;
+  return Object.freeze({ kind: selection.kind, clientKey: selection.clientKey });
+}
+
 export function renderWorkspace(svg, draft, uiState = {}) {
   const nodes = ordered(draft.nodes || []);
   const members = ordered(draft.physical_members || []);
