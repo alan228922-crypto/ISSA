@@ -47,6 +47,7 @@
           <button type="button" data-prediction-complete>完成预测</button>
           <button type="button" data-prediction-skip>跳过预测，直接分析</button>
         </section>
+        <button id="workspace-analyze" type="button"{% if bootstrap.read_only %} disabled{% endif %}>分析</button>
         <section id="workspace-results" aria-label="分析结果"></section>
         <section id="workspace-reflection" aria-label="反思"></section>
       </aside>
@@ -70,6 +71,7 @@
     import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
     import { createWorkspaceWorkflow } from "{% static 'projects/workspace/workflow.js' %}";
     import { bindPredictionWorkspace } from "{% static 'projects/workspace/prediction.js' %}";
+    import { createResultsWorkspace, renderLevelOne, showLevelOne } from "{% static 'projects/workspace/results.js' %}";
     import { presentWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
     const bootstrap = readWorkspaceBootstrap();
     const canvas = document.getElementById("workspace-canvas");
@@ -81,8 +83,10 @@
     const issuePanel = document.getElementById("workspace-check-issues");
     const showError = (error) => { const view = presentWorkspaceError(error); errorPanel.hidden = false; errorPanel.textContent = `${view.what}：${view.why} ${view.nextAction}（${view.technicalCode}）`; };
     const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly });
+    const resultsWorkspace = createResultsWorkspace({ urls: { analyze: bootstrap.urls.analyze, resultTemplate: bootstrap.urls.result_template } });
+    document.getElementById("workspace-analyze").addEventListener("click", async () => { try { const current = canvasController.getState(); const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); const view = showLevelOne(result.run, result.data, current.draftVersion); renderLevelOne(document.getElementById("workspace-results"), view); const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, state]) => [key, { state, label: state === "TENSION" ? "受拉" : state === "COMPRESSION" ? "受压" : "零杆", color: state === "TENSION" ? "#b91c1c" : state === "COMPRESSION" ? "#1d4ed8" : "#374151", dash: state === "TENSION" ? "none" : state === "COMPRESSION" ? "10 5" : "2 4" }])); canvasController.replaceState({ ...current, resultOverlay: overlay }); errorPanel.hidden = true; } catch (error) { showError(error); } });
     document.getElementById("workspace-save").addEventListener("click", async () => {
-      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState(next); await predictionWorkspace.refreshDraft(next.draft); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
+      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null }); document.getElementById("workspace-results").replaceChildren(); await predictionWorkspace.refreshDraft(next.draft); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
       catch (error) { showError(error); }
     });
     document.getElementById("workspace-model-check").addEventListener("click", async () => {

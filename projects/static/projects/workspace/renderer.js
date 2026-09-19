@@ -63,8 +63,10 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const start = nodePositions.get(member.start_node_client_key);
     const end = nodePositions.get(member.end_node_client_key);
     if (!start || !end) continue;
-    const group = selectable("PhysicalMember", member.client_key, `构件 ${member.client_key}`, uiState);
-    group.append(element("line", { x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: "currentColor", "stroke-width": 8 }));
+    const result = uiState.resultOverlay?.[member.client_key];
+    const group = selectable("PhysicalMember", member.client_key, `构件 ${member.client_key}${result ? `，结果：${result.label}` : ""}`, uiState);
+    group.dataset.resultState = result?.state || "";
+    group.append(element("line", { x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: result?.color || "currentColor", "stroke-width": 8, "stroke-dasharray": result?.dash || "none" }));
     layers[0].append(group);
   }
 

@@ -308,3 +308,34 @@ def test_prediction_workspace_states_and_skip(context, workspace_page):
     ]
     assert result['ambiguous']['state'] == 'AMBIGUOUS' and result['ambiguous']['prediction'] is None
     assert result['choiceStates'] == ['TENSION','COMPRESSION','ZERO_FORCE','UNSURE'] and result['mechanics'] == 'undefined'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_analyze_level_one_and_stale_run(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { createResultsWorkspace, showLevelOne } = await import('/static/projects/workspace/results.js');
+      const data = {ok:true,analysis_run_id:31,model_revision_id:7,source_draft_version:4,status:'SUCCESS',result_json:{schema_version:'truss2d-result-v1',member_results:[{analysis_member_id:'m1:1',physical_member_id:'m1',state:'TENSION'},{analysis_member_id:'m2:1',physical_member_id:'m2',state:'COMPRESSION'},{analysis_member_id:'m3:1',physical_member_id:'m3',state:'ZERO'}]},level_one:{maximum_displacement:{maximum_displacement_mm:4.2,candidate_analysis_node_ids:['connection:c2']}}};
+      const calls = [];
+      const workspace = createResultsWorkspace({urls:{analyze:'/analyze/',resultTemplate:'/analyses/{run_id}/data/'},post:async(url,payload)=>{calls.push({url,payload});return {response:{ok:true},body:{ok:true,analysis_run_id:31,status:'SUCCESS'}};},get:async(url)=>{calls.push({url});return {response:{ok:true},body:data};}});
+      const withoutPrediction = await workspace.analyze(4, null);
+      const completedPrediction = await workspace.analyze(4, 12);
+      const current = showLevelOne(completedPrediction.run, completedPrediction.data, 4);
+      const stale = showLevelOne(completedPrediction.run, completedPrediction.data, 5);
+      const failed = createResultsWorkspace({urls:{analyze:'/analyze/',resultTemplate:'/analyses/{run_id}/data/'},post:async()=>({response:{ok:false},body:{ok:false,error:{code:'STALE_DRAFT',message:'stale'}}}),get:async()=>{throw new Error('must not fetch')}});
+      let failure = null; try { await failed.analyze(4, null); } catch (error) { failure = error.code; }
+      return {calls,withoutPrediction,completedPrediction,current,stale,failure,failedState:failed.state(),mechanics:typeof window.Truss2DSolver};
+    }""")
+    assert result['calls'][0] == {'url':'/analyze/','payload':{'expected_draft_version':4,'prediction_id':None}}
+    assert result['calls'][2] == {'url':'/analyze/','payload':{'expected_draft_version':4,'prediction_id':12}}
+    assert result['withoutPrediction']['predictionId'] is None and result['completedPrediction']['predictionId'] == 12
+    assert result['current']['stale'] is False and result['stale']['stale'] is True
+    assert result['current']['maximum'] == {'maximum_displacement_mm':4.2,'candidate_analysis_node_ids':['connection:c2']}
+    assert result['current']['members'] == [
+        {'physicalMemberClientKey':'m1','state':'TENSION'}, {'physicalMemberClientKey':'m2','state':'COMPRESSION'}, {'physicalMemberClientKey':'m3','state':'ZERO'},
+    ]
+    assert result['failure'] == 'STALE_DRAFT' and result['failedState']['run'] is None
+    assert result['mechanics'] == 'undefined'

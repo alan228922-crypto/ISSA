@@ -44,3 +44,7 @@ export function predictionCanvasSelection(state) {
   if (!selected || !["CONNECTION", "PHYSICAL_MEMBER"].includes(selected.kind) || typeof selected.clientKey !== "string") return null;
   return Object.freeze({ kind: selected.kind, clientKey: selected.clientKey });
 }
+
+export function applyWorkspaceAnalysisSuccess(state, result) {
+  return Object.freeze({ ...state, analysisResult: result });
+}
