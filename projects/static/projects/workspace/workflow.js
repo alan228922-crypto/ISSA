@@ -25,5 +25,21 @@ export function createWorkspaceWorkflow({ urls, request = postJson, get = reques
     async completePrediction(predictionId, version, payload) { const result = await request(urlFromTemplate(urls.prediction_complete_template, { prediction_id: predictionId }), { expected_draft_version: version, payload }); if (!result.response.ok || !result.body?.ok) throw failed(result.body); return result.body; },
     async analyze(version, predictionId) { const result = await request(urls.analyze, { expected_draft_version: version, prediction_id: predictionId }); if (!result.response.ok || !result.body?.ok) throw failed(result.body); return result.body; },
     async result(runId) { const result = await get(urlFromTemplate(urls.result_template, { run_id: runId })); if (!result.response.ok || !result.body?.ok) throw failed(result.body); return result.body; },
+    async loadReflection(runId) {
+      const result = await get(urlFromTemplate(urls.reflection_template, { run_id: runId }));
+      if (result.response.status === 404 && result.body?.error?.code === "REFLECTION_NOT_FOUND") return null;
+      if (!result.response.ok || !result.body?.ok) throw failed(result.body);
+      return result.body;
+    },
+    async saveReflection(runId, fields) {
+      const result = await request(urlFromTemplate(urls.reflection_template, { run_id: runId }), fields);
+      if (!result.response.ok || !result.body?.ok) throw failed(result.body);
+      return result.body;
+    },
+    async completeReflection(runId) {
+      const result = await request(urlFromTemplate(urls.reflection_complete_template, { run_id: runId }), {});
+      if (!result.response.ok || !result.body?.ok) throw failed(result.body);
+      return result.body;
+    },
   });
 }

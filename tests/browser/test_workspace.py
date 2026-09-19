@@ -349,3 +349,84 @@ def test_compare_explain_states_and_canvas_link(context, workspace_page):
     assert result['c'][0]['status'] == 'MATCH' and result['c'][0]['actual']['actual_state'] == 'MIXED'
     assert result['n']['reason'] == 'NO_PREDICTION' and result['e'][0]['text'] == '后端说明'
     assert result['f'] == '0' and result['mechanics'] == 'undefined'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_reflection_draft_complete_and_readonly(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate(
+        """async () => {
+          const { createReflectionWorkspace, renderReflection } = await import('/static/projects/workspace/reflection.js');
+          const calls = [];
+          const responses = {
+            '/reflection/7/': { ok: true, status: 'DRAFT', original_reasoning: '原判断', unexpected_results: '', next_iteration_intent: '' },
+            '/reflection/7/complete/': { ok: true, status: 'COMPLETED', original_reasoning: '原判断', unexpected_results: '不同', next_iteration_intent: '修改' },
+          };
+          const request = async (url, options = {}) => {
+            calls.push({ url, options });
+            return { response: { ok: true, status: 200 }, body: responses[url] };
+          };
+          const workspace = createReflectionWorkspace({
+            urls: { reflectionTemplate: '/reflection/{run_id}/', reflectionCompleteTemplate: '/reflection/{run_id}/complete/' },
+            request,
+            get: request,
+          });
+          const draft = await workspace.loadReflection(7);
+          const saved = await workspace.saveReflection({ unexpected_results: '' });
+          const completed = await workspace.completeReflection();
+          const root = document.createElement('section');
+          renderReflection(root, draft, { readOnly: false, onSave: () => {}, onComplete: () => {}, onSkip: () => {} });
+          const draftControls = [...root.querySelectorAll('textarea')].map((x) => ({ name: x.name, value: x.value, disabled: x.disabled }));
+          const hasSkip = [...root.querySelectorAll('button')].some((x) => x.textContent.includes('稍后'));
+          renderReflection(root, completed, { readOnly: false, onSave: () => {}, onComplete: () => {}, onSkip: () => {} });
+          const completedText = root.textContent;
+          const completedControls = [...root.querySelectorAll('textarea')].map((x) => x.disabled);
+          return { draft, saved, completed, calls, draftControls, completedText, completedControls, hasSkip };
+        }"""
+    )
+    assert result['draft']['status'] == 'DRAFT'
+    assert result['saved']['unexpected_results'] == ''
+    assert result['completed']['status'] == 'COMPLETED'
+    assert result['calls'][0]['url'] == '/reflection/7/'
+    assert result['calls'][1]['url'] == '/reflection/7/'
+    assert result['calls'][1]['options'] == {'unexpected_results': ''}
+    assert result['calls'][2]['url'] == '/reflection/7/complete/'
+    assert all(item['disabled'] is False for item in result['draftControls'])
+    assert all(result['completedControls'])
+    assert '不能修改' in result['completedText']
+    assert result['hasSkip'] is True
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_reflection_no_record_skip_is_soft_gate_and_read_only(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate(
+        """async () => {
+          const { createReflectionWorkspace, renderReflection } = await import('/static/projects/workspace/reflection.js');
+          const workspace = createReflectionWorkspace({
+            urls: { reflectionTemplate: '/reflection/{run_id}/', reflectionCompleteTemplate: '/reflection/{run_id}/complete/' },
+            get: async () => ({ response: { ok: false, status: 404 }, body: { error: { code: 'REFLECTION_NOT_FOUND' } } }),
+          });
+          const noRecord = await workspace.loadReflection(8);
+          const root = document.createElement('section');
+          let skipped = 0;
+          let started = 0;
+          renderReflection(root, noRecord, { readOnly: false, onStart: () => { started += 1; }, onSkip: () => { skipped += 1; } });
+          const studentButtons = [...root.querySelectorAll('button')].map((x) => x.textContent);
+          root.querySelector('button:last-of-type').click();
+          const studentText = root.textContent;
+          renderReflection(root, noRecord, { readOnly: true, onSkip: () => { skipped += 1; } });
+          return { noRecord, skipped, started, studentButtons, studentText, readOnlyButtons: root.querySelectorAll('button').length, hasAiContent: /AI|生成|自动/.test(studentText) };
+        }"""
+    )
+    assert result['noRecord'] is None
+    assert result['skipped'] == 1
+    assert result['started'] == 0
+    assert result['studentButtons'] == ['开始反思', '稍后再说']
+    assert '稍后再说' in result['studentText']
+    assert result['readOnlyButtons'] == 0
+    assert result['hasAiContent'] is False
