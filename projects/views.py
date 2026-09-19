@@ -1,13 +1,13 @@
 """M3 JSON 端点只负责 HTTP 适配，数值与领域规则留在既有服务层。"""
 import json
-from math import hypot, isfinite
-
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
 from analysis.models import AnalysisRun
 from analysis.orchestration import AnalysisError, analyze_project, check_project
+from analysis.reporting import ReportError, build_report_package
+from analysis.results import maximum_displacement_summary
 from materials.services import SectionServiceError
 from learning.services import (
     DisclosureError,
@@ -44,24 +44,12 @@ MESSAGES = {
     'SOLVER_FAILED': '分析计算未能完成，请检查模型后重试。',
     'RESULT_REVEAL_FAILED': '无法安全记录结果查看，请稍后重试。',
     'ANALYSIS_NOT_SUCCESS': '分析尚未成功完成，暂无可用的比较或解释结果。',
+    'REPORT_ANALYSIS_NOT_SUCCESS': '该分析尚未成功完成，暂时无法生成计算书资料。',
     'INTERNAL_ERROR': '服务器暂时无法处理请求，请稍后重试。',
 }
 
 
-def _level_one_result(result):
-    """Expose the authoritative maximum-displacement conclusion without browser math."""
-    entries = result.get('node_displacements') if isinstance(result, dict) else None
-    if not isinstance(entries, list) or not entries:
-        return None
-    values = []
-    for entry in entries:
-        if not isinstance(entry, dict): return None
-        node_id, ux, uy = entry.get('analysis_node_id'), entry.get('ux_mm'), entry.get('uy_mm')
-        if not isinstance(node_id, str) or not isinstance(ux, (int, float)) or not isinstance(uy, (int, float)) or isinstance(ux, bool) or isinstance(uy, bool) or not isfinite(ux) or not isfinite(uy): return None
-        values.append((node_id, hypot(ux, uy)))
-    maximum = max(value for _, value in values)
-    tolerance = max(1e-9, 1e-9 * maximum)
-    return {'maximum_displacement': {'maximum_displacement_mm': maximum, 'candidate_analysis_node_ids': sorted(node_id for node_id, value in values if maximum - value <= tolerance)}}
+_level_one_result = maximum_displacement_summary
 
 
 def _error(code, status, *, details=None):
@@ -176,6 +164,26 @@ def analysis_data(request, project_id, run_id):
     response = {'ok': True, 'analysis_run_id': run.id, 'model_revision_id': run.model_revision_id, 'source_draft_version': run.model_revision.source_draft_version, 'model_hash': run.model_revision.model_hash, 'solver_version': run.solver_version.solver_version, 'input_hash': run.input_hash, 'input_schema_version': run.input_schema_version, 'result_schema_version': run.result_schema_version, 'status': run.status, 'failure_code': run.failure_code, 'diagnostics': run.diagnostics_json, 'result_json': run.result_json}
     if run.status == AnalysisRun.Status.SUCCESS: response['level_one'] = _level_one_result(run.result_json)
     return JsonResponse(response)
+
+
+@login_required
+@require_GET
+def analysis_report(request, project_id, run_id):
+    project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
+    if not can_view_project(request.user, project):
+        return _error('PROJECT_READ_DENIED', 403)
+    run = AnalysisRun.objects.filter(pk=run_id, project_id=project.id).first()
+    if run is None:
+        return _error('PROJECT_NOT_FOUND', 404)
+    try:
+        report = build_report_package(run=run, actor=request.user, project=project)
+    except ReportError as exc:
+        return _error(exc.code, exc.status_code, details=exc.details)
+    except Exception:
+        return _error('INTERNAL_ERROR', 500)
+    return JsonResponse({'ok': True, 'report': report})
 
 
 @login_required
