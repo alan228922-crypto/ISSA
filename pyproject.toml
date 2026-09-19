@@ -17,6 +17,6 @@ include = ["mechanics*", "idealization*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers -m 'not browser'"
+addopts = "--strict-markers --import-mode=importlib -m 'not browser'"
 DJANGO_SETTINGS_MODULE = "config.settings"
 markers = ["browser: requires Playwright Chromium"]

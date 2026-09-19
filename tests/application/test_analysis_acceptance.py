@@ -159,13 +159,22 @@ def test_identical_draft_save_binds_analysis_and_reveal_to_new_source(context, s
     assert StudentResultReveal.objects.values().get(pk=current_reveal.pk) == current_evidence
 
     late_prediction = create_prediction(project=project, actor=owner, expected_draft_version=2)
-    with pytest.raises(PredictionError, match="PREDICTION_AFTER_RESULT_REVEAL"):
-        complete_prediction(
-            prediction=late_prediction, actor=owner, expected_draft_version=2, payload=payload,
-        )
-    late_prediction.refresh_from_db()
-    assert late_prediction.status == Prediction.Status.DRAFT
-    assert late_prediction.completed_at is None
+    assert Prediction.objects.filter(project=project, source_draft_version=2).count() == 1
+    if prediction:
+        assert late_prediction.pk == prediction.pk
+        assert late_prediction.source_draft_version == 2
+        assert late_prediction.status == Prediction.Status.COMPLETED
+        late_prediction.refresh_from_db()
+        assert late_prediction.completed_at is not None
+    else:
+        assert late_prediction.status == Prediction.Status.DRAFT
+        with pytest.raises(PredictionError, match="PREDICTION_AFTER_RESULT_REVEAL"):
+            complete_prediction(
+                prediction=late_prediction, actor=owner, expected_draft_version=2, payload=payload,
+            )
+        late_prediction.refresh_from_db()
+        assert late_prediction.status == Prediction.Status.DRAFT
+        assert late_prediction.completed_at is None
     assert record_student_result_reveal(project=project, run=old_run, actor=owner).pk == old_reveal.pk
     assert ModelRevision.objects.values().get(pk=old_run.model_revision_id) == old_revision
     assert StudentResultReveal.objects.values().get(pk=old_reveal.pk) == old_evidence
