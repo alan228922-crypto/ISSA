@@ -3,7 +3,7 @@
 ## Current State
 
 - [x] Architecture specification set complete.
-- [x] `MASTER_SPEC.md v1.0` established.
+- [x] `MASTER_SPEC.md v1.12` established.
 - [x] MASTER_SPEC reconciliation complete.
 - [x] Architecture freeze = `FINAL_FROZEN`.
 - [x] Implementation plan complete.
@@ -11,6 +11,7 @@
 - [x] Django migrations required by M5 generated; merged-main migration check passed.
 - [x] M5 browser acceptance, backend integration, and merged-main verification passed.
 - [x] M5 post-merge state reconciliation completed; feature branch/worktree removed after verification.
+- [x] M6 Calculation Report Assistance contract frozen; implementation not started.
 
 ## Source-of-Truth Gate
 
@@ -52,6 +53,7 @@ M1 Trustworthy Mechanics
 → M3 Physical Model & Reproducible Analysis
 → M4 Teaching Workflow
 → M5 Student Learning Workspace — COMPLETE
+→ M6 Calculation Report Assistance — FROZEN / NOT STARTED
 ```
 
-The older Lifecycle / Research / PoC grouping remains a future, unfrozen candidate area; it is not the current M5 name and is not formal M6. Open decisions O-001, O-003, O-004, O-005, and O-006 remain scoped blockers only and must not be silently defaulted.
+The older Lifecycle / Research / PoC grouping remains a future, unfrozen candidate area after M6; it is not the current M5 or M6 name. Open decisions O-001, O-003, O-004, and O-005 remain scoped blockers only for directly dependent behavior; O-006 remains an unrelated open event-provisioning policy for base M6. None may be silently defaulted.

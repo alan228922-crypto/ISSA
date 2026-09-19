@@ -9,6 +9,8 @@
 - Learning flow: Build → Check → optional Prediction → Analyze → Compare / Explain → Engineering Details → optional Reflection → Iterate
 - Prediction and Reflection remain Soft Gates
 - M5 merged-main acceptance and regression verification: **PASS**
+- Next milestone: M6 Calculation Report Assistance
+- M6 status: **FROZEN — implementation not started**
 - Open decisions: O-001, O-003, O-004, O-005, O-006
 
 ## Current Files
@@ -33,6 +35,7 @@
 18. `COMPARISON_CONTRACT.md`
 19. `EXPLANATION_CONTRACT.md`
 20. `REFLECTION_AND_RATIONALE_ARCHITECTURE.md`
+21. `CALCULATION_REPORT_ASSISTANCE_SPEC.md` — frozen M6 Report contract
 
 ## Frozen P0 Direction
 
@@ -63,7 +66,7 @@ These gates do not invalidate MASTER_SPEC v1.11 or the overall final architectur
 
 ## Next Execution Point
 
-M5 Student Learning Workspace implementation is complete. The next formal milestone is not frozen; future work must be selected and specified before implementation.
+M5 Student Learning Workspace implementation is complete. M6 Calculation Report Assistance is frozen as the next milestone; implementation has not started.
 
 Before any task, the implementer must read:
 
@@ -72,7 +75,7 @@ Before any task, the implementer must read:
 3. `ARCHITECTURE_FREEZE.md`
 4. the matching implementation-plan task
 
-Documentation reconciliation is authorized; no M6 scope is currently approved.
+Documentation reconciliation is authorized; M6 implementation must begin at Gate 1 only after the frozen Gate 0 contract is reviewed against the repository.
 
 ## Canonical location
 

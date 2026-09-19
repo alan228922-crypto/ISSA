@@ -14,7 +14,9 @@
 
 The current implemented milestone is **M5 — Student Learning Workspace — COMPLETE**. It is merged into `main` at `910bf50e074322dc546bd8aa4428e8e4651c5b8c`, with the full learning-loop acceptance and merged-main verification passed.
 
-The Lifecycle / Research / PoC grouping below is retained as historical implementation-plan content for Tasks 24–26. Those tasks are not the current M5 name and are not confirmed as the next milestone. Formal **M6 NOT YET FROZEN**. Candidate areas include Calculation Report Assistance, Euler / Stability Teaching, and Event / Lifecycle; these remain candidates until separately selected and specified.
+M6 is **Calculation Report Assistance — FROZEN / IMPLEMENTATION NOT STARTED**. Its frozen contract is in `CALCULATION_REPORT_ASSISTANCE_SPEC.md`. Begin only at M6 Gate 1 after Gate 0 contract review; do not treat this status entry as evidence that implementation has started.
+
+The Lifecycle / Research / PoC grouping below is retained as historical implementation-plan content for Tasks 24–26. Those tasks are not M6 and remain a future, unfrozen candidate area after M6.
 
 ## Global Constraints
 
@@ -165,7 +167,7 @@ Implement in vertical increments. Each task ends in a testable state and should 
 
 Do **not** begin Task 1 until the actual project repository is identified.
 
-The Source-of-Truth gate is now **OPEN**: `MASTER_SPEC.md v1.0` has been established and architecture is `FINAL_FROZEN`.
+The Source-of-Truth gate is now **OPEN**: `MASTER_SPEC.md v1.12` is established and architecture is `FINAL_FROZEN`.
 
 The tasks below are the intended order. Stop only when a task reaches one of the scoped open gates in `ARCHITECTURE_FREEZE.md`.
 
@@ -1072,6 +1074,27 @@ Exit:
 - no AI mechanics authority
 - no fabricated design rationale
 
+## Milestone M6 — Calculation Report Assistance — FROZEN / IMPLEMENTATION NOT STARTED
+
+Goal:
+
+- organize authoritative engineering facts from one explicit `AnalysisRun` into an online calculation-report data package;
+- preserve provenance through `ModelRevision`, Physical Snapshot, `SolverVersion`, and `InputHash`;
+- keep historical reports viewable but mark them `STALE` after later draft edits;
+- preserve student authorship for design reasoning and conclusions;
+- avoid mechanics recomputation, AI-generated rationale, Euler automatic reporting, and export-format commitment.
+
+Gates:
+
+- Gate 0 — Report Contract Freeze — COMPLETE
+- Gate 1 — Authoritative Report Package
+- Gate 2 — Completeness + Limitation
+- Gate 3 — Report Workspace
+- Gate 4 — Student-authored Reasoning Boundary
+- Gate 5 — Acceptance + Reconciliation
+
+Detailed scope, data blocks, authority, completeness states, non-goals, open-decision impact, and acceptance boundaries are defined in `CALCULATION_REPORT_ASSISTANCE_SPEC.md`.
+
 ## Future milestone candidate — Lifecycle / Research / PoC Gate (UNFROZEN)
 
 Tasks:
@@ -1085,7 +1108,7 @@ Exit:
 - full test suite passes
 - manual P0 workflow passes
 
-This historical grouping must not be read as the current M5 status or as a frozen M6 definition. Its Tasks 24–26 remain future/unfrozen work pending explicit sequencing and the relevant open decisions.
+This historical grouping must not be read as M5 or M6. Its Tasks 24–26 remain future/unfrozen work pending explicit sequencing and the relevant open decisions.
 
 ---
 

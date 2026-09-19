@@ -94,6 +94,15 @@ Mechanics 的 machine-readable code 保持英文稳定 identifier，例如 `ZERO
 - Freeze O-M5-CAD-02: Grid is a fixed global Cartesian 100 mm world-space drawing aid, with independent Grid Snap state and deterministic nearest-multiple resolution.
 - Resolve the prior grid-spacing gap while preserving object-snap priority, ORTHO locking, explicit numeric input, non-topological Grid behavior, and zoom-independent snap targets.
 
+**Version record — v1.12 change summary**
+
+- Freeze M6 as **Calculation Report Assistance**.
+- Bind every Report to one explicit `AnalysisRun` and preserve historical Reports with `STALE` status after later draft edits.
+- Confirm M6 P0 as an online authoritative engineering-data package; PDF/DOCX/Excel export remains deferred.
+- Preserve the platform/student responsibility boundary: the platform organizes traceable engineering facts, while the student authors design reasoning and conclusions.
+- Exclude Euler / Stability automatic reporting from M6 P0 while O-001 remains open.
+- Preserve `Report ≠ Mechanics Engine`; Report consumes existing authoritative Solver and postprocess data without recomputation.
+
 ---
 
 # 1. 規格治理與權威關係
@@ -1498,6 +1507,20 @@ Reflect 是核心教學循環的一部分，也是 Soft Gate。M4C `reflection-v
 - 方案比較
 - 修改理由
 - 最終結論
+
+## 30.4 M6 Calculation Report Assistance
+
+【Confirmed — M6 FROZEN; implementation not started】
+
+M6 的目標是將一次成功 `AnalysisRun` 產生的 authoritative engineering facts 整理成可追溯、可複核、可用於計算書編制的線上基礎資料包。Report 必須綁定明確的 `AnalysisRun`，不可自動選擇 latest、覆蓋歷史結果或依目前 Draft 重算舊結果。
+
+學生後續修改 Draft 時，舊 Report 保留為歷史資料並標記 `STALE`；`STALE` 不表示結果錯誤，也不觸發自動刪除、重算或替換。
+
+M6 P0 只提供線上 Report / Calculation Report Data Package。PDF、DOCX、Excel export 延後處理。Reflection 繼續是 Soft Gate，不得成為查看或產生基礎 Report 的必要條件。
+
+M6 P0 不包含 Euler / Stability automatic report block；O-001 仍保持 Open。Report layer 只消費既有 `TRUSS_2D` Solver 與 authoritative postprocess data，不重新組剛度矩陣、不重新求位移、反力、軸力或應力，也不允許 AI 生成設計論證。
+
+詳細的 Report Data Contract、Completeness 狀態、學生與平台責任邊界及 M6 Gates 見 `CALCULATION_REPORT_ASSISTANCE_SPEC.md`。
 
 ---
 
