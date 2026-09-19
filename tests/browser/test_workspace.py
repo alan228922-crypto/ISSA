@@ -430,3 +430,178 @@ def test_reflection_no_record_skip_is_soft_gate_and_read_only(context, workspace
     assert '稍后再说' in result['studentText']
     assert result['readOnlyButtons'] == 0
     assert result['hasAiContent'] is False
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_engineering_details_authoritative_values(context, workspace_page):
+    from analysis.orchestration import analyze_project
+    from tests.application.test_analysis_acceptance import save_bt01_draft
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    run = analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=None)
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate(
+        f"""async () => {{
+          const {{ requestJson }} = await import('/static/projects/workspace/api.js');
+          const {{ showEngineeringDetails, renderEngineeringDetails }} = await import('/static/projects/workspace/results.js');
+          const response = await requestJson('/projects/{project.id}/analyses/{run.id}/data/');
+          const details = showEngineeringDetails(response.body.result_json);
+          const currentRoot = document.createElement('section');
+          renderEngineeringDetails(currentRoot, details, false);
+          const missingRoot = document.createElement('section');
+          renderEngineeringDetails(missingRoot, showEngineeringDetails({{ node_displacements: details.displacements }}), false);
+          const staleRoot = document.createElement('section');
+          renderEngineeringDetails(staleRoot, details, true);
+          const disclosure = document.querySelector('#workspace-engineering-details');
+          return {{
+            ok: response.body.ok,
+            values: {{ displacement: details.displacements[1].ux_mm, reaction: details.reactions[0].rx_N, axial: details.members[0].axial_force_N, stress: details.members[0].axial_stress_MPa, mass: details.members[0].mass_g, totalMass: details.total_mass_g }},
+            currentText: currentRoot.textContent,
+            missingText: missingRoot.textContent,
+            staleText: staleRoot.textContent,
+            detailsClosed: disclosure.open === false,
+            mechanics: typeof window.Truss2DSolver,
+          }};
+        }}"""
+    )
+    expected = run.result_json
+    assert result['ok'] is True
+    assert result['values'] == {
+        'displacement': expected['node_displacements'][1]['ux_mm'],
+        'reaction': expected['support_reactions'][0]['rx_N'],
+        'axial': expected['member_results'][0]['axial_force_N'],
+        'stress': expected['member_results'][0]['axial_stress_MPa'],
+        'mass': expected['member_results'][0]['mass_g'],
+        'totalMass': expected['total_mass_g'],
+    }
+    assert all(unit in result['currentText'] for unit in ['ux (mm)', 'Rx (N)', '轴力 (N)', '应力 (MPa)', '质量 (g)'])
+    assert result['missingText'].endswith('总质量：—')
+    assert '总质量：0 g' not in result['missingText']
+    assert '当前结果对应较早的模型版本。' in result['staleText']
+    assert result['detailsClosed'] is True and result['mechanics'] == 'undefined'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workspace_full_learning_loop(context, workspace_page):
+    from competitions.models import CompetitionEvent
+    from tests.application.test_analysis_acceptance import save_bt01_draft
+
+    owner, project, material, section = context
+    CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
+    save_bt01_draft(owner, project, material, section)
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate(
+        f"""async () => {{
+          document.cookie = 'csrftoken=' + 'a'.repeat(64) + '; path=/';
+          const bootstrap = JSON.parse(document.querySelector('#workspace-bootstrap').textContent);
+          const {{ requestJson }} = await import('/static/projects/workspace/api.js');
+          const {{ createWorkspaceWorkflow }} = await import('/static/projects/workspace/workflow.js');
+          const {{ createReflectionWorkspace, renderReflection }} = await import('/static/projects/workspace/reflection.js');
+          const {{ showComparison, showExplanation, showEngineeringDetails, renderEngineeringDetails, showLevelOne, renderLevelOne }} = await import('/static/projects/workspace/results.js');
+          const workflow = createWorkspaceWorkflow({{ urls: bootstrap.urls }});
+          const editableDraft = {{ ...bootstrap.draft, physical_members: bootstrap.draft.physical_members.map((member) => ({{ ...member, label: '学习路径杆件' }})) }};
+          const saved = await workflow.saveDraft(editableDraft);
+          const checked = await workflow.checkModel(saved.draft_version);
+          const prediction = await workflow.createPrediction(saved.draft_version);
+          const completedPrediction = await workflow.completePrediction(prediction.prediction_id, saved.draft_version, {{
+            schema_version: 'prediction-v1',
+            member_judgments: [{{ physical_member_client_key: 'm1', predicted_state: 'TENSION' }}],
+            max_displacement_location: {{ kind: 'CONNECTION', connection_client_key: 'c2' }},
+            representative_load_path: [{{ kind: 'CONNECTION', connection_client_key: 'c1' }}, {{ kind: 'PHYSICAL_MEMBER', physical_member_client_key: 'm1' }}, {{ kind: 'CONNECTION', connection_client_key: 'c2' }}],
+          }});
+          const analyzed = await workflow.analyze(saved.draft_version, completedPrediction.prediction_id);
+          const data = await workflow.result(analyzed.analysis_run_id);
+          const comparisonResponse = await requestJson(bootstrap.urls.comparison_template.replace('{{run_id}}', analyzed.analysis_run_id));
+          const explanationResponse = await requestJson(bootstrap.urls.explanation_template.replace('{{run_id}}', analyzed.analysis_run_id));
+          const levelOneRoot = document.createElement('section');
+          const levelOne = showLevelOne({{ ...analyzed, predictionId: completedPrediction.prediction_id }}, data, saved.draft_version);
+          renderLevelOne(levelOneRoot, levelOne);
+          const detailsRoot = document.createElement('section');
+          renderEngineeringDetails(detailsRoot, showEngineeringDetails(data.result_json), false);
+          const reflection = createReflectionWorkspace({{ urls: bootstrap.urls, workflow }});
+          const absent = await reflection.loadReflection(analyzed.analysis_run_id);
+          const draft = await reflection.saveReflection({{ original_reasoning: '先按受力路径判断。', unexpected_results: '结果与预想有差异。', next_iteration_intent: '下一版重新观察支座附近。' }});
+          const completed = await reflection.completeReflection();
+          const reflectionRoot = document.createElement('section');
+          renderReflection(reflectionRoot, completed, {{ readOnly: false }});
+          return {{
+            build: editableDraft.physical_members[0].label,
+            saveVersion: saved.draft_version,
+            check: checked.ok,
+            prediction: completedPrediction.status,
+            analyze: analyzed.status,
+            levelOne: levelOne.maximum !== null && levelOneRoot.textContent.includes('分析结果'),
+            compare: showComparison(comparisonResponse.body.comparison).length > 0,
+            explain: showExplanation(explanationResponse.body.explanation).length > 0,
+            engineering: detailsRoot.textContent.includes('轴力 (N)') && detailsRoot.textContent.includes('总质量'),
+            reflection: {{ absent, draft: draft.status, completed: completed.status, readonly: [...reflectionRoot.querySelectorAll('textarea')].every((field) => field.disabled) }},
+            mechanics: typeof window.Truss2DSolver,
+          }};
+        }}"""
+    )
+    assert result['build'] == '学习路径杆件'
+    assert result['saveVersion'] == 2
+    assert result['check'] is True
+    assert result['prediction'] == 'COMPLETED'
+    assert result['analyze'] == 'SUCCESS'
+    assert result['levelOne'] is True and result['compare'] is True and result['explain'] is True
+    assert result['engineering'] is True
+    assert result['reflection'] == {'absent': None, 'draft': 'DRAFT', 'completed': 'COMPLETED', 'readonly': True}
+    assert result['mechanics'] == 'undefined'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workspace_soft_gates(context, workspace_page):
+    from competitions.models import CompetitionEvent
+    from tests.application.test_analysis_acceptance import save_bt01_draft
+
+    owner, project, material, section = context
+    CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
+    save_bt01_draft(owner, project, material, section)
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate(
+        f"""async () => {{
+          document.cookie = 'csrftoken=' + 'a'.repeat(64) + '; path=/';
+          const bootstrap = JSON.parse(document.querySelector('#workspace-bootstrap').textContent);
+          const {{ createWorkspaceWorkflow }} = await import('/static/projects/workspace/workflow.js');
+          const {{ createPredictionWorkspace }} = await import('/static/projects/workspace/prediction.js');
+          const {{ createReflectionWorkspace, renderReflection }} = await import('/static/projects/workspace/reflection.js');
+          const workflow = createWorkspaceWorkflow({{ urls: bootstrap.urls }});
+          const predictionUi = createPredictionWorkspace({{ urls: {{ current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }}, draft: bootstrap.draft }});
+          await predictionUi.loadPrediction();
+          const predictionDraft = await predictionUi.startPrediction();
+          predictionUi.skipPrediction();
+          const skippedState = predictionUi.state();
+          const analyzed = await workflow.analyze(1, predictionUi.predictionForAnalyze());
+          const firstData = await workflow.result(analyzed.analysis_run_id);
+          const currentPrediction = await workflow.loadPrediction();
+          const reflection = createReflectionWorkspace({{ urls: bootstrap.urls, workflow }});
+          await reflection.loadReflection(analyzed.analysis_run_id);
+          const reflectionDraft = await reflection.saveReflection({{ original_reasoning: '先观察整体受力。' }});
+          const reflectionRoot = document.createElement('section');
+          let skippedReflection = false;
+          renderReflection(reflectionRoot, reflectionDraft, {{ onSkip: () => {{ skippedReflection = true; }} }});
+          [...reflectionRoot.querySelectorAll('button')].find((button) => button.textContent.includes('稍后')).click();
+          const afterSkip = await reflection.loadReflection(analyzed.analysis_run_id);
+          const editedDraft = {{ ...bootstrap.draft, physical_members: bootstrap.draft.physical_members.map((member) => ({{ ...member, label: '跳过后继续编辑' }})) }};
+          const savedAgain = await workflow.saveDraft(editedDraft);
+          const analyzedAgain = await workflow.analyze(savedAgain.draft_version, null);
+          const secondData = await workflow.result(analyzedAgain.analysis_run_id);
+          return {{
+            prediction: {{ created: predictionDraft.state, skipped: skippedState.skipped, binding: predictionUi.predictionForAnalyze(), current: currentPrediction.state, id: currentPrediction.prediction?.prediction_id }},
+            firstAnalyze: {{ status: analyzed.status, predictionId: null, result: firstData.status }},
+            reflection: {{ skippedReflection, status: afterSkip.status, value: afterSkip.original_reasoning }},
+            continued: {{ savedVersion: savedAgain.draft_version, analyze: analyzedAgain.status, result: secondData.status }},
+          }};
+        }}"""
+    )
+    assert result['prediction']['created'] == 'DRAFT'
+    assert result['prediction']['skipped'] is True and result['prediction']['binding'] is None
+    assert result['prediction']['current'] == 'DRAFT' and result['prediction']['id'] is not None
+    assert result['firstAnalyze'] == {'status': 'SUCCESS', 'predictionId': None, 'result': 'SUCCESS'}
+    assert result['reflection'] == {'skippedReflection': True, 'status': 'DRAFT', 'value': '先观察整体受力。'}
+    assert result['continued'] == {'savedVersion': 2, 'analyze': 'SUCCESS', 'result': 'SUCCESS'}
