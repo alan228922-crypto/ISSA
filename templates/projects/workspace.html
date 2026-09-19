@@ -1,0 +1,116 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>项目工作区</title>
+  <link rel="stylesheet" href="{% static 'projects/workspace/workspace.css' %}">
+  <style>#workspace-canvas [data-selected="true"] > *, #workspace-canvas [data-focused="true"] > *, #workspace-canvas [data-object-kind]:focus > * { stroke-dasharray: 5 3; stroke-width: 5; }</style>
+</head>
+<body>
+  <main id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}">
+    <header id="workspace-project-header">
+      <h1>{{ bootstrap.project.name }}</h1>
+      <p id="workspace-draft-version">当前草稿 v{{ bootstrap.draft.version }}</p>
+      <p id="workspace-read-only"{% if not bootstrap.read_only %} hidden{% endif %}>只读查看</p>
+    </header>
+    <section class="workspace-layout" aria-label="结构学习工作区">
+      <aside id="workspace-modeling-panel" aria-label="建模工具">
+        <h2>建模工具</h2>
+        <p>选择、节点、构件、连接、支座、荷载</p>
+        <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>保存</button>
+        <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>模型检查</button>
+        <section id="workspace-properties-panel" aria-label="对象属性">
+          <h2>对象属性</h2>
+          <p>选择对象后可在这里查看属性。</p>
+        </section>
+      </aside>
+      <section class="workspace-center" aria-label="结构画布">
+        <svg id="workspace-canvas" role="img" aria-label="结构画布" viewBox="0 0 1000 600"></svg>
+      </section>
+      <aside id="workspace-workflow-panel" aria-label="学习流程">
+        <h2>学习流程</h2>
+        <ol id="workspace-workflow-steps">
+          <li>① 建模</li><li>② 预测</li><li>③ 分析</li><li>④ 理解</li><li>⑤ 反思</li>
+        </ol>
+        <section id="workspace-prediction" aria-label="预测">
+          <h2>预测</h2>
+          <p data-prediction-status aria-live="polite">预测状态：加载中。</p>
+          <div data-prediction-members aria-label="构件受力状态预测"></div>
+          <p data-prediction-maximum>最大位移预测位置：请在画布选择连接后设置。</p>
+          <button type="button" data-prediction-maximum-select>用当前画布选择设置最大位移位置</button>
+          <p data-prediction-path>请选择你认为比较关键的一条传力路径。</p>
+          <button type="button" data-prediction-path-add>将当前画布选择加入路径</button>
+          <button type="button" data-prediction-path-clear>清空路径</button>
+          <button type="button" data-prediction-start>开始预测</button>
+          <button type="button" data-prediction-complete>完成预测</button>
+          <button type="button" data-prediction-skip>跳过预测，直接分析</button>
+        </section>
+        <button id="workspace-analyze" type="button"{% if bootstrap.read_only %} disabled{% endif %}>分析</button>
+        <section id="workspace-results" aria-label="分析结果"></section>
+        <details id="workspace-engineering-details"><summary>工程详情</summary><section data-engineering-content></section></details>
+        <section id="workspace-reflection" aria-label="反思"></section>
+      </aside>
+    </section>
+    <section id="workspace-dynamic-input" data-active-field="distance" hidden aria-label="动态输入">
+      <label>距离 <input id="workspace-dynamic-distance" type="text" disabled></label>
+      <label>角度 <input id="workspace-dynamic-angle" type="text" disabled></label>
+    </section>
+    <footer id="workspace-status-bar" aria-live="polite">
+      <span>X: —</span><span>Y: —</span><span>ΔL: —</span><span>Angle: —</span>
+      <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 关</span>
+      <span id="workspace-save-status">未保存修改：无</span>
+    </footer>
+    <section id="workspace-error" hidden aria-live="polite"></section>
+    <section id="workspace-check-issues" aria-live="polite"></section>
+  </main>
+  {{ bootstrap|json_script:"workspace-bootstrap" }}
+  <script type="module">
+    import { applyWorkspaceSaveSuccess, createWorkspaceState, focusWorkspaceIssue, readWorkspaceBootstrap } from "{% static 'projects/workspace/state.js' %}";
+    import { renderWorkspace } from "{% static 'projects/workspace/renderer.js' %}";
+    import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
+    import { createWorkspaceWorkflow } from "{% static 'projects/workspace/workflow.js' %}";
+    import { bindPredictionWorkspace } from "{% static 'projects/workspace/prediction.js' %}";
+    import { createResultsWorkspace, renderLevelOne, showLevelOne, showEngineeringDetails, renderEngineeringDetails } from "{% static 'projects/workspace/results.js' %}";
+    import { presentWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
+    import { createReflectionWorkspace, renderReflection } from "{% static 'projects/workspace/reflection.js' %}";
+    const bootstrap = readWorkspaceBootstrap();
+    const canvas = document.getElementById("workspace-canvas");
+    const state = createWorkspaceState(bootstrap);
+    renderWorkspace(canvas, state.draft, state);
+    const canvasController = bindCanvasInteractions(canvas, state, renderWorkspace);
+    const workflow = createWorkspaceWorkflow({ urls: bootstrap.urls });
+    const errorPanel = document.getElementById("workspace-error");
+    const issuePanel = document.getElementById("workspace-check-issues");
+    const showError = (error) => { const view = presentWorkspaceError(error); errorPanel.hidden = false; errorPanel.textContent = `${view.what}：${view.why} ${view.nextAction}（${view.technicalCode}）`; };
+    const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly });
+    const resultsWorkspace = createResultsWorkspace({ urls: { analyze: bootstrap.urls.analyze, resultTemplate: bootstrap.urls.result_template } });
+    const reflectionRoot = document.getElementById("workspace-reflection");
+    const reflectionWorkspace = createReflectionWorkspace({ urls: { reflectionTemplate: bootstrap.urls.reflection_template, reflectionCompleteTemplate: bootstrap.urls.reflection_complete_template }, workflow });
+    const renderReflectionView = (reflection) => renderReflection(reflectionRoot, reflection, {
+      readOnly: state.readOnly,
+      onStart: () => renderReflectionView({ status: "DRAFT", original_reasoning: "", unexpected_results: "", next_iteration_intent: "" }),
+      onSave: async (fields) => { try { renderReflectionView(await reflectionWorkspace.saveReflection(fields)); errorPanel.hidden = true; } catch (error) { showError(error); } },
+      onComplete: async () => { try { renderReflectionView(await reflectionWorkspace.completeReflection()); errorPanel.hidden = true; } catch (error) { showError(error); } },
+      onSkip: () => { reflectionRoot.replaceChildren(); const note = document.createElement("p"); note.textContent = "已跳过反思，之后仍可继续编辑或分析。"; reflectionRoot.append(note); },
+    });
+    renderReflectionView(null);
+    document.getElementById("workspace-analyze").addEventListener("click", async () => { try { const current = canvasController.getState(); const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); const view = showLevelOne(result.run, result.data, current.draftVersion); renderLevelOne(document.getElementById("workspace-results"), view); renderEngineeringDetails(document.querySelector("[data-engineering-content]"), showEngineeringDetails(result.data.result_json), view.stale); const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, state]) => [key, { state, label: state === "TENSION" ? "受拉" : state === "COMPRESSION" ? "受压" : "零杆", color: state === "TENSION" ? "#b91c1c" : state === "COMPRESSION" ? "#1d4ed8" : "#374151", dash: state === "TENSION" ? "none" : state === "COMPRESSION" ? "10 5" : "2 4" }])); canvasController.replaceState({ ...current, resultOverlay: overlay }); renderReflectionView(await reflectionWorkspace.loadReflection(result.run.analysis_run_id)); errorPanel.hidden = true; } catch (error) { showError(error); } });
+    document.getElementById("workspace-save").addEventListener("click", async () => {
+      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null }); document.getElementById("workspace-results").replaceChildren(); await predictionWorkspace.refreshDraft(next.draft); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
+      catch (error) { showError(error); }
+    });
+    document.getElementById("workspace-model-check").addEventListener("click", async () => {
+      const current = canvasController.getState();
+      if (current.dirty) { showError({ code: "UNSAVED_DRAFT", message: "本地修改尚未保存，服务器无法检查这些修改。" }); return; }
+      try {
+        const result = await workflow.checkModel(current.draftVersion); errorPanel.hidden = true; issuePanel.replaceChildren();
+        if (result.ok) { issuePanel.textContent = "模型检查通过。"; return; }
+        for (const issue of result.issues || []) { const button = document.createElement("button"); button.type = "button"; button.textContent = issue.human_message || "模型检查发现问题。"; button.addEventListener("click", () => canvasController.replaceState(focusWorkspaceIssue(canvasController.getState(), issue))); issuePanel.append(button); }
+      } catch (error) { showError(error); }
+    });
+  </script>
+  <script type="module" src="{% static 'projects/workspace/api.js' %}"></script>
+</body>
+</html>

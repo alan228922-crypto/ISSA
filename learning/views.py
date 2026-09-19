@@ -13,7 +13,7 @@ from projects.services import can_view_project
 from .models import Prediction, Reflection
 from .services import (
     PredictionError, ReflectionError, complete_prediction, complete_reflection,
-    create_prediction, create_reflection, get_reflection_for_read, update_reflection,
+    create_prediction, create_reflection, discover_current_prediction, get_reflection_for_read, update_reflection,
 )
 
 
@@ -35,6 +35,7 @@ MESSAGES = {
     "PREDICTION_ALREADY_COMPLETED": "该预测已经完成，不能再次修改。",
     "PREDICTION_INVALIDATED": "该预测已经失效，不能再次修改。",
     "PREDICTION_AFTER_RESULT_REVEAL": "该模型版本的分析结果已查看，不能再完成预测。",
+    "PREDICTION_AMBIGUOUS": "当前预测记录存在数据歧义，暂时无法继续使用预测。请联系管理员处理。",
     "INTERNAL_ERROR": "服务器暂时无法处理请求，请稍后重试。",
     "REFLECTION_NOT_FOUND": "未找到该分析记录的反思。",
     "REFLECTION_WRITE_DENIED": "您没有填写该反思的权限。",
@@ -88,28 +89,24 @@ def _project(project_id):
     )
 
 
+def _prediction_payload(prediction):
+    return {
+        "prediction_id": prediction.id,
+        "project_id": prediction.project_id,
+        "source_draft_version": prediction.source_draft_version,
+        "status": prediction.status,
+        "prediction_schema_version": prediction.prediction_schema_version,
+        "payload": prediction.payload_json,
+        "created_at": prediction.created_at.isoformat(),
+        "completed_at": prediction.completed_at.isoformat() if prediction.completed_at else None,
+        "invalidated_at": prediction.invalidated_at.isoformat() if prediction.invalidated_at else None,
+        "invalidation_code": prediction.invalidation_code,
+    }
+
+
 def _prediction_response(prediction, *, status=200):
     # 把預測的內容、版本和狀態整理成前端固定使用的格式。
-    return JsonResponse(
-        {
-            "ok": True,
-            "prediction_id": prediction.id,
-            "project_id": prediction.project_id,
-            "source_draft_version": prediction.source_draft_version,
-            "status": prediction.status,
-            "prediction_schema_version": prediction.prediction_schema_version,
-            "payload": prediction.payload_json,
-            "created_at": prediction.created_at.isoformat(),
-            "completed_at": (
-                prediction.completed_at.isoformat() if prediction.completed_at else None
-            ),
-            "invalidated_at": (
-                prediction.invalidated_at.isoformat() if prediction.invalidated_at else None
-            ),
-            "invalidation_code": prediction.invalidation_code,
-        },
-        status=status,
-    )
+    return JsonResponse({"ok": True, **_prediction_payload(prediction)}, status=status)
 
 
 def _service_error(exc):
@@ -163,9 +160,35 @@ def prediction_create(request, project_id):
             actor=request.user,
             expected_draft_version=payload["expected_draft_version"],
         )
-        return _prediction_response(prediction, status=201)
+        return _prediction_response(prediction, status=201 if prediction._created_for_current_draft else 200)
     except PredictionError as exc:
         return _service_error(exc)
+    except Exception:
+        return _error("INTERNAL_ERROR", 500)
+
+
+@login_required
+@require_GET
+def prediction_current(request, project_id):
+    try:
+        project = _project(project_id)
+        if project is None:
+            return _error("PROJECT_NOT_FOUND", 404)
+        if not can_view_project(request.user, project):
+            return _error("PROJECT_READ_DENIED", 403)
+        current = discover_current_prediction(project, request.user)
+        if current["state"] == "NONE":
+            return JsonResponse({"ok": True, **current})
+        return JsonResponse({"ok": True, "state": current["state"], "prediction": _prediction_payload(current["prediction"])})
+    except PredictionError as exc:
+        details = {}
+        if exc.code == "PREDICTION_AMBIGUOUS":
+            duplicates = Prediction.objects.filter(project_id=project_id, source_draft_version=project.draft_version)
+            details = {"project_id": project_id, "source_draft_version": project.draft_version, "duplicate_count": duplicates.count()}
+        response = _error(exc.code, exc.status_code)
+        if details:
+            response = JsonResponse({"ok": False, "error": {"code": exc.code, "message": MESSAGES[exc.code], "details": details}}, status=exc.status_code)
+        return response
     except Exception:
         return _error("INTERNAL_ERROR", 500)
 

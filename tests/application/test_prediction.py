@@ -1,8 +1,9 @@
 from copy import deepcopy
 from datetime import date, datetime, timedelta
+from importlib import import_module
 
 import pytest
-from django.db import IntegrityError
+from django.db import IntegrityError, OperationalError
 from django.utils import timezone
 
 from analysis.models import AnalysisRun, ModelRevision, SolverVersion
@@ -262,7 +263,7 @@ def operational_graph(project_with_two_members, owner, success_run):
         stage="SOLVE", code="OK", severity="INFO",
     )
     connection = Connection.objects.get(project=project, client_key="c1")
-    Support.objects.create(project=project, target_connection=connection, support_type="PINNED")
+    Support.objects.create(project=project, client_key="s1", target_connection=connection, support_type="PINNED")
     NodeLoad.objects.create(project=project, target_connection=connection, client_key="load", fx_N=0, fy_N=-1)
     models = (StudentResultReveal, ValidationLog, AnalysisRun, Prediction, ModelRevision,
               Support, NodeLoad, Connection, PhysicalMember, GeometryNode)
@@ -590,6 +591,93 @@ def test_owner_completes_current_draft_once(project_with_two_members, owner):
             expected_draft_version=project_with_two_members.draft_version,
             payload=complete_payload(),
         )
+
+
+@pytest.mark.django_db
+def test_current_prediction_singleton(project_with_two_members, owner, monkeypatch):
+    from learning.models import Prediction
+    from learning.services import PredictionError, create_prediction, discover_current_prediction
+
+    project_with_two_members.refresh_from_db()
+    none = discover_current_prediction(project_with_two_members, owner)
+    first = create_prediction(project=project_with_two_members, actor=owner, expected_draft_version=project_with_two_members.draft_version)
+    resumed = create_prediction(project=project_with_two_members, actor=owner, expected_draft_version=project_with_two_members.draft_version)
+    draft = discover_current_prediction(project_with_two_members, owner)
+    first.status = Prediction.Status.COMPLETED
+    first.save(update_fields=["status"])
+    completed = create_prediction(project=project_with_two_members, actor=owner, expected_draft_version=project_with_two_members.draft_version)
+    count = Prediction.objects.filter(project=project_with_two_members).count()
+    duplicate_query = type("Query", (), {"order_by": lambda self, *args: [first, first]})()
+    with monkeypatch.context() as patch:
+        patch.setattr(Prediction.objects, "filter", lambda **kwargs: duplicate_query)
+        with pytest.raises(PredictionError, match="PREDICTION_AMBIGUOUS"):
+            discover_current_prediction(project_with_two_members, owner)
+
+    assert none == {"state": "NONE", "source_draft_version": project_with_two_members.draft_version}
+    assert resumed.pk == first.pk and draft == {"state": "DRAFT", "prediction": first}
+    assert completed.pk == first.pk and count == 1
+    assert any(constraint.name == "unique_prediction_project_draft" for constraint in Prediction._meta.constraints)
+
+
+@pytest.mark.django_db
+def test_prediction_unique_constraint_and_migration_duplicate_preflight(project_with_two_members, owner):
+    from learning.models import Prediction
+
+    prediction = Prediction.objects.create(project=project_with_two_members, source_draft_version=project_with_two_members.draft_version, created_by=owner, payload_json={})
+    with pytest.raises(IntegrityError):
+        Prediction.objects.create(project=project_with_two_members, source_draft_version=project_with_two_members.draft_version, created_by=owner, payload_json={})
+
+    rows = [{"project_id": prediction.project_id, "source_draft_version": prediction.source_draft_version, "count": 2}]
+    class Query:
+        def values(self, *args): return self
+        def annotate(self, **kwargs): return self
+        def filter(self, **kwargs): return self
+        def order_by(self, *args): return rows
+    class Apps:
+        def get_model(self, *args): return type("HistoricalPrediction", (), {"objects": Query()})
+    migration = import_module("learning.migrations.0004_prediction_project_draft_unique")
+    with pytest.raises(RuntimeError, match="PREDICTION_AMBIGUOUS") as error:
+        migration.reject_prediction_duplicates(Apps(), None)
+
+    assert "project_id=" in str(error.value) and rows == [{"project_id": prediction.project_id, "source_draft_version": prediction.source_draft_version, "count": 2}]
+
+
+@pytest.mark.django_db
+def test_prediction_create_recovers_sqlite_lock_by_resuming_singleton(project_with_two_members, owner, monkeypatch):
+    import learning.services as services
+    from learning.models import Prediction
+
+    project_with_two_members.refresh_from_db()
+    winner = Prediction(project=project_with_two_members, source_draft_version=project_with_two_members.draft_version, created_by=owner, payload_json={})
+    calls = iter([[], [winner]])
+    monkeypatch.setattr(services, "_current_predictions", lambda project: next(calls))
+    monkeypatch.setattr(Prediction.objects, "create", lambda **kwargs: (_ for _ in ()).throw(OperationalError("database is locked")))
+
+    resumed = services.create_prediction(project=project_with_two_members, actor=owner, expected_draft_version=project_with_two_members.draft_version)
+
+    assert resumed is winner and resumed._created_for_current_draft is False
+
+
+@pytest.mark.django_db
+def test_prediction_create_retries_locked_transaction_before_requery(project_with_two_members, owner, monkeypatch):
+    import learning.services as services
+    from learning.models import Prediction
+
+    project_with_two_members.refresh_from_db()
+    winner = Prediction(project=project_with_two_members, source_draft_version=project_with_two_members.draft_version, created_by=owner, payload_json={})
+    calls = iter([[], [], [], []])
+    attempts = []
+    monkeypatch.setattr(services, "_current_predictions", lambda project: next(calls))
+    def create(**kwargs):
+        attempts.append(kwargs)
+        if len(attempts) <= 3:
+            raise OperationalError("database is locked")
+        return winner
+    monkeypatch.setattr(Prediction.objects, "create", create)
+
+    prediction = services.create_prediction(project=project_with_two_members, actor=owner, expected_draft_version=project_with_two_members.draft_version)
+
+    assert prediction is winner and len(attempts) == 4
 
 
 @pytest.mark.django_db

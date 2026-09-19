@@ -28,6 +28,7 @@ def save_bt01_draft(owner, project, material, section, *, fx_N=100.0):
         'participating_member_client_keys': ['m1'],
     })
     payload['supports'].append({
+        'client_key': 's2',
         'target_connection_client_key': 'c2', 'support_type': 'ROLLER',
         'restrained_axis': 'Y',
     })
@@ -56,6 +57,7 @@ def save_singular_draft(owner, project, material, section):
         },
     ])
     payload['supports'].append({
+        'client_key': 's2',
         'target_connection_client_key': 'c2', 'support_type': 'ROLLER',
         'restrained_axis': 'Y',
     })
@@ -157,13 +159,22 @@ def test_identical_draft_save_binds_analysis_and_reveal_to_new_source(context, s
     assert StudentResultReveal.objects.values().get(pk=current_reveal.pk) == current_evidence
 
     late_prediction = create_prediction(project=project, actor=owner, expected_draft_version=2)
-    with pytest.raises(PredictionError, match="PREDICTION_AFTER_RESULT_REVEAL"):
-        complete_prediction(
-            prediction=late_prediction, actor=owner, expected_draft_version=2, payload=payload,
-        )
-    late_prediction.refresh_from_db()
-    assert late_prediction.status == Prediction.Status.DRAFT
-    assert late_prediction.completed_at is None
+    assert Prediction.objects.filter(project=project, source_draft_version=2).count() == 1
+    if prediction:
+        assert late_prediction.pk == prediction.pk
+        assert late_prediction.source_draft_version == 2
+        assert late_prediction.status == Prediction.Status.COMPLETED
+        late_prediction.refresh_from_db()
+        assert late_prediction.completed_at is not None
+    else:
+        assert late_prediction.status == Prediction.Status.DRAFT
+        with pytest.raises(PredictionError, match="PREDICTION_AFTER_RESULT_REVEAL"):
+            complete_prediction(
+                prediction=late_prediction, actor=owner, expected_draft_version=2, payload=payload,
+            )
+        late_prediction.refresh_from_db()
+        assert late_prediction.status == Prediction.Status.DRAFT
+        assert late_prediction.completed_at is None
     assert record_student_result_reveal(project=project, run=old_run, actor=owner).pk == old_reveal.pk
     assert ModelRevision.objects.values().get(pk=old_run.model_revision_id) == old_revision
     assert StudentResultReveal.objects.values().get(pk=old_reveal.pk) == old_evidence
@@ -210,6 +221,24 @@ def test_analyze_rejects_non_completed_prediction_before_creating_history(contex
 
     assert error.value.status_code == 409
     assert (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
+
+
+@pytest.mark.django_db
+def test_analyze_rejects_ambiguous_current_prediction_before_creating_history(context, monkeypatch):
+    from analysis.models import AnalysisRun, ModelRevision
+    from analysis.orchestration import AnalysisError, analyze_project
+    from learning.services import PredictionError
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    prediction = completed_prediction_for(project, owner, 1)
+    monkeypatch.setattr("learning.services.discover_current_prediction", lambda project: (_ for _ in ()).throw(PredictionError("PREDICTION_AMBIGUOUS", 409)))
+    before = (ModelRevision.objects.count(), AnalysisRun.objects.count())
+
+    with pytest.raises(AnalysisError, match="PREDICTION_AMBIGUOUS") as error:
+        analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
+
+    assert error.value.status_code == 409 and (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
 
 
 @pytest.mark.django_db
@@ -285,15 +314,16 @@ def test_analyze_rejects_foreign_prediction_owner_or_unsupported_schema_before_c
     save_bt01_draft(owner, project, material, section)
     foreign_owner = User.objects.create_user("foreign-prediction-author")
     foreign_owner_prediction = completed_prediction_for(project, foreign_owner, 1)
-    unsupported_schema_prediction = completed_prediction_for(
-        project, owner, 1, prediction_schema_version="prediction-v2"
-    )
     before = (ModelRevision.objects.count(), AnalysisRun.objects.count())
 
-    for prediction in (foreign_owner_prediction, unsupported_schema_prediction):
-        with pytest.raises(AnalysisError, match="PREDICTION_NOT_ELIGIBLE") as error:
-            analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=prediction.id)
-        assert error.value.status_code == 409
+    with pytest.raises(AnalysisError, match="PREDICTION_NOT_ELIGIBLE") as error:
+        analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=foreign_owner_prediction.id)
+    assert error.value.status_code == 409
+    foreign_owner_prediction.delete()
+    unsupported_schema_prediction = completed_prediction_for(project, owner, 1, prediction_schema_version="prediction-v2")
+    with pytest.raises(AnalysisError, match="PREDICTION_NOT_ELIGIBLE") as error:
+        analyze_project(project=project, actor=owner, expected_draft_version=1, prediction_id=unsupported_schema_prediction.id)
+    assert error.value.status_code == 409
 
     assert (ModelRevision.objects.count(), AnalysisRun.objects.count()) == before
 
@@ -367,8 +397,8 @@ def test_split_member_persists_segment_mass_without_physical_member_double_count
         {'client_key': 'cmid', 'geometry_node_client_key': 'nmid', 'participating_member_client_keys': ['m1']},
         {'client_key': 'c2', 'geometry_node_client_key': 'n2', 'participating_member_client_keys': ['m1']},
     ])
-    payload['supports'].append({'target_connection_client_key': 'c2', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
-    payload['supports'].append({'target_connection_client_key': 'cmid', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
+    payload['supports'].append({'client_key': 's2', 'target_connection_client_key': 'c2', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
+    payload['supports'].append({'client_key': 's3', 'target_connection_client_key': 'cmid', 'support_type': 'ROLLER', 'restrained_axis': 'Y'})
     payload['node_loads'][0].update({'target_connection_client_key': 'c2', 'fx_N': 100.0, 'fy_N': 0.0})
     save_physical_draft(actor=owner, project=project, payload=payload)
     project.refresh_from_db()

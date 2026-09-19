@@ -166,6 +166,12 @@ def analyze_project(*,project,actor,expected_draft_version,prediction_id=None,so
             if prediction.status!=Prediction.Status.COMPLETED or prediction.created_by_id!=project.owner_user_id or prediction.prediction_schema_version!='prediction-v1': raise AnalysisError('PREDICTION_NOT_ELIGIBLE',409)
             if prediction.source_draft_version!=expected_draft_version or prediction.source_draft_version!=project.draft_version: raise AnalysisError('PREDICTION_STALE_DRAFT',409)
         # 鎖定後再次比對版本，確保 Revision 不會建立在過期的草稿上。
+            from learning.services import PredictionError, discover_current_prediction
+            try:
+                current = discover_current_prediction(project)
+            except PredictionError as exc:
+                raise AnalysisError(exc.code, exc.status_code) from exc
+            if current.get('state') != Prediction.Status.COMPLETED or current.get('prediction').id != prediction.id: raise AnalysisError('PREDICTION_NOT_ELIGIBLE',409)
         if expected_draft_version!=project.draft_version: raise AnalysisError('STALE_DRAFT',409)
         # ====================================================
         # 第 4 階段：建立或重用 ModelRevision。

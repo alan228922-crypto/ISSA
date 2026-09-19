@@ -1,5 +1,6 @@
 """M3 JSON 端点只负责 HTTP 适配，数值与领域规则留在既有服务层。"""
 import json
+from math import hypot, isfinite
 
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -45,6 +46,22 @@ MESSAGES = {
     'ANALYSIS_NOT_SUCCESS': '分析尚未成功完成，暂无可用的比较或解释结果。',
     'INTERNAL_ERROR': '服务器暂时无法处理请求，请稍后重试。',
 }
+
+
+def _level_one_result(result):
+    """Expose the authoritative maximum-displacement conclusion without browser math."""
+    entries = result.get('node_displacements') if isinstance(result, dict) else None
+    if not isinstance(entries, list) or not entries:
+        return None
+    values = []
+    for entry in entries:
+        if not isinstance(entry, dict): return None
+        node_id, ux, uy = entry.get('analysis_node_id'), entry.get('ux_mm'), entry.get('uy_mm')
+        if not isinstance(node_id, str) or not isinstance(ux, (int, float)) or not isinstance(uy, (int, float)) or isinstance(ux, bool) or isinstance(uy, bool) or not isfinite(ux) or not isfinite(uy): return None
+        values.append((node_id, hypot(ux, uy)))
+    maximum = max(value for _, value in values)
+    tolerance = max(1e-9, 1e-9 * maximum)
+    return {'maximum_displacement': {'maximum_displacement_mm': maximum, 'candidate_analysis_node_ids': sorted(node_id for node_id, value in values if maximum - value <= tolerance)}}
 
 
 def _error(code, status, *, details=None):
@@ -156,7 +173,9 @@ def analysis_data(request, project_id, run_id):
             return _error(exc.code, exc.status_code)
         except Exception:
             return _error('RESULT_REVEAL_FAILED', 500)
-    return JsonResponse({'ok': True, 'analysis_run_id': run.id, 'model_revision_id': run.model_revision_id, 'model_hash': run.model_revision.model_hash, 'solver_version': run.solver_version.solver_version, 'input_hash': run.input_hash, 'input_schema_version': run.input_schema_version, 'result_schema_version': run.result_schema_version, 'status': run.status, 'failure_code': run.failure_code, 'diagnostics': run.diagnostics_json, 'result_json': run.result_json})
+    response = {'ok': True, 'analysis_run_id': run.id, 'model_revision_id': run.model_revision_id, 'source_draft_version': run.model_revision.source_draft_version, 'model_hash': run.model_revision.model_hash, 'solver_version': run.solver_version.solver_version, 'input_hash': run.input_hash, 'input_schema_version': run.input_schema_version, 'result_schema_version': run.result_schema_version, 'status': run.status, 'failure_code': run.failure_code, 'diagnostics': run.diagnostics_json, 'result_json': run.result_json}
+    if run.status == AnalysisRun.Status.SUCCESS: response['level_one'] = _level_one_result(run.result_json)
+    return JsonResponse(response)
 
 
 @login_required

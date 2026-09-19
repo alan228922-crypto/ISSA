@@ -82,7 +82,7 @@ def save_physical_draft(*, actor, project, payload):
     nodes = _keyed(_items(payload, "nodes"))
     members = _keyed(_items(payload, "physical_members"))
     connections = _keyed(_items(payload, "connections"))
-    supports = _items(payload, "supports")
+    supports = _keyed(_items(payload, "supports"))
     loads = _keyed(_items(payload, "node_loads"))
 
     with transaction.atomic():
@@ -131,7 +131,7 @@ def save_physical_draft(*, actor, project, payload):
             connection.participating_members.set(participants)
             connection_objects[key] = connection
 
-        for data in supports:
+        for key, data in supports.items():
             # 支承只能指向已存在的 Connection，不能直接指向任意座標。
             if not isinstance(data, dict):
                 raise DraftSaveError("INVALID_DRAFT")
@@ -139,7 +139,7 @@ def save_physical_draft(*, actor, project, payload):
                 connection = connection_objects[data["target_connection_client_key"]]
             except KeyError as exc:
                 raise DraftSaveError("UNKNOWN_CONNECTION") from exc
-            _instance(Support(project=project, target_connection=connection, support_type=data.get("support_type"), restrained_axis=data.get("restrained_axis")))
+            _instance(Support(project=project, client_key=key, target_connection=connection, support_type=data.get("support_type"), restrained_axis=data.get("restrained_axis")))
 
         for key, data in loads.items():
             # 荷載同樣綁定 Connection，保存 fx_N / fy_N 兩個全域方向的節點外力。

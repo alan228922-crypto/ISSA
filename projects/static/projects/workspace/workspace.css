@@ -1,0 +1,13 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #f4f7fb; color: #172033; }
+#workspace-root { max-width: 1280px; min-width: 960px; margin: 0 auto; padding: 16px; }
+#workspace-project-header { display: flex; align-items: baseline; gap: 16px; }
+#workspace-read-only { color: #7a2e00; font-weight: 700; }
+.workspace-layout { display: grid; grid-template-columns: 240px minmax(440px, 1fr) 260px; min-height: 600px; border: 1px solid #bdc8d8; background: #fff; }
+#workspace-modeling-panel, #workspace-workflow-panel, .workspace-center { padding: 16px; }
+#workspace-modeling-panel { border-right: 1px solid #bdc8d8; }
+#workspace-workflow-panel { border-left: 1px solid #bdc8d8; }
+#workspace-canvas { width: 100%; height: 100%; min-height: 560px; background: #fbfdff; outline: 2px solid transparent; }
+#workspace-status-bar { display: flex; gap: 16px; padding: 10px 14px; background: #172033; color: #fff; font-variant-numeric: tabular-nums; }
+button:focus-visible, input:focus-visible, #workspace-canvas:focus-visible { outline: 3px solid #0759c7; outline-offset: 2px; }
+button:disabled { cursor: not-allowed; opacity: .6; }

@@ -84,6 +84,7 @@ class Support(models.Model):
         ROLLER = "ROLLER", "滚动支座"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="supports")
+    client_key = models.CharField(max_length=128)
     target_connection = models.ForeignKey(Connection, on_delete=models.CASCADE, related_name="supports")
     support_type = models.CharField(max_length=16, choices=Type.choices)
     restrained_axis = models.CharField(max_length=1, null=True, blank=True)
@@ -101,6 +102,9 @@ class Support(models.Model):
             errors["restrained_axis"] = "滚动支座只能约束全局 X 或 Y 轴。"
         if errors:
             raise ValidationError(errors)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["project", "client_key"], name="unique_support_client_key")]
 
 
 class NodeLoad(models.Model):

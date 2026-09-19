@@ -151,21 +151,48 @@ def test_owner_creates_completes_and_reads_minimal_prediction(project_with_two_m
     assert body["invalidation_code"] is None
     serialized = json.dumps(body)
     for forbidden in (
-        "physical_snapshot",
-        "solver_input",
-        "x_mm",
-        "y_mm",
-        "material",
-        "section",
-        "axial_force_N",
-        "node_displacements",
-        "support_reactions",
-        "member_results",
-        "total_mass_g",
+        "physical_snapshot", "solver_input", "x_mm", "y_mm", "material", "section",
+        "axial_force_N", "node_displacements", "support_reactions", "member_results", "total_mass_g",
     ):
         assert forbidden not in serialized
 
 
+@pytest.mark.django_db
+def test_current_prediction_endpoint_and_resume(project_with_two_members, owner, client):
+    project_with_two_members.refresh_from_db()
+    client.force_login(owner)
+    current_url = reverse("learning:prediction_current", kwargs={"project_id": project_with_two_members.id})
+    none = client.get(current_url)
+    created = post_json(client, "learning:prediction_create", create_body(project_with_two_members), project_id=project_with_two_members.id)
+    resumed = post_json(client, "learning:prediction_create", create_body(project_with_two_members), project_id=project_with_two_members.id)
+    draft = client.get(current_url)
+    prediction_id = created.json()["prediction_id"]
+    completed = post_json(client, "learning:prediction_complete", complete_body(project_with_two_members), project_id=project_with_two_members.id, prediction_id=prediction_id)
+    resumed_completed = post_json(client, "learning:prediction_create", create_body(project_with_two_members), project_id=project_with_two_members.id)
+    current_completed = client.get(current_url)
+
+    assert none.status_code == 200 and none.json() == {"ok": True, "state": "NONE", "source_draft_version": project_with_two_members.draft_version}
+    assert created.status_code == 201 and resumed.status_code == 200 and resumed.json()["prediction_id"] == prediction_id
+    assert draft.json()["state"] == "DRAFT" and draft.json()["prediction"]["prediction_id"] == prediction_id
+    assert completed.status_code == 200 and resumed_completed.status_code == 200 and resumed_completed.json()["status"] == "COMPLETED"
+    assert current_completed.json()["state"] == "COMPLETED" and current_completed.json()["prediction"]["prediction_id"] == prediction_id
+
+
+@pytest.mark.django_db
+def test_current_prediction_ambiguity_is_fail_closed(project_with_two_members, owner, client, monkeypatch):
+    import learning.views
+    from learning.services import PredictionError
+
+    project_with_two_members.refresh_from_db()
+    client.force_login(owner)
+    monkeypatch.setattr(learning.views, "discover_current_prediction", lambda *args: (_ for _ in ()).throw(PredictionError("PREDICTION_AMBIGUOUS", 409)))
+    monkeypatch.setattr(learning.views.Prediction.objects, "filter", lambda **kwargs: type("Rows", (), {"count": lambda self: 2})())
+
+    response = client.get(reverse("learning:prediction_current", kwargs={"project_id": project_with_two_members.id}))
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PREDICTION_AMBIGUOUS"
+    assert response.json()["error"]["details"] == {"project_id": project_with_two_members.id, "source_draft_version": project_with_two_members.draft_version, "duplicate_count": 2}
 @pytest.mark.django_db
 def test_prediction_create_rejects_malformed_missing_and_unknown_fields(
     project_with_two_members, owner, client
@@ -398,6 +425,8 @@ def test_prediction_completion_rejects_malformed_missing_and_unknown_fields(
 def test_prediction_completion_maps_lifecycle_conflicts(project_with_two_members, owner, client):
     project_with_two_members.refresh_from_db()
     client.force_login(owner)
+    project_with_two_members.draft_version += 1
+    project_with_two_members.save(update_fields=["draft_version"])
     current_version = project_with_two_members.draft_version
     completed = Prediction.objects.create(
         project=project_with_two_members,
@@ -414,7 +443,7 @@ def test_prediction_completion_maps_lifecycle_conflicts(project_with_two_members
     )
     invalidated = Prediction.objects.create(
         project=project_with_two_members,
-        source_draft_version=current_version,
+        source_draft_version=current_version - 2,
         status=Prediction.Status.INVALIDATED,
         created_by=owner,
         payload_json={},

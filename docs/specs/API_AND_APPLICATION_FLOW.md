@@ -265,13 +265,16 @@ Dependency direction is `Analysis facts → Compare → Explain`; when no Predic
 
 ```text
 POST /projects/<project_id>/predictions/                         create DRAFT
+GET  /projects/<project_id>/predictions/current/                 discover current-draft Prediction
 POST /projects/<project_id>/predictions/<prediction_id>/complete/ complete prediction-v1
 GET  /projects/<project_id>/predictions/<prediction_id>/          read own/historical Prediction
 ```
 
 All POST endpoints retain CSRF and use thin views. There is no generic CRUD API and no client “mark revealed” endpoint.
 
-Prediction GET follows existing Project read authorization; authoring remains student-owner-only. JSON errors use 400 for malformed/unknown request shape, 403/404 for authorization and scoped lookup, 409 for lifecycle conflict, 422 for payload/topology validation, and a safe 500 for unexpected failure. Machine codes are English and human messages are zh-CN; no traceback is returned.
+The current-discovery route uses the Project's server-authoritative `draft_version` as `source_draft_version` and returns exactly `NONE`, one `DRAFT`, one `COMPLETED`, or fails closed with `PREDICTION_AMBIGUOUS` when legacy rows violate P0 cardinality. It must not choose a row by timestamp or status, return a list selector, or mutate evidence. A `DRAFT` is resumable but never auto-bound to Analyze; a `COMPLETED` record is the only one the Workspace may explicitly offer for Analyze binding. `NONE` and a skipped `DRAFT` use `prediction_id: null`. The authoritative cardinality, concurrency, remediation, and evidence-preservation rules are in `PREDICTION_AND_REVEAL_ARCHITECTURE.md` under O-M5-P01.
+
+Prediction GET follows existing Project read authorization; authoring remains student-owner-only. JSON errors use 400 for malformed/unknown request shape, 403/404 for authorization and scoped lookup, 409 for lifecycle conflict or `PREDICTION_AMBIGUOUS`, 422 for payload/topology validation, and a safe 500 for unexpected failure. Machine codes are English and human messages are zh-CN; no traceback is returned.
 
 ### 4.4.3 Reflection JSON minimum
 
