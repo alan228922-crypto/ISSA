@@ -6,6 +6,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from analysis.models import AnalysisRun
 from analysis.orchestration import AnalysisError, analyze_project, check_project
+from analysis.report_completeness import evaluate_report_completeness
 from analysis.reporting import ReportError, build_report_package
 from analysis.results import maximum_displacement_summary
 from materials.services import SectionServiceError
@@ -183,7 +184,7 @@ def analysis_report(request, project_id, run_id):
         return _error(exc.code, exc.status_code, details=exc.details)
     except Exception:
         return _error('INTERNAL_ERROR', 500)
-    return JsonResponse({'ok': True, 'report': report})
+    return JsonResponse({'ok': True, 'report': report, 'completeness': evaluate_report_completeness(report)})
 
 
 @login_required
