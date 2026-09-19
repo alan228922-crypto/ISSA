@@ -20,6 +20,17 @@ def test_forced_password_change_blocks_direct_business_url_and_allows_password_c
 
 
 @pytest.mark.django_db
+def test_successful_login_redirects_to_event_landing_page(client):
+    from accounts.models import User
+    User.objects.create_user('team01',password='captain-id')
+
+    response=client.post('/accounts/login/',{'username':'team01','password':'captain-id'})
+
+    assert response.status_code == 302
+    assert response.url == '/events/'
+
+
+@pytest.mark.django_db
 def test_successful_password_change_clears_forced_state(client):
     from accounts.models import User
     user=User.objects.create_user('team01',password='captain-id',must_change_password=True)
