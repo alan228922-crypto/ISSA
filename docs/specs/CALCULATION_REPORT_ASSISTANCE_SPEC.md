@@ -10,6 +10,12 @@
 
 M6 organizes authoritative engineering facts so a student can prepare a calculation report. It does not write the student's engineering argument, select a best design, or replace the mechanics authority.
 
+### D-M6-007 — Failed AnalysisRun Report Policy
+
+Only a successful `AnalysisRun` may produce a Calculation Report Package. If the explicitly selected Run has status `VALIDATION_FAILED` or `SOLVER_FAILED`, the Report endpoint returns `REPORT_ANALYSIS_NOT_SUCCESS` and does not produce a package.
+
+The error response includes the safe details `analysis_run_id` and `analysis_status`, and may include the existing safe `failure_code` where the public error contract permits it. It never exposes a traceback, filesystem path, raw stack detail, or a substitute result. The Report layer does not re-analyze, choose another Run, select `latest`, or create a second diagnostics engine.
+
 ## 1. Goal and user story
 
 After a successful Analyze, a student can open **计算书资料** and:
