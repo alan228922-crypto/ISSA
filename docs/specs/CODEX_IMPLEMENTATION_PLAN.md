@@ -8,7 +8,13 @@
 
 **Tech Stack:** Python 3.12+, Django 5.x, NumPy, SQLite, pytest, pytest-django, Django Templates, HTML/CSS, Vanilla JavaScript, SVG.
 
-**Specs:** `MASTER_SPEC.md v1.0` is the highest-level Source of Truth. Read it plus the relevant specialist spec before each task. `ARCHITECTURE_FREEZE.md` defines scoped open gates.
+**Specs:** `MASTER_SPEC.md v1.11` is the highest-level Source of Truth. Read it plus the relevant specialist spec before each task. `ARCHITECTURE_FREEZE.md` defines scoped open gates.
+
+## Current implementation status
+
+The current implemented milestone is **M5 — Student Learning Workspace — COMPLETE**. It is merged into `main` at `910bf50e074322dc546bd8aa4428e8e4651c5b8c`, with the full learning-loop acceptance and merged-main verification passed.
+
+The Lifecycle / Research / PoC grouping below is retained as historical implementation-plan content for Tasks 24–26. Those tasks are not the current M5 name and are not confirmed as the next milestone. Formal **M6 NOT YET FROZEN**. Candidate areas include Calculation Report Assistance, Euler / Stability Teaching, and Event / Lifecycle; these remain candidates until separately selected and specified.
 
 ## Global Constraints
 
@@ -1066,7 +1072,7 @@ Exit:
 - no AI mechanics authority
 - no fabricated design rationale
 
-## Milestone M5 — Lifecycle / Research / PoC Gate
+## Future milestone candidate — Lifecycle / Research / PoC Gate (UNFROZEN)
 
 Tasks:
 
@@ -1078,6 +1084,8 @@ Exit:
 - approved anonymous retention only
 - full test suite passes
 - manual P0 workflow passes
+
+This historical grouping must not be read as the current M5 status or as a frozen M6 definition. Its Tasks 24–26 remain future/unfrozen work pending explicit sequencing and the relevant open decisions.
 
 ---
 

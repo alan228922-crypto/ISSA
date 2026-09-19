@@ -2,16 +2,19 @@
 
 ## Current Status
 
-- Source of Truth: `MASTER_SPEC.md v1.8`
+- Source of Truth: `MASTER_SPEC.md v1.11`
 - Architecture: `FINAL_FROZEN`
-- Current milestone: M5 Gate 0A UX contract frozen; implementation has not started
-- Production baseline: M1–M4 learning backend complete
-- Open decisions: scoped gates only
+- Current milestone: M5 Student Learning Workspace — **COMPLETE**
+- Production baseline: M1–M4 learning backend complete; M5 Workspace merged into `main`
+- Learning flow: Build → Check → optional Prediction → Analyze → Compare / Explain → Engineering Details → optional Reflection → Iterate
+- Prediction and Reflection remain Soft Gates
+- M5 merged-main acceptance and regression verification: **PASS**
+- Open decisions: O-001, O-003, O-004, O-005, O-006
 
 ## Current Files
 
 1. `MASTER_SPEC.md`
-2. `STUDENT_LEARNING_WORKSPACE_UX.md` — current M5 Gate 0A single-workspace UX contract
+2. `STUDENT_LEARNING_WORKSPACE_UX.md` — M5 single-workspace UX contract and authority boundaries
 3. `MASTER_SPEC_REVIEW_RECORD.md`
 4. `MASTER_SPEC_CONFLICT_CHECK.md`
 5. `ARCHITECTURE_FREEZE.md`
@@ -52,16 +55,15 @@
 ## Scoped Open Gates
 
 - Master O-001: Euler K + controlling I / weak-axis policy — `MECHANICS REVIEW REQUIRED`
-- Roller orientation
 - FINISHED_GRACE access
 - post-purge account lifecycle
 - composite strip overlap if required
 
-These gates do not invalidate MASTER_SPEC v1.0 or the overall final architecture freeze; they block only directly dependent behavior.
+These gates do not invalidate MASTER_SPEC v1.11 or the overall final architecture freeze; they block only directly dependent behavior.
 
 ## Next Execution Point
 
-The repository can now enter implementation planning/execution using `CODEX_IMPLEMENTATION_PLAN.md`.
+M5 Student Learning Workspace implementation is complete. The next formal milestone is not frozen; future work must be selected and specified before implementation.
 
 Before any task, the implementer must read:
 
@@ -70,7 +72,7 @@ Before any task, the implementer must read:
 3. `ARCHITECTURE_FREEZE.md`
 4. the matching implementation-plan task
 
-Documentation reconciliation is authorized; M1 execution requires the next explicit user instruction.
+Documentation reconciliation is authorized; no M6 scope is currently approved.
 
 ## Canonical location
 

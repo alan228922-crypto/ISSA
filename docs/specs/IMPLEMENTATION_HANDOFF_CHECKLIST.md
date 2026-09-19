@@ -7,9 +7,10 @@
 - [x] MASTER_SPEC reconciliation complete.
 - [x] Architecture freeze = `FINAL_FROZEN`.
 - [x] Implementation plan complete.
-- [ ] Production code started — **No**
-- [ ] Django migrations generated — **No**
-- [x] Codex documentation reconciliation/bootstrap authorized; production implementation not started.
+- [x] Production implementation completed through M5 Student Learning Workspace.
+- [x] Django migrations required by M5 generated; merged-main migration check passed.
+- [x] M5 browser acceptance, backend integration, and merged-main verification passed.
+- [x] M5 post-merge state reconciliation completed; feature branch/worktree removed after verification.
 
 ## Source-of-Truth Gate
 
@@ -21,7 +22,7 @@
 
 ## Before Support Editor / Support JSON Finalization
 
-- [ ] Confirm Roller orientation behavior.
+- [x] Roller orientation behavior confirmed by Master O-002: global X/Y restraint only.
 
 ## Before Automatic Euler Risk UX
 
@@ -43,14 +44,14 @@
 
 `M0 Source-of-Truth` is complete.
 
-Proceed according to `CODEX_IMPLEMENTATION_PLAN.md`:
+Historical implementation sequence:
 
 ```text
 M1 Trustworthy Mechanics
 → M2 Secure Competition Skeleton
 → M3 Physical Model & Reproducible Analysis
 → M4 Teaching Workflow
-→ M5 Purge / Research / PoC Gate
+→ M5 Student Learning Workspace — COMPLETE
 ```
 
-Open decisions are scoped blockers only. They must not be silently defaulted.
+The older Lifecycle / Research / PoC grouping remains a future, unfrozen candidate area; it is not the current M5 name and is not formal M6. Open decisions O-001, O-003, O-004, O-005, and O-006 remain scoped blockers only and must not be silently defaulted.
