@@ -17,6 +17,25 @@ export function focusPhysicalMember(clientKey, focus) {
   return typeof clientKey === "string" ? focus(clientKey) : null;
 }
 
+export function showEngineeringDetails(resultJson) {
+  const source = resultJson || {};
+  return Object.freeze({
+    displacements: Array.isArray(source.node_displacements) ? source.node_displacements.map((item) => ({ ...item })) : [],
+    reactions: Array.isArray(source.support_reactions) ? source.support_reactions.map((item) => ({ ...item })) : [],
+    members: Array.isArray(source.member_results) ? source.member_results.map((item) => ({ ...item })) : [],
+    total_mass_g: typeof source.total_mass_g === "number" ? source.total_mass_g : null,
+  });
+}
+
+export function renderEngineeringDetails(root, details, stale = false) {
+  const table = (title, headings, rows) => { const section = document.createElement("section"); const h = document.createElement("h3"); h.textContent = title; section.append(h); const t = document.createElement("table"); const head = document.createElement("tr"); headings.forEach((x) => { const th=document.createElement("th"); th.textContent=x; head.append(th); }); t.append(head); rows.forEach((row) => { const tr=document.createElement("tr"); row.forEach((x) => { const td=document.createElement("td"); td.textContent=x == null ? "—" : String(x); tr.append(td); }); t.append(tr); }); section.append(t); return section; };
+  root.replaceChildren(); const note=document.createElement("p"); note.textContent=stale ? "当前结果对应较早的模型版本。" : "工程详情对应当前模型版本。"; root.append(note);
+  root.append(table("节点位移",["分析节点","ux (mm)","uy (mm)"],details.displacements.map((x)=>[x.analysis_node_id,x.ux_mm,x.uy_mm])));
+  root.append(table("支座反力",["分析节点","Rx (N)","Ry (N)"],details.reactions.map((x)=>[x.analysis_node_id,x.rx_N,x.ry_N])));
+  root.append(table("构件工程数据",["分析段","实体杆件","轴力 (N)","应力 (MPa)","质量 (g)"],details.members.map((x)=>[x.analysis_member_id,x.physical_member_id,x.axial_force_N,x.axial_stress_MPa,x.mass_g])));
+  const total=document.createElement("p"); total.textContent=details.total_mass_g === null ? "总质量：—" : `总质量：${details.total_mass_g} g`; root.append(total);
+}
+
 function failed(body) {
   const error = normalizeApiError(body);
   const exception = new Error(error.message);
