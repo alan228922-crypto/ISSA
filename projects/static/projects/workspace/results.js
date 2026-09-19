@@ -2,6 +2,20 @@ import { requestJson, postJson, urlFromTemplate } from "./api.js";
 import { normalizeApiError } from "./errors.js";
 
 const STATE_LABELS = Object.freeze({ TENSION: "受拉", COMPRESSION: "受压", ZERO: "零杆", ZERO_FORCE: "零杆" });
+const COMPARISON_LABELS = Object.freeze({ MATCH: "预测与分析结果一致。", MISMATCH: "预测与分析结果不同。", UNSURE: "学生原本选择“不确定”。", NOT_COMPARABLE: "当前项目没有可直接比较的结果。" });
+
+export function showComparison(comparison) {
+  if (!comparison?.comparison_available) return Object.freeze({ reason: "NO_PREDICTION", text: "本次分析没有绑定已完成 Prediction。" });
+  return (comparison.member_comparisons || []).map((item) => Object.freeze({ clientKey: item.physical_member_client_key, status: item.comparison_status, text: COMPARISON_LABELS[item.comparison_status] || "", actual: item.actual }));
+}
+
+export function showExplanation(explanation) {
+  return (explanation?.blocks || []).map((block) => Object.freeze({ clientKey: block.subject?.physical_member_client_key || null, text: block.message_zh_CN?.level_1 || "", segments: block.facts?.segments || [] }));
+}
+
+export function focusPhysicalMember(clientKey, focus) {
+  return typeof clientKey === "string" ? focus(clientKey) : null;
+}
 
 function failed(body) {
   const error = normalizeApiError(body);

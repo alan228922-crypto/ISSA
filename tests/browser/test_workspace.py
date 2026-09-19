@@ -339,3 +339,13 @@ def test_analyze_level_one_and_stale_run(context, workspace_page):
     ]
     assert result['failure'] == 'STALE_DRAFT' and result['failedState']['run'] is None
     assert result['mechanics'] == 'undefined'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_compare_explain_states_and_canvas_link(context, workspace_page):
+    owner, project, material, section = context; save_physical_draft(actor=owner,project=project,payload=valid_payload(material,section)); page=workspace_page(user=owner,project=project)
+    result=page.evaluate("""async()=>{const x=await import('/static/projects/workspace/results.js');const c=x.showComparison({comparison_available:true,member_comparisons:[{physical_member_client_key:'m1',comparison_status:'MATCH',actual:{actual_state:'MIXED',segments:[{analysis_member_id:'m1:1',teaching_state:'TENSION'},{analysis_member_id:'m1:2',teaching_state:'COMPRESSION'}]}}]});const n=x.showComparison({comparison_available:false,reason:'NO_PREDICTION'});const e=x.showExplanation({blocks:[{subject:{kind:'PHYSICAL_MEMBER',physical_member_client_key:'m1'},message_zh_CN:{level_1:'后端说明'},facts:{segments:[{analysis_member_id:'m1:1'}]}}]});const svg=document.querySelector('#workspace-canvas');const f=x.focusPhysicalMember('m1',(key)=>svg.querySelector('[data-client-key="'+key+'"]').getAttribute('tabindex'));return {c,n,e,f,mechanics:typeof window.Truss2DSolver}}""")
+    assert result['c'][0]['status'] == 'MATCH' and result['c'][0]['actual']['actual_state'] == 'MIXED'
+    assert result['n']['reason'] == 'NO_PREDICTION' and result['e'][0]['text'] == '后端说明'
+    assert result['f'] == '0' and result['mechanics'] == 'undefined'
