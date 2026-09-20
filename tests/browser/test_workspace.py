@@ -226,6 +226,130 @@ def test_workspace_canvas_binds_mouse_keyboard_and_view_events(context, workspac
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_workspace_modeling_tools_mutate_draft_and_save(context, workspace_page):
+    """The student-facing tools, rather than reducer imports, drive the local draft."""
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas = page.locator('#workspace-canvas')
+    box = canvas.bounding_box()
+    assert box is not None
+    canvas.click(position={'x': 300, 'y': 180})
+    node_count = page.locator('[data-object-kind="GeometryNode"]').count()
+    assert node_count == 3
+    assert page.locator('#workspace-save-status').text_content() == '未保存修改：有'
+
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    connection_rect = page.locator('[data-client-key="c1"] rect')
+    connection_rect.click(force=True)
+    assert page.locator('[data-modeling-instruction]').text_content() == '请选择构件的终点节点。'
+    end_node = page.locator('[data-object-kind="GeometryNode"]').last.locator('circle')
+    end_node.click(force=True)
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == 2
+
+    page.locator('[data-workspace-tool="CONNECTION"]').click()
+    page.locator('[data-client-key="c1"]').focus()
+    page.keyboard.press('Enter')
+    connection = page.locator('[data-object-kind="Connection"]').last
+    assert connection.count() == 1
+
+    page.locator('[data-workspace-tool="SUPPORT"]').click()
+    connection.locator('rect').click(force=True)
+    assert page.locator('[data-object-kind="Support"]').count() == 2
+
+    page.locator('[data-workspace-tool="LOAD"]').click()
+    connection.locator('rect').click(force=True)
+    assert page.locator('[data-object-kind="NodeLoad"]').count() == 2
+
+    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
+    assert 'csrftoken=' in page.evaluate('document.cookie')
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent === '未保存修改：无'")
+    assert page.locator('#workspace-draft-version').text_content() == '当前草稿 v2'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workspace_modeling_tools_do_not_create_connection_at_crossing(context, workspace_page):
+    owner, project, material, section = context
+    payload = valid_payload(material, section)
+    payload['nodes'][0]['y_mm'] = payload['nodes'][1]['y_mm'] = -200.0
+    save_physical_draft(actor=owner, project=project, payload=payload)
+    page = workspace_page(user=owner, project=project)
+
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas = page.locator('#workspace-canvas')
+    canvas.click(position={'x': 250, 'y': 160})
+    canvas.click(position={'x': 350, 'y': 260})
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-object-kind="GeometryNode"]').nth(2).click()
+    page.locator('[data-object-kind="GeometryNode"]').nth(3).click()
+    assert page.locator('[data-object-kind="Connection"]').count() == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workspace_modeling_tools_are_unavailable_for_read_only_viewer(context, workspace_page):
+    from competitions.models import EventMembership
+
+    owner, project, _, _ = context
+    viewer = owner.__class__.objects.create_user(username='workspace_viewer', password='pass', role='MANAGER')
+    EventMembership.objects.create(user=viewer, event=project.event, membership_type=EventMembership.Type.MANAGER)
+    page = workspace_page(user=viewer, project=project)
+    assert page.locator('[data-workspace-tool]').count() == 0
+    assert page.locator('#workspace-save').is_disabled()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workspace_properties_edit_support_and_load_and_persist(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('#workspace-canvas').click(position={'x': 300, 'y': 180})
+    page.locator('[data-workspace-tool="SELECT"]').click()
+    page.locator('[data-object-kind="GeometryNode"]').last.locator('circle').click(force=True)
+    assert page.locator('[data-property-identity]').text_content() == '节点 node-1'
+    page.locator('[data-client-key="m1"] line').click(force=True)
+    assert page.locator('[data-property-identity]').text_content() == '构件 m1'
+    page.locator('[data-client-key="c1"]').focus()
+    page.keyboard.press('Enter')
+    assert page.locator('[data-property-identity]').text_content() == '连接 c1'
+
+    page.locator('[data-client-key="s1"] path').click(force=True)
+    assert page.locator('[data-property-identity]').text_content() == '支座 s1'
+    support_type = page.locator('[data-property-support-type]')
+    support_type.select_option('ROLLER_X')
+    assert support_type.input_value() == 'ROLLER_X'
+    support_type.select_option('ROLLER_Y')
+    assert support_type.input_value() == 'ROLLER_Y'
+    assert page.locator('#workspace-save-status').text_content() == '未保存修改：有'
+
+    page.locator('[data-client-key="l1"] line').click(force=True)
+    assert page.locator('[data-property-identity]').text_content() == '荷载 l1'
+    page.locator('[data-property-fx]').fill('0')
+    page.locator('[data-property-fy]').fill('-250')
+    assert page.locator('[data-property-fx]').input_value() == '0'
+    assert page.locator('[data-property-fy]').input_value() == '-250'
+
+    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent === '未保存修改：无'")
+    page.reload()
+
+    page.locator('[data-client-key="s1"] path').click(force=True)
+    assert page.locator('[data-property-support-type]').input_value() == 'ROLLER_Y'
+    page.locator('[data-client-key="l1"] line').click(force=True)
+    assert page.locator('[data-property-fx]').input_value() == '0'
+    assert page.locator('[data-property-fy]').input_value() == '-250'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_save_check_error_presentation(context, workspace_page):
     owner, project, material, section = context; page=workspace_page(user=owner,project=project)
     result=page.evaluate("""async()=>{const {applyWorkspaceEditorAction,applyWorkspaceSaveSuccess,focusWorkspaceIssue}=await import('/static/projects/workspace/state.js');const {createWorkspaceWorkflow}=await import('/static/projects/workspace/workflow.js');const {normalizeApiError,presentWorkspaceError}=await import('/static/projects/workspace/errors.js');const bootstrap=JSON.parse(document.querySelector('#workspace-bootstrap').textContent);const initial={draft:bootstrap.draft,draftVersion:0,dirty:false,selectedObject:null,focusedObject:null};const dirty=applyWorkspaceEditorAction(initial,{type:'CREATE_NODE',node:{client_key:'n1',x_mm:1,y_mm:2,label:'n'}});const responses=[{response:{ok:true},body:{ok:true,draft_version:7,validation:{errors:[],warnings:[]}}},{response:{ok:false},body:{ok:false,error:{code:'STALE_DRAFT',message:'ignored',details:{}}}},{response:{ok:true},body:{ok:false,draft_version:7,issues:[{code:'BACKEND_ISSUE',human_message:'后端检查发现问题',physical_object:{kind:'PHYSICAL_MEMBER',client_key:'m1'}}]}}];const calls=[];const workflow=createWorkspaceWorkflow({urls:{save:'/save/',check:'/check/'},request:async(url,payload)=>{calls.push({url,payload});return responses.shift();}});const saveResponse=await workflow.saveDraft(dirty.draft);const saved=applyWorkspaceSaveSuccess(dirty,saveResponse,dirty.draft);const later=applyWorkspaceEditorAction(dirty,{type:'CREATE_NODE',node:{client_key:'n2',x_mm:3,y_mm:4,label:'later'}});const pendingEdit=applyWorkspaceSaveSuccess(later,saveResponse,dirty.draft);let stale;try{await workflow.saveDraft(saved.draft)}catch(error){stale=presentWorkspaceError(error)}const checked=await workflow.checkModel(saved.draftVersion);const focused=focusWorkspaceIssue(saved,checked.issues[0]);const normalized=normalizeApiError({error:{code:'INVALID_DRAFT',message:'x',details:{field:'nodes'}}});const network=presentWorkspaceError({code:'REQUEST_FAILED',message:'Failed to fetch'});return {dirty:{dirty:dirty.dirty,version:dirty.draftVersion},saved:{dirty:saved.dirty,version:saved.draftVersion,draftVersion:saved.draft.version},pendingEdit:{dirty:pendingEdit.dirty,version:pendingEdit.draftVersion,draftVersion:pendingEdit.draft.version,nodes:pendingEdit.draft.nodes.length},stale,network,check:{url:calls[2].url,payload:calls[2].payload,issues:checked.issues.length},focused:{selected:focused.selectedObject,focused:focused.focusedObject},normalized,calls,mechanics:typeof window.Truss2DSolver};}""")

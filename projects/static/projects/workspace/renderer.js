@@ -77,6 +77,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const label = support.support_type === "ROLLER" ? `滚动支座 ${support.restrained_axis} ${support.target_connection_client_key}` : `铰支座 ${support.target_connection_client_key}`;
     const group = selectable("Support", support.client_key, label, uiState);
     group.append(element("path", { d: `M ${target.x - 18} ${target.y + 22} L ${target.x + 18} ${target.y + 22} L ${target.x} ${target.y}`, fill: "none", stroke: "currentColor", "stroke-width": 3 }));
+    if (support.support_type === "ROLLER") group.append(element("line", support.restrained_axis === "X" ? { x1: target.x - 13, y1: target.y + 30, x2: target.x + 13, y2: target.y + 30, stroke: "currentColor", "stroke-width": 3 } : { x1: target.x, y1: target.y + 27, x2: target.x, y2: target.y + 39, stroke: "currentColor", "stroke-width": 3 }));
     layers[1].append(group);
   }
 

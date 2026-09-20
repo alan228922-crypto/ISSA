@@ -18,7 +18,17 @@
     <section class="workspace-layout" aria-label="结构学习工作区">
       <aside id="workspace-modeling-panel" aria-label="建模工具">
         <h2>建模工具</h2>
-        <p>选择、节点、构件、连接、支座、荷载</p>
+        {% if not bootstrap.read_only %}
+          <div class="workspace-tool-list" role="toolbar" aria-label="建模工具">
+            <button type="button" data-workspace-tool="SELECT" aria-pressed="true">选择</button>
+            <button type="button" data-workspace-tool="NODE" aria-pressed="false">节点</button>
+            <button type="button" data-workspace-tool="MEMBER" aria-pressed="false">构件</button>
+            <button type="button" data-workspace-tool="CONNECTION" aria-pressed="false">连接</button>
+            <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false">支座</button>
+            <button type="button" data-workspace-tool="LOAD" aria-pressed="false">荷载</button>
+          </div>
+          <p data-modeling-instruction aria-live="polite">选择工具已启用。</p>
+        {% endif %}
         <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>保存</button>
         <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>模型检查</button>
         <section id="workspace-properties-panel" aria-label="对象属性">
@@ -70,6 +80,8 @@
     import { applyWorkspaceSaveSuccess, createWorkspaceState, focusWorkspaceIssue, readWorkspaceBootstrap } from "{% static 'projects/workspace/state.js' %}";
     import { renderWorkspace } from "{% static 'projects/workspace/renderer.js' %}";
     import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
+    import { bindModelingInteractions } from "{% static 'projects/workspace/modeling-interaction.js' %}";
+    import { bindPropertyPanel } from "{% static 'projects/workspace/properties.js' %}";
     import { createWorkspaceWorkflow } from "{% static 'projects/workspace/workflow.js' %}";
     import { bindPredictionWorkspace } from "{% static 'projects/workspace/prediction.js' %}";
     import { createResultsWorkspace, renderLevelOne, showLevelOne, showEngineeringDetails, renderEngineeringDetails } from "{% static 'projects/workspace/results.js' %}";
@@ -84,6 +96,8 @@
     const errorPanel = document.getElementById("workspace-error");
     const issuePanel = document.getElementById("workspace-check-issues");
     const showError = (error) => { const view = presentWorkspaceError(error); errorPanel.hidden = false; errorPanel.textContent = `${view.what}：${view.why} ${view.nextAction}（${view.technicalCode}）`; };
+    bindModelingInteractions({ root: document.getElementById("workspace-root"), svg: canvas, canvasController, showError, readOnly: state.readOnly });
+    bindPropertyPanel({ root: document.getElementById("workspace-properties-panel"), canvasController });
     const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly });
     const resultsWorkspace = createResultsWorkspace({ urls: { analyze: bootstrap.urls.analyze, resultTemplate: bootstrap.urls.result_template } });
     const reflectionRoot = document.getElementById("workspace-reflection");

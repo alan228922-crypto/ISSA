@@ -104,18 +104,28 @@ export function renderedObjectsFromSvg(svg) {
 export function bindCanvasInteractions(svg, initialState, render) {
   let state = initialState;
   let panStart = null;
+  let canvasClickHandler = null;
+  let stateChangeHandler = null;
+  const notifyStateChange = () => stateChangeHandler?.(state);
   const redraw = () => render(svg, state.draft, state);
-  const select = (selection) => {
+  const select = (selection, redrawSelection = true) => {
     if (!selection) return;
     state = Object.freeze({ ...state, selectedObject: selection });
-    redraw();
+    if (redrawSelection) redraw();
+    notifyStateChange();
   };
   const dispatchViewEvent = (event) => {
     state = Object.freeze({ ...state, viewTransform: reduceView(state.viewTransform, event) });
     redraw();
+    notifyStateChange();
   };
-  svg.addEventListener("click", (event) => select(pickAt({ x: event.clientX, y: event.clientY }, renderedObjectsFromSvg(svg))));
-  svg.addEventListener("focusin", (event) => select(selectionFromElement(event.target)));
+  svg.addEventListener("click", (event) => {
+    canvasClickHandler?.(event);
+    select(pickAt({ x: event.clientX, y: event.clientY }, renderedObjectsFromSvg(svg)));
+  });
+  // Mouse focus is part of an active pointer gesture. Replacing SVG children here
+  // would detach the pointer target before pointerup/click is dispatched.
+  svg.addEventListener("focusin", (event) => select(selectionFromElement(event.target), false));
   svg.addEventListener("keydown", (event) => {
     if (event.key === "Enter") select(selectionFromElement(event.target));
   });
@@ -133,6 +143,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   const replaceState = (nextState) => {
     state = nextState;
     redraw();
+    notifyStateChange();
   };
-  return Object.freeze({ dispatchViewEvent, getState: () => state, replaceState });
+  return Object.freeze({ dispatchViewEvent, getState: () => state, replaceState, setCanvasClickHandler: (handler) => { canvasClickHandler = handler; }, setStateChangeHandler: (handler) => { stateChangeHandler = handler; } });
 }
