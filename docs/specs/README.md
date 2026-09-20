@@ -2,16 +2,15 @@
 
 ## Current Status
 
-- Source of Truth: `MASTER_SPEC.md v1.11`
+- Source of Truth: `MASTER_SPEC.md v1.12`
 - Architecture: `FINAL_FROZEN`
-- Current milestone: M5 Student Learning Workspace — **COMPLETE**
-- Production baseline: M1–M4 learning backend complete; M5 Workspace merged into `main`
-- Learning flow: Build → Check → optional Prediction → Analyze → Compare / Explain → Engineering Details → optional Reflection → Iterate
-- Prediction and Reflection remain Soft Gates
-- M5 merged-main acceptance and regression verification: **PASS**
-- Next milestone: M6 Calculation Report Assistance
-- M6 status: **FROZEN — implementation not started**
-- Open decisions: O-001, O-003, O-004, O-005, O-006
+- Current milestone: First POC V1 closure — **CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**
+- Production baseline: M1–M5 complete; M6 Gates 0–5 complete on merged `main`
+- Learning flow: Build → Check → optional Prediction → Analyze → Compare / Explain → Report → optional Reasoning → optional Reflection → Iterate
+- Prediction, Reasoning, and Reflection remain non-blocking; mechanics authority remains `Truss2DSolver`
+- M5/M6 merged-main automated acceptance and regression verification: **PASS**
+- Recommended next mode: **BUG / UX STABILIZATION**; no new feature Gate
+- Open decisions: O-001, O-003, O-004, O-005, O-006 — **POST-POC / OPEN**
 
 ## Current Files
 
@@ -35,7 +34,8 @@
 18. `COMPARISON_CONTRACT.md`
 19. `EXPLANATION_CONTRACT.md`
 20. `REFLECTION_AND_RATIONALE_ARCHITECTURE.md`
-21. `CALCULATION_REPORT_ASSISTANCE_SPEC.md` — frozen M6 Report contract
+21. `CALCULATION_REPORT_ASSISTANCE_SPEC.md` — completed M6 Report contract
+22. `POC_V1_KNOWN_ISSUES.md` — deferred manual verification, scope exclusions, and Post-PoC open items
 
 ## Frozen P0 Direction
 
@@ -62,11 +62,11 @@
 - post-purge account lifecycle
 - composite strip overlap if required
 
-These gates do not invalidate MASTER_SPEC v1.11 or the overall final architecture freeze; they block only directly dependent behavior.
+These gates do not invalidate MASTER_SPEC v1.12 or the overall final architecture freeze; they block only directly dependent Post-PoC behavior.
 
 ## Next Execution Point
 
-M5 Student Learning Workspace implementation is complete. M6 Calculation Report Assistance is frozen as the next milestone; implementation has not started.
+First POC V1 code closure is complete. The next mode is BUG / UX STABILIZATION and Product Owner manual browser acceptance; no new feature Gate is authorized.
 
 Before any task, the implementer must read:
 
@@ -75,7 +75,7 @@ Before any task, the implementer must read:
 3. `ARCHITECTURE_FREEZE.md`
 4. the matching implementation-plan task
 
-Documentation reconciliation is authorized; M6 implementation must begin at Gate 1 only after the frozen Gate 0 contract is reviewed against the repository.
+Do not begin a new milestone or implement Post-PoC backlog items without explicit authorization.
 
 ## Canonical location
 

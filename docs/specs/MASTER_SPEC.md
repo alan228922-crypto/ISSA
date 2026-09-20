@@ -4,11 +4,12 @@
 
 - 專案名稱：校內結構設計競賽互動式分析與學習平台
 - 文件角色：專案最高層級總規格（Current Source of Truth）
-- 版本：v1.11
+- 版本：v1.12
 - 狀態：**CURRENT / APPROVED BASELINE — 專案最高層級 Source of Truth**
 - 核准日期：2026-09-10
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
 - P0 核心分析類型：`TRUSS_2D`
+- First POC V1：**CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**（2026-09-20）
 
 > 本文件已由 Product Owner 指示執行升格，作為目前專案唯一最高層級 Source of Truth。
 >
@@ -1510,7 +1511,7 @@ Reflect 是核心教學循環的一部分，也是 Soft Gate。M4C `reflection-v
 
 ## 30.4 M6 Calculation Report Assistance
 
-【Confirmed — M6 FROZEN; implementation not started】
+【Confirmed — M6 COMPLETE; Gates 0–5 accepted in automated closure】
 
 M6 的目標是將一次成功 `AnalysisRun` 產生的 authoritative engineering facts 整理成可追溯、可複核、可用於計算書編制的線上基礎資料包。Report 必須綁定明確的 `AnalysisRun`，不可自動選擇 latest、覆蓋歷史結果或依目前 Draft 重算舊結果。
 
@@ -1521,6 +1522,8 @@ M6 P0 只提供線上 Report / Calculation Report Data Package。PDF、DOCX、Ex
 M6 P0 不包含 Euler / Stability automatic report block；O-001 仍保持 Open。Report layer 只消費既有 `TRUSS_2D` Solver 與 authoritative postprocess data，不重新組剛度矩陣、不重新求位移、反力、軸力或應力，也不允許 AI 生成設計論證。
 
 詳細的 Report Data Contract、Completeness 狀態、學生與平台責任邊界及 M6 Gates 見 `CALCULATION_REPORT_ASSISTANCE_SPEC.md`。
+
+First POC V1 automated closure verified M5 COMPLETE and M6 Gates 1–5 COMPLETE on merged `main`. Product Owner manual browser acceptance remains pending; this is not a claim of full user acceptance. Deferred verification and scope exclusions are recorded in `POC_V1_KNOWN_ISSUES.md`.
 
 ---
 
@@ -2223,6 +2226,6 @@ CODEX_IMPLEMENTATION_PLAN.md
 
 本文件目前為：
 
-> **`MASTER_SPEC.md v1.4` — CURRENT / APPROVED BASELINE**
+> **`MASTER_SPEC.md v1.12` — CURRENT / APPROVED BASELINE**
 
 後續 Architecture Specs、Implementation Plan、Codex implementation 與測試均必須以本文件為最高層級依據。若需求或 mechanics assumptions 需要改變，應先更新 MASTER_SPEC / Decision Register，再修改 implementation。

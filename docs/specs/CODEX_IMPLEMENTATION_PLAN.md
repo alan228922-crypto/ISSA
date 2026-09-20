@@ -8,13 +8,13 @@
 
 **Tech Stack:** Python 3.12+, Django 5.x, NumPy, SQLite, pytest, pytest-django, Django Templates, HTML/CSS, Vanilla JavaScript, SVG.
 
-**Specs:** `MASTER_SPEC.md v1.11` is the highest-level Source of Truth. Read it plus the relevant specialist spec before each task. `ARCHITECTURE_FREEZE.md` defines scoped open gates.
+**Specs:** `MASTER_SPEC.md v1.12` is the highest-level Source of Truth. Read it plus the relevant specialist spec before each task. `ARCHITECTURE_FREEZE.md` defines scoped open gates.
 
 ## Current implementation status
 
-The current implemented milestone is **M5 — Student Learning Workspace — COMPLETE**. It is merged into `main` at `910bf50e074322dc546bd8aa4428e8e4651c5b8c`, with the full learning-loop acceptance and merged-main verification passed.
+**First POC V1: CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING.**
 
-M6 is **Calculation Report Assistance — FROZEN / IMPLEMENTATION NOT STARTED**. Its frozen contract is in `CALCULATION_REPORT_ASSISTANCE_SPEC.md`. Begin only at M6 Gate 1 after Gate 0 contract review; do not treat this status entry as evidence that implementation has started.
+M5 — Student Learning Workspace — **COMPLETE**. M6 — Calculation Report Assistance — **COMPLETE (Gates 0–5)**. Gate 5 automated acceptance and merged-main regression passed on 2026-09-20. The Product Owner manual browser pass remains pending; deferred verification and exclusions are recorded in `POC_V1_KNOWN_ISSUES.md`.
 
 The Lifecycle / Research / PoC grouping below is retained as historical implementation-plan content for Tasks 24–26. Those tasks are not M6 and remain a future, unfrozen candidate area after M6.
 
@@ -1074,7 +1074,7 @@ Exit:
 - no AI mechanics authority
 - no fabricated design rationale
 
-## Milestone M6 — Calculation Report Assistance — FROZEN / IMPLEMENTATION NOT STARTED
+## Milestone M6 — Calculation Report Assistance — COMPLETE
 
 Goal:
 
@@ -1087,11 +1087,11 @@ Goal:
 Gates:
 
 - Gate 0 — Report Contract Freeze — COMPLETE
-- Gate 1 — Authoritative Report Package
-- Gate 2 — Completeness + Limitation
-- Gate 3 — Report Workspace
-- Gate 4 — Student-authored Reasoning Boundary
-- Gate 5 — Acceptance + Reconciliation
+- Gate 1 — Authoritative Report Package — COMPLETE
+- Gate 2 — Completeness + Limitation — COMPLETE
+- Gate 3 — Report Workspace — COMPLETE
+- Gate 4 — Student-authored Reasoning Boundary — COMPLETE
+- Gate 5 — Acceptance + Reconciliation — COMPLETE
 
 Detailed scope, data blocks, authority, completeness states, non-goals, open-decision impact, and acceptance boundaries are defined in `CALCULATION_REPORT_ASSISTANCE_SPEC.md`.
 

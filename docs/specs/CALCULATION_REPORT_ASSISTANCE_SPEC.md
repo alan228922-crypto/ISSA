@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-- Status: **CURRENT / FROZEN — M6; implementation not started**
+- Status: **CURRENT / FROZEN — M6 COMPLETE; First POC V1 automated acceptance passed**
 - Parent authority: `MASTER_SPEC.md v1.12`
 - Scope: online calculation-report assistance for one authoritative successful `AnalysisRun`
 - Presentation: online Report / Calculation Report Data Package only
@@ -178,17 +178,17 @@ Completeness must not produce a numeric score, grade, quality judgment, best-des
 
 | Decision | M6 impact | Status |
 |---|---|---|
-| O-001 Euler K / buckling axis | Related but not blocking base M6; blocks any Euler report block | OPEN |
-| O-003 FINISHED_GRACE access | Related but not blocking base package; later affects historical Report access | OPEN |
-| O-004 account lifecycle after purge | Related but not blocking base package; affects post-purge account boundary | OPEN |
-| O-005 composite overlap | Unrelated for base M6; relevant only to overlap-capable section reporting | OPEN |
-| O-006 ACTIVE provisioning | Unrelated for base M6; concerns event provisioning | OPEN |
+| O-001 Euler K / buckling axis | Related but not blocking base M6; blocks any Euler report block | POST-POC / OPEN |
+| O-003 FINISHED_GRACE access | Related but not blocking base package; later affects historical Report access | POST-POC / OPEN |
+| O-004 account lifecycle after purge | Related but not blocking base package; affects post-purge account boundary | POST-POC / OPEN |
+| O-005 composite overlap | Unrelated for base M6; relevant only to overlap-capable section reporting | POST-POC / OPEN |
+| O-006 ACTIVE provisioning | Unrelated for base M6; concerns event provisioning | POST-POC / OPEN |
 
 ## 9. Teacher review items
 
-- `T-M6-001`: confirm the minimum competition calculation-report engineering content;
-- `T-M6-002`: confirm which student-authored sections are required versus optional;
-- `T-M6-003`: confirm that Euler / Stability remains outside M6 P0 until O-001 is resolved.
+- `T-M6-001` — **POST-POC / OPEN**: confirm the minimum competition calculation-report engineering content;
+- `T-M6-002` — **POST-POC / OPEN**: confirm which student-authored sections are required versus optional;
+- `T-M6-003` — **POST-POC / OPEN**: confirm that Euler / Stability remains outside M6 P0 until O-001 is resolved.
 
 These do not block the core authoritative package architecture but must be resolved before dependent presentation/completeness behavior is finalized.
 
@@ -198,24 +198,24 @@ These do not block the core authoritative package architecture but must be resol
 
 Freeze this contract and the high-level M6 boundary.
 
-### Gate 1 — Authoritative Report Package
+### Gate 1 — Authoritative Report Package — COMPLETE
 
 Assemble a read-only package from one explicit AnalysisRun and preserve provenance without mechanics recomputation.
 
-### Gate 2 — Completeness + Limitation
+### Gate 2 — Completeness + Limitation — COMPLETE
 
 Expose readiness, missing items, and unavailable capabilities without quality scoring.
 
-### Gate 3 — Report Workspace
+### Gate 3 — Report Workspace — COMPLETE
 
 Present the online package in the existing Workspace with progressive disclosure.
 
-### Gate 4 — Student-authored Reasoning Boundary
+### Gate 4 — Student-authored Reasoning Boundary — COMPLETE
 
 Keep platform facts separate from student-authored reasoning and preserve Reflection as a Soft Gate.
 
-### Gate 5 — Acceptance + Reconciliation
+### Gate 5 — Acceptance + Reconciliation — COMPLETE
 
 Verify AnalysisRun binding, historical `STALE` behavior, provenance, authorization, student-authored boundaries, and the absence of mechanics duplication.
 
-Gate 1 implementation has not started.
+First POC V1 is **CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**. Automated acceptance covers the explicit-Run Report/Reasoning flow, historical isolation, authorization, failure boundaries, purge, and full regression. It does not close the Post-PoC decisions above or authorize deferred features.
