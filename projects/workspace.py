@@ -88,6 +88,7 @@ def _urls(project):
         "analysis_runs": reverse("projects:analysis_runs", kwargs={"project_id": project_id}),
         "result_template": f"{base}/analyses/{{run_id}}/data/",
         "report_template": f"{base}/analyses/{{run_id}}/report/",
+        "reasoning_template": f"{base}/analyses/{{run_id}}/reasoning/",
         "comparison_template": f"{base}/analyses/{{run_id}}/comparison/",
         "explanation_template": f"{base}/analyses/{{run_id}}/explanation/",
         "reflection_template": f"{base}/analyses/{{run_id}}/reflection/",

@@ -88,3 +88,18 @@ class Reflection(models.Model):
                 name="reflection_status_is_valid",
             ),
         ]
+
+
+class CalculationReportReasoning(models.Model):
+    analysis_run = models.OneToOneField(AnalysisRun, on_delete=models.PROTECT, related_name="calculation_report_reasoning")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="calculation_report_reasonings")
+    reasoning_schema_version = models.CharField(max_length=64, default="calculation-report-reasoning-v1")
+    modeling_rationale = models.TextField(blank=True, default="")
+    material_section_rationale = models.TextField(blank=True, default="")
+    support_load_rationale = models.TextField(blank=True, default="")
+    result_interpretation = models.TextField(blank=True, default="")
+    design_change_rationale = models.TextField(blank=True, default="")
+    scheme_comparison = models.TextField(blank=True, default="")
+    final_conclusion = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

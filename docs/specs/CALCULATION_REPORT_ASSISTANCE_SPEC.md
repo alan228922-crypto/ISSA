@@ -10,6 +10,18 @@
 
 M6 organizes authoritative engineering facts so a student can prepare a calculation report. It does not write the student's engineering argument, select a best design, or replace the mechanics authority.
 
+### D-M6-011 — Reasoning visibility
+
+In M6 P0, raw `CalculationReportReasoning` is visible and editable only to the Project owner/student author. Managers and Developers do not receive raw reasoning visibility, review, publication, or teacher-review states.
+
+### D-M6-012 — No completion lifecycle in P0
+
+Reasoning has no completed, locked, submitted, or published state. It is optional saved student text that remains editable until the existing Project/Event read-only lifecycle or purge.
+
+### D-M6-013 — Seven optional student-authored sections
+
+Modeling, material/section, support/load, result interpretation, design-change, scheme-comparison, and final-conclusion reasoning are all optional in M6 P0. Empty fields do not change technical completeness, block Report/Analyze/Prediction/Reflection, or imply quality judgment.
+
 ### D-M6-007 — Failed AnalysisRun Report Policy
 
 Only a successful `AnalysisRun` may produce a Calculation Report Package. If the explicitly selected Run has status `VALIDATION_FAILED` or `SOLVER_FAILED`, the Report endpoint returns `REPORT_ANALYSIS_NOT_SUCCESS` and does not produce a package.

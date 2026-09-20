@@ -10,11 +10,11 @@ from analysis.models import AnalysisRun
 from competitions.models import CompetitionEvent, EventMembership
 from modeling.models import Connection, PhysicalMember
 from projects.models import Project
-from projects.services import can_view_project
+from projects.services import can_modify_project, can_view_project
 
 from .comparison import ComparisonError, build_comparison
 from .explanation import ExplanationError, build_explanation
-from .models import Prediction, Reflection, StudentResultReveal
+from .models import CalculationReportReasoning, Prediction, Reflection, StudentResultReveal
 
 
 class PredictionError(ValueError):
@@ -38,6 +38,37 @@ class ReflectionError(ValueError):
         super().__init__(code)
         self.code = code
         self.status_code = status_code
+
+
+class ReasoningError(ValueError):
+    def __init__(self, code, status_code=400):
+        super().__init__(code); self.code = code; self.status_code = status_code
+
+
+REASONING_FIELDS = {"modeling_rationale", "material_section_rationale", "support_load_rationale", "result_interpretation", "design_change_rationale", "scheme_comparison", "final_conclusion"}
+
+
+def _authorize_reasoning_author(project, actor):
+    if not can_modify_project(actor, project) or actor.id != project.owner_user_id or actor.role in {User.Role.MANAGER, User.Role.DEVELOPER}:
+        raise ReasoningError("REASONING_WRITE_DENIED", 403)
+
+
+def reasoning_for_run(*, run, actor):
+    if run.status != AnalysisRun.Status.SUCCESS: raise ReasoningError("REASONING_RUN_NOT_SUCCESS", 422)
+    if actor.id != run.project.owner_user_id: raise ReasoningError("REASONING_READ_DENIED", 403)
+    return CalculationReportReasoning.objects.filter(analysis_run=run).first()
+
+
+def save_reasoning(*, run, actor, fields):
+    if run.status != AnalysisRun.Status.SUCCESS: raise ReasoningError("REASONING_RUN_NOT_SUCCESS", 422)
+    if not isinstance(fields, dict) or set(fields) - REASONING_FIELDS or any(not isinstance(value, str) or len(value) > 5000 for value in fields.values()): raise ReasoningError("REASONING_INVALID_FIELDS", 422)
+    with transaction.atomic():
+        project = Project.objects.select_for_update().select_related("event").get(pk=run.project_id)
+        _authorize_reasoning_author(project, actor)
+        reasoning, _ = CalculationReportReasoning.objects.get_or_create(analysis_run=run, defaults={"created_by": actor})
+        for field, value in fields.items(): setattr(reasoning, field, value)
+        reasoning.save(update_fields=[*fields, "updated_at"])
+        return reasoning
 
 
 _STATES = {"TENSION", "COMPRESSION", "ZERO_FORCE", "UNSURE"}

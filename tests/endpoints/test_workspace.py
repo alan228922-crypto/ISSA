@@ -60,6 +60,7 @@ def test_owner_gets_bootstrap_and_manager_gets_read_only(context, client):
             "analysis_runs",
             "result_template",
             "report_template",
+            "reasoning_template",
             "comparison_template",
         "explanation_template",
         "reflection_template",
@@ -69,7 +70,7 @@ def test_owner_gets_bootstrap_and_manager_gets_read_only(context, client):
         "save": f"/projects/{project.id}/model/save/", "check": f"/projects/{project.id}/model/check/",
             "prediction_current": f"/projects/{project.id}/predictions/current/", "prediction_create": f"/projects/{project.id}/predictions/",
             "prediction_complete_template": f"/projects/{project.id}/predictions/{{prediction_id}}/complete/", "analyze": f"/projects/{project.id}/analyze/",
-            "analysis_runs": f"/projects/{project.id}/analyses/", "result_template": f"/projects/{project.id}/analyses/{{run_id}}/data/", "report_template": f"/projects/{project.id}/analyses/{{run_id}}/report/", "comparison_template": f"/projects/{project.id}/analyses/{{run_id}}/comparison/",
+            "analysis_runs": f"/projects/{project.id}/analyses/", "result_template": f"/projects/{project.id}/analyses/{{run_id}}/data/", "report_template": f"/projects/{project.id}/analyses/{{run_id}}/report/", "reasoning_template": f"/projects/{project.id}/analyses/{{run_id}}/reasoning/", "comparison_template": f"/projects/{project.id}/analyses/{{run_id}}/comparison/",
         "explanation_template": f"/projects/{project.id}/analyses/{{run_id}}/explanation/", "reflection_template": f"/projects/{project.id}/analyses/{{run_id}}/reflection/",
         "reflection_complete_template": f"/projects/{project.id}/analyses/{{run_id}}/reflection/complete/",
     }

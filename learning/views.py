@@ -10,10 +10,11 @@ from analysis.models import AnalysisRun
 from projects.models import Project
 from projects.services import can_view_project
 
-from .models import Prediction, Reflection
+from .models import CalculationReportReasoning, Prediction, Reflection
 from .services import (
-    PredictionError, ReflectionError, complete_prediction, complete_reflection,
+    PredictionError, ReasoningError, ReflectionError, complete_prediction, complete_reflection,
     create_prediction, create_reflection, discover_current_prediction, get_reflection_for_read, update_reflection,
+    reasoning_for_run, save_reasoning,
 )
 
 
@@ -48,6 +49,10 @@ MESSAGES = {
     "REFLECTION_INCOMPLETE": "请完成三项反思内容后再提交。",
     "REFLECTION_INVALID_FIELDS": "反思字段不正确或超出长度限制。",
     "REFLECTION_EVENT_NOT_ACTIVE": "当前赛事状态不允许填写反思。",
+    "REASONING_READ_DENIED": "您没有查看该设计说明的权限。",
+    "REASONING_WRITE_DENIED": "您没有填写该设计说明的权限。",
+    "REASONING_RUN_NOT_SUCCESS": "分析尚未成功完成，暂不能填写设计说明。",
+    "REASONING_INVALID_FIELDS": "设计说明字段不正确或超出长度限制。",
 }
 
 _VALIDATION_CODES = {
@@ -138,6 +143,27 @@ def _reflection_run(project, run_id):
 
 def _reflection_error(exc):
     return _error(exc.code, exc.status_code)
+
+
+def _reasoning_response(run, reasoning):
+    fields = ("modeling_rationale", "material_section_rationale", "support_load_rationale", "result_interpretation", "design_change_rationale", "scheme_comparison", "final_conclusion")
+    return JsonResponse({"ok": True, "exists": reasoning is not None, "analysis_run_id": run.id, "reasoning": {field: getattr(reasoning, field) if reasoning else "" for field in fields}})
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def reasoning_detail(request, project_id, run_id):
+    project = _project(project_id)
+    if project is None: return _error("PROJECT_NOT_FOUND", 404)
+    run = _reflection_run(project, run_id)
+    if run is None: return _error("PROJECT_NOT_FOUND", 404)
+    try:
+        if request.method == "GET": return _reasoning_response(run, reasoning_for_run(run=run, actor=request.user))
+        payload = _json_body(request)
+        if payload is None: return _error("MALFORMED_JSON", 400)
+        return _reasoning_response(run, save_reasoning(run=run, actor=request.user, fields=payload))
+    except ReasoningError as exc:
+        return _error(exc.code, exc.status_code)
 
 
 @login_required
