@@ -87,6 +87,14 @@ function screenPoint(matrix, x, y) {
   return { x: point.x, y: point.y };
 }
 
+export function worldPointFromEvent(svg, event) {
+  const world = svg.querySelector("[data-world-layer]");
+  const matrix = world?.getScreenCTM?.();
+  if (!matrix) return null;
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+  return Number.isFinite(point.x) && Number.isFinite(point.y) ? { x: point.x, y: point.y } : null;
+}
+
 export function renderedObjectsFromSvg(svg) {
   return [...svg.querySelectorAll("[data-object-kind]")].flatMap((group) => {
     const selection = selectionFromElement(group);
@@ -106,6 +114,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   let panStart = null;
   let canvasClickHandler = null;
   let stateChangeHandler = null;
+  let pointerMoveHandler = null;
   const notifyStateChange = () => stateChangeHandler?.(state);
   const redraw = () => render(svg, state.draft, state);
   const select = (selection, redrawSelection = true) => {
@@ -135,6 +144,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   }, { passive: false });
   svg.addEventListener("pointerdown", (event) => { panStart = { x: event.clientX, y: event.clientY }; });
   svg.addEventListener("pointermove", (event) => {
+    pointerMoveHandler?.(worldPointFromEvent(svg, event), state);
     if (!panStart) return;
     dispatchViewEvent({ type: "PAN", deltaScreen: { x: event.clientX - panStart.x, y: event.clientY - panStart.y } });
     panStart = { x: event.clientX, y: event.clientY };
@@ -145,5 +155,5 @@ export function bindCanvasInteractions(svg, initialState, render) {
     redraw();
     notifyStateChange();
   };
-  return Object.freeze({ dispatchViewEvent, getState: () => state, replaceState, setCanvasClickHandler: (handler) => { canvasClickHandler = handler; }, setStateChangeHandler: (handler) => { stateChangeHandler = handler; } });
+  return Object.freeze({ dispatchViewEvent, getState: () => state, replaceState, setCanvasClickHandler: (handler) => { canvasClickHandler = handler; }, setStateChangeHandler: (handler) => { stateChangeHandler = handler; }, setPointerMoveHandler: (handler) => { pointerMoveHandler = handler; } });
 }

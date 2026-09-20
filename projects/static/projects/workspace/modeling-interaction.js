@@ -1,4 +1,5 @@
 import { EditorActionError } from "./editor.js";
+import { worldPointFromEvent } from "./canvas-interaction.js";
 import { applyWorkspaceEditorAction } from "./state.js";
 
 const TOOL_LABELS = Object.freeze({
@@ -26,14 +27,6 @@ function nextKey(items, prefix) {
   const keys = new Set(items.map((item) => item.client_key));
   while (keys.has(`${prefix}-${index}`)) index += 1;
   return `${prefix}-${index}`;
-}
-
-function worldPoint(svg, event) {
-  const world = svg.querySelector("[data-world-layer]");
-  const matrix = world?.getScreenCTM?.();
-  if (!matrix) return null;
-  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
-  return Number.isFinite(point.x) && Number.isFinite(point.y) ? { x: Math.round(point.x), y: Math.round(point.y) } : null;
 }
 
 function membersAtNode(draft, nodeKey) {
@@ -88,7 +81,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (tool === "SELECT") return;
     if (tool === "NODE") {
       if (target) return;
-      const point = worldPoint(svg, event);
+      const resolved = worldPointFromEvent(svg, event);
+      const point = resolved && { x: Math.round(resolved.x), y: Math.round(resolved.y) };
       if (!point) return;
       apply({ type: "CREATE_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } });
       return;

@@ -220,8 +220,32 @@ def test_svg_objects_are_keyboard_focusable(context, workspace_page):
 @pytest.mark.django_db(transaction=True)
 def test_workspace_canvas_binds_mouse_keyboard_and_view_events(context, workspace_page):
     owner, project, material, section = context; save_physical_draft(actor=owner,project=project,payload=valid_payload(material,section)); page=workspace_page(user=owner,project=project)
-    result=page.evaluate("""()=>{const svg=document.querySelector('#workspace-canvas');const member=svg.querySelector('[data-client-key="m1"]');const box=member.getBoundingClientRect();member.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:box.left+box.width/2,clientY:box.top+box.height/2}));const mouse=svg.querySelector('[data-client-key="m1"]').dataset.selected;const keyboard=svg.querySelector('[data-client-key="m1"]');keyboard.focus();keyboard.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));const key=svg.querySelector('[data-client-key="m1"]').dataset.selected;svg.dispatchEvent(new WheelEvent('wheel',{deltaY:-100,clientX:100,clientY:50,bubbles:true,cancelable:true}));return {mouse,key,transform:svg.querySelector('[data-world-layer]').getAttribute('transform')};}""")
-    assert result['mouse'] == 'true' and result['key'] == 'true' and result['transform'] == 'matrix(1.1 0 0 -1.1 -10 -5)'
+    result=page.evaluate("""()=>{const svg=document.querySelector('#workspace-canvas');const member=svg.querySelector('[data-client-key="m1"]');const box=member.getBoundingClientRect();member.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:box.left+box.width/2,clientY:box.top+box.height/2}));const mouse=svg.querySelector('[data-client-key="m1"]').dataset.selected;const keyboard=svg.querySelector('[data-client-key="m1"]');keyboard.focus();keyboard.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));const key=svg.querySelector('[data-client-key="m1"]').dataset.selected;const before=svg.querySelector('[data-world-layer]').getAttribute('transform');svg.dispatchEvent(new WheelEvent('wheel',{deltaY:-100,clientX:100,clientY:50,bubbles:true,cancelable:true}));const after=svg.querySelector('[data-world-layer]').getAttribute('transform');return {mouse,key,before,after};}""")
+    before_scale = float(result['before'].split('(')[1].split()[0])
+    after_scale = float(result['after'].split('(')[1].split()[0])
+    assert result['mouse'] == 'true' and result['key'] == 'true' and result['before'] != result['after'] and after_scale > before_scale
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workspace_canvas_shows_orientation_grid_fit_and_pointer_coordinates(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+
+    canvas = page.locator('#workspace-canvas')
+    axes = page.locator('[data-canvas-orientation]')
+    grid = page.locator('[data-canvas-grid]')
+    assert axes.count() == 1
+    assert axes.text_content() == '+X → +Y ↑'
+    assert grid.count() == 1
+    assert grid.evaluate("(element) => getComputedStyle(element).pointerEvents") == 'none'
+
+    member = page.locator('[data-client-key="m1"] line')
+    assert member.bounding_box()['width'] > 200
+    canvas.hover(position={'x': 350, 'y': 220})
+    assert 'mm' in page.locator('#workspace-pointer-x').text_content()
+    assert 'mm' in page.locator('#workspace-pointer-y').text_content()
 
 
 @pytest.mark.browser

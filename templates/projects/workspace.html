@@ -68,7 +68,7 @@
       <label>角度 <input id="workspace-dynamic-angle" type="text" disabled></label>
     </section>
     <footer id="workspace-status-bar" aria-live="polite">
-      <span>X: —</span><span>Y: —</span><span>ΔL: —</span><span>Angle: —</span>
+      <span id="workspace-pointer-x">X: —</span><span id="workspace-pointer-y">Y: —</span><span>ΔL: —</span><span>Angle: —</span>
       <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 关</span>
       <span id="workspace-save-status">未保存修改：无</span>
     </footer>
@@ -78,7 +78,7 @@
   {{ bootstrap|json_script:"workspace-bootstrap" }}
   <script type="module">
     import { applyWorkspaceSaveSuccess, createWorkspaceState, focusWorkspaceIssue, readWorkspaceBootstrap } from "{% static 'projects/workspace/state.js' %}";
-    import { renderWorkspace } from "{% static 'projects/workspace/renderer.js' %}";
+    import { renderWorkspace, workspaceWorldBounds } from "{% static 'projects/workspace/renderer.js' %}";
     import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
     import { bindModelingInteractions } from "{% static 'projects/workspace/modeling-interaction.js' %}";
     import { bindPropertyPanel } from "{% static 'projects/workspace/properties.js' %}";
@@ -92,6 +92,13 @@
     const state = createWorkspaceState(bootstrap);
     renderWorkspace(canvas, state.draft, state);
     const canvasController = bindCanvasInteractions(canvas, state, renderWorkspace);
+    const canvasRect = canvas.getBoundingClientRect();
+    canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(state.draft), viewport: { width: canvasRect.width, height: canvasRect.height } });
+    canvasController.setPointerMoveHandler((point) => {
+      if (!point) return;
+      document.getElementById("workspace-pointer-x").textContent = `X: ${Math.round(point.x)} mm`;
+      document.getElementById("workspace-pointer-y").textContent = `Y: ${Math.round(point.y)} mm`;
+    });
     const workflow = createWorkspaceWorkflow({ urls: bootstrap.urls });
     const errorPanel = document.getElementById("workspace-error");
     const issuePanel = document.getElementById("workspace-check-issues");

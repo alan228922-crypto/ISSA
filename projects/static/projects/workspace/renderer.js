@@ -1,4 +1,5 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
+import { GRID_SPACING } from "./canvas-interaction.js";
 
 function element(name, attributes = {}) {
   const node = document.createElementNS(SVG_NS, name);
@@ -38,6 +39,30 @@ function position(connection, nodePositions) {
   return nodePositions.get(connection.geometry_node_client_key);
 }
 
+export function workspaceWorldBounds(draft) {
+  const points = (draft.nodes || []).filter((node) => Number.isFinite(node.x_mm) && Number.isFinite(node.y_mm));
+  if (!points.length) return null;
+  return { minX: Math.min(...points.map((node) => node.x_mm)), minY: Math.min(...points.map((node) => node.y_mm)), maxX: Math.max(...points.map((node) => node.x_mm)), maxY: Math.max(...points.map((node) => node.y_mm)) };
+}
+
+function gridLayer() {
+  const grid = element("g", { "data-canvas-grid": "true", "pointer-events": "none", stroke: "#d9e3f0", "stroke-width": 1 });
+  for (let coordinate = -10000; coordinate <= 10000; coordinate += GRID_SPACING) {
+    grid.append(element("line", { x1: coordinate, y1: -10000, x2: coordinate, y2: 10000 }));
+    grid.append(element("line", { x1: -10000, y1: coordinate, x2: 10000, y2: coordinate }));
+  }
+  grid.append(element("path", { d: "M -30 0 L 30 0 M 0 -30 L 0 30", stroke: "#7c8ba1", "stroke-width": 2 }));
+  const origin = element("text", { x: 12, y: -12, fill: "#536274", "font-size": 24 }); origin.textContent = "(0,0)"; grid.append(origin);
+  return grid;
+}
+
+function orientationLayer() {
+  const group = element("g", { "data-canvas-orientation": "true", "pointer-events": "none", fill: "#34445c", stroke: "#34445c", "stroke-width": 3 });
+  group.append(element("path", { d: "M 42 552 L 92 552 M 42 552 L 42 502" }));
+  const label = element("text", { x: 98, y: 556, "font-size": 20, stroke: "none" }); label.textContent = "+X → +Y ↑"; group.append(label);
+  return group;
+}
+
 export function renderSnapIndicator(indicator, resolution) {
   const snapType = ["NODE", "INT", "GRID"].includes(resolution?.snapType) ? resolution.snapType : null;
   indicator.textContent = snapType ? `SNAP: ${snapType}` : "SNAP: 无";
@@ -57,7 +82,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   const supports = ordered(draft.supports || []);
   const nodePositions = pointMap(nodes);
   const connectionByKey = new Map(connections.map((connection) => [connection.client_key, connection]));
-  const layers = [element("g", { "data-render-layer": "members" }), element("g", { "data-render-layer": "supports-loads" }), element("g", { "data-render-layer": "nodes-connections" })];
+  const layers = [gridLayer(), element("g", { "data-render-layer": "members" }), element("g", { "data-render-layer": "supports-loads" }), element("g", { "data-render-layer": "nodes-connections" })];
 
   for (const member of members) {
     const start = nodePositions.get(member.start_node_client_key);
@@ -113,5 +138,5 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   defs.append(marker);
   const world = element("g", { "data-world-layer": "true", transform: viewTransform(uiState.viewTransform) });
   world.append(...layers);
-  svg.replaceChildren(defs, world);
+  svg.replaceChildren(defs, world, orientationLayer());
 }
