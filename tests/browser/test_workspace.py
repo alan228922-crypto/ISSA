@@ -242,6 +242,7 @@ def test_workspace_canvas_shows_orientation_grid_fit_and_pointer_coordinates(con
     assert grid.evaluate("(element) => getComputedStyle(element).pointerEvents") == 'none'
 
     member = page.locator('[data-client-key="m1"] line')
+    assert member.evaluate("(element) => getComputedStyle(element).pointerEvents") != 'none'
     assert member.bounding_box()['width'] > 200
     canvas.hover(position={'x': 350, 'y': 220})
     assert 'mm' in page.locator('#workspace-pointer-x').text_content()

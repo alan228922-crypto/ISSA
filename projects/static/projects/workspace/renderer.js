@@ -82,7 +82,8 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   const supports = ordered(draft.supports || []);
   const nodePositions = pointMap(nodes);
   const connectionByKey = new Map(connections.map((connection) => [connection.client_key, connection]));
-  const layers = [gridLayer(), element("g", { "data-render-layer": "members" }), element("g", { "data-render-layer": "supports-loads" }), element("g", { "data-render-layer": "nodes-connections" })];
+  const grid = gridLayer();
+  const layers = [element("g", { "data-render-layer": "members" }), element("g", { "data-render-layer": "supports-loads" }), element("g", { "data-render-layer": "nodes-connections" })];
 
   for (const member of members) {
     const start = nodePositions.get(member.start_node_client_key);
@@ -137,6 +138,6 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   marker.append(element("path", { d: "M 0 0 L 8 4 L 0 8 z", fill: "currentColor" }));
   defs.append(marker);
   const world = element("g", { "data-world-layer": "true", transform: viewTransform(uiState.viewTransform) });
-  world.append(...layers);
+  world.append(grid, ...layers);
   svg.replaceChildren(defs, world, orientationLayer());
 }
