@@ -20,6 +20,54 @@ def endpoint(project, run_id):
     return reverse("projects:analysis_report", kwargs={"project_id": project.id, "run_id": run_id})
 
 
+def runs_endpoint(project):
+    return reverse("projects:analysis_runs", kwargs={"project_id": project.id})
+
+
+@pytest.mark.django_db
+def test_authorized_run_discovery_is_read_only_deterministic_and_preserves_status(analyzed_project, client):
+    from analysis.models import AnalysisRun
+
+    owner, project, success_run = analyzed_project
+    failed_run = AnalysisRun.objects.create(
+        project=project,
+        model_revision=success_run.model_revision,
+        solver_version=success_run.solver_version,
+        input_schema_version=success_run.input_schema_version,
+        input_hash="failed-input-hash",
+        solver_input_json=success_run.solver_input_json,
+        status=AnalysisRun.Status.VALIDATION_FAILED,
+        failure_code="INVALID_DRAFT",
+        created_by=owner,
+    )
+    client.force_login(owner)
+
+    response = client.get(runs_endpoint(project))
+
+    assert response.status_code == 200
+    runs = response.json()["runs"]
+    assert runs == [
+        {
+            "analysis_run_id": failed_run.id,
+            "status": "VALIDATION_FAILED",
+            "created_at": runs[0]["created_at"],
+            "model_revision_id": success_run.model_revision_id,
+            "source_draft_version": success_run.model_revision.source_draft_version,
+            "is_stale": False,
+        },
+        {
+            "analysis_run_id": success_run.id,
+            "status": "SUCCESS",
+            "created_at": runs[1]["created_at"],
+            "model_revision_id": success_run.model_revision_id,
+            "source_draft_version": success_run.model_revision.source_draft_version,
+            "is_stale": False,
+        },
+    ]
+    assert all(run["created_at"].endswith("Z") for run in runs)
+    assert "result_json" not in response.json()["runs"][0]
+
+
 @pytest.mark.django_db
 def test_owner_gets_report_for_explicit_run_and_no_latest_selection(analyzed_project, client):
     owner, project, run = analyzed_project

@@ -63,6 +63,14 @@
         <section id="workspace-reflection" aria-label="反思"></section>
       </aside>
     </section>
+    <section id="workspace-report" aria-label="计算书资料">
+      <h2>计算书资料</h2>
+      <p>选择一次明确的分析记录后查看计算书资料。</p>
+      <label for="workspace-report-run">当前分析</label>
+      <select id="workspace-report-run"><option value="">请选择分析记录</option></select>
+      <button id="workspace-report-open" type="button" disabled>查看计算书资料</button>
+      <section id="workspace-report-view" aria-live="polite"></section>
+    </section>
     <section id="workspace-dynamic-input" data-active-field="distance" hidden aria-label="动态输入">
       <label>距离 <input id="workspace-dynamic-distance" type="text" disabled></label>
       <label>角度 <input id="workspace-dynamic-angle" type="text" disabled></label>
@@ -87,6 +95,7 @@
     import { createResultsWorkspace, renderLevelOne, showLevelOne, showEngineeringDetails, renderEngineeringDetails } from "{% static 'projects/workspace/results.js' %}";
     import { presentWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
     import { createReflectionWorkspace, renderReflection } from "{% static 'projects/workspace/reflection.js' %}";
+    import { createReportWorkspace, renderReport } from "{% static 'projects/workspace/report.js' %}";
     const bootstrap = readWorkspaceBootstrap();
     const canvas = document.getElementById("workspace-canvas");
     const state = createWorkspaceState(bootstrap);
@@ -109,6 +118,14 @@
     const resultsWorkspace = createResultsWorkspace({ urls: { analyze: bootstrap.urls.analyze, resultTemplate: bootstrap.urls.result_template } });
     const reflectionRoot = document.getElementById("workspace-reflection");
     const reflectionWorkspace = createReflectionWorkspace({ urls: { reflectionTemplate: bootstrap.urls.reflection_template, reflectionCompleteTemplate: bootstrap.urls.reflection_complete_template }, workflow });
+    const reportSelect = document.getElementById("workspace-report-run");
+    const reportOpen = document.getElementById("workspace-report-open");
+    const reportView = document.getElementById("workspace-report-view");
+    const reportWorkspace = createReportWorkspace({ urls: { runs: bootstrap.urls.analysis_runs, reportTemplate: bootstrap.urls.report_template } });
+    const loadReportRuns = async () => { try { const runs = await reportWorkspace.listRuns(); if (!runs.some((run) => run.status === "SUCCESS")) reportView.textContent = "还没有可用的计算书资料。请先完成一次成功分析。"; for (const run of runs) { const option = document.createElement("option"); option.value = run.analysis_run_id; option.textContent = `分析 #${run.analysis_run_id} · ${run.status} · 草稿 v${run.source_draft_version}`; reportSelect.append(option); } } catch (error) { showError(error); } };
+    reportSelect.addEventListener("change", () => { reportOpen.disabled = !reportSelect.value; });
+    reportOpen.addEventListener("click", async () => { try { renderReport(reportView, await reportWorkspace.loadReport(Number(reportSelect.value))); errorPanel.hidden = true; } catch (error) { showError(error); } });
+    loadReportRuns();
     const renderReflectionView = (reflection) => renderReflection(reflectionRoot, reflection, {
       readOnly: state.readOnly,
       onStart: () => renderReflectionView({ status: "DRAFT", original_reasoning: "", unexpected_results: "", next_iteration_intent: "" }),

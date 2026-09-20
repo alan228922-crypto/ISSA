@@ -1,6 +1,7 @@
 import pytest
 
 from modeling.services import save_physical_draft
+from tests.application.test_analysis_acceptance import save_bt01_draft
 from tests.application.test_physical_draft import context, valid_payload
 
 
@@ -247,6 +248,34 @@ def test_workspace_canvas_shows_orientation_grid_fit_and_pointer_coordinates(con
     canvas.hover(position={'x': 350, 'y': 220})
     assert 'mm' in page.locator('#workspace-pointer-x').text_content()
     assert 'mm' in page.locator('#workspace-pointer-y').text_content()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workspace_report_requires_an_explicit_analysis_run_selection(context, workspace_page):
+    from analysis.orchestration import analyze_project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    project.refresh_from_db()
+    run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    assert run.status == "SUCCESS"
+    page = workspace_page(user=owner, project=project)
+
+    assert page.locator('#workspace-report-open').count() == 1
+    assert page.locator('#workspace-report-run').count() == 1
+    assert page.locator('#workspace-report-view').count() == 1
+    assert page.locator('#workspace-report-run').input_value() == ''
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workspace_report_without_successful_run_shows_analyze_guidance(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+
+    page.wait_for_function("document.querySelector('#workspace-report-view').textContent.length > 0")
+    assert page.locator('#workspace-report-view').text_content() == '还没有可用的计算书资料。请先完成一次成功分析。'
 
 
 @pytest.mark.browser

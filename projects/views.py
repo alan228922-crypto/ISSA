@@ -169,6 +169,28 @@ def analysis_data(request, project_id, run_id):
 
 @login_required
 @require_GET
+def analysis_runs(request, project_id):
+    project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
+    if not can_view_project(request.user, project):
+        return _error('PROJECT_READ_DENIED', 403)
+    runs = AnalysisRun.objects.select_related('model_revision').filter(project_id=project.id).order_by('-started_at', '-id')
+    return JsonResponse({'ok': True, 'runs': [
+        {
+            'analysis_run_id': run.id,
+            'status': run.status,
+            'created_at': run.started_at,
+            'model_revision_id': run.model_revision_id,
+            'source_draft_version': run.model_revision.source_draft_version,
+            'is_stale': run.model_revision.source_draft_version != project.draft_version,
+        }
+        for run in runs
+    ]})
+
+
+@login_required
+@require_GET
 def analysis_report(request, project_id, run_id):
     project = _project(project_id)
     if project is None:
