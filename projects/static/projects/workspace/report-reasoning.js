@@ -2,7 +2,61 @@ import { postJson, requestJson, urlFromTemplate } from "./api.js";
 
 const FIELDS = [["modeling_rationale", "建模说明", "为什么采用这样的结构形式和连接方式？"], ["material_section_rationale", "材料与截面说明", "为什么选择这些材料和截面？"], ["support_load_rationale", "支座与荷载说明", "为什么这样简化支座和荷载？"], ["result_interpretation", "结果理解", "你如何理解这次分析结果？"], ["design_change_rationale", "设计修改", "根据结果，你做了哪些修改？为什么？"], ["scheme_comparison", "方案比较", "不同方案之间有哪些差异和权衡？"], ["final_conclusion", "最终结论", "请用自己的话总结最终设计。"]];
 export function bindReportReasoning({ root, template, get = requestJson, post = postJson, showError = () => {} }) {
-  let runId = null; const url = () => urlFromTemplate(template, { run_id: runId });
-  const render = (reasoning = {}) => { root.replaceChildren(); if (!Number.isInteger(runId)) return; const title=document.createElement("h3"); title.textContent="我的设计说明（由你填写）"; root.append(title); const form=document.createElement("form"); for (const [name,label,prompt] of FIELDS) { const field=document.createElement("label"); field.textContent=`${label}：${prompt}`; const area=document.createElement("textarea"); area.name=name; area.value=reasoning[name] || ""; field.append(area); form.append(field); } const save=document.createElement("button"); save.type="submit"; save.textContent="保存设计说明"; const status=document.createElement("p"); status.setAttribute("aria-live","polite"); form.append(save,status); form.addEventListener("submit", async (event)=>{ event.preventDefault(); save.disabled=true; status.textContent="正在保存…"; try { const fields=Object.fromEntries(new FormData(form)); const result=await post(url(),fields); if(!result.response.ok||!result.body?.ok) throw Object.assign(new Error(result.body?.error?.message||"保存失败"),result.body?.error); status.textContent="设计说明已保存。"; } catch(error) { status.textContent="保存失败。"; showError(error); } finally { save.disabled=false; } }); root.append(form); };
-  return Object.freeze({ async load(id) { runId=Number.isInteger(id)?id:null; render(); if(!runId) return; try { const result=await get(url()); if(!result.response.ok||!result.body?.ok) throw Object.assign(new Error(result.body?.error?.message||"加载失败"),result.body?.error); render(result.body.reasoning); } catch(error) { showError(error); } } });
+  let activeRunId = null;
+  let loadGeneration = 0;
+  const url = (runId) => urlFromTemplate(template, { run_id: runId });
+  const renderStatus = (message) => {
+    root.replaceChildren();
+    if (!message) return;
+    const status = document.createElement("p");
+    status.setAttribute("aria-live", "polite");
+    status.textContent = message;
+    root.append(status);
+  };
+  const renderEditor = (runId, reasoning = {}) => {
+    root.replaceChildren();
+    const title = document.createElement("h3");
+    title.textContent = `我的设计说明 · 分析 #${runId}（由你填写）`;
+    root.append(title);
+    const form = document.createElement("form");
+    for (const [name, label, prompt] of FIELDS) {
+      const field = document.createElement("label"); field.textContent = `${label}：${prompt}`;
+      const area = document.createElement("textarea"); area.name = name; area.value = reasoning[name] || "";
+      field.append(area); form.append(field);
+    }
+    const save = document.createElement("button"); save.type = "submit"; save.textContent = "保存设计说明";
+    const status = document.createElement("p"); status.setAttribute("aria-live", "polite"); form.append(save, status);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (activeRunId !== runId) return;
+      save.disabled = true; status.textContent = "正在保存…";
+      try {
+        const fields = Object.fromEntries(new FormData(form));
+        const result = await post(url(runId), fields);
+        if (!result.response.ok || !result.body?.ok || result.body.analysis_run_id !== runId) throw Object.assign(new Error(result.body?.error?.message || "保存失败"), result.body?.error);
+        status.textContent = "设计说明已保存。";
+      } catch (error) { status.textContent = "保存失败。"; showError(error); }
+      finally { save.disabled = false; }
+    });
+    root.append(form);
+  };
+  return Object.freeze({
+    async load(id) {
+      activeRunId = Number.isInteger(id) ? id : null;
+      const requestedRunId = activeRunId;
+      const generation = ++loadGeneration;
+      if (!requestedRunId) { renderStatus(""); return; }
+      renderStatus(`正在加载分析 #${requestedRunId} 的设计说明…`);
+      try {
+        const result = await get(url(requestedRunId));
+        if (generation !== loadGeneration || requestedRunId !== activeRunId) return;
+        if (!result.response.ok || !result.body?.ok || result.body.analysis_run_id !== requestedRunId) throw Object.assign(new Error(result.body?.error?.message || "加载失败"), result.body?.error);
+        renderEditor(requestedRunId, result.body.reasoning);
+      } catch (error) {
+        if (generation !== loadGeneration || requestedRunId !== activeRunId) return;
+        renderStatus("设计说明加载失败，请重新选择分析记录后重试。");
+        showError(error);
+      }
+    },
+  });
 }

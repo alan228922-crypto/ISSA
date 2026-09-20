@@ -280,6 +280,55 @@ def test_workspace_report_without_successful_run_shows_analyze_guidance(context,
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_report_reasoning_ignores_stale_loads_and_disables_failed_load(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { bindReportReasoning } = await import('/static/projects/workspace/report-reasoning.js');
+      const root = document.createElement('section'); document.body.append(root);
+      const pending = new Map(); const posts = []; const errors = [];
+      const get = (url) => new Promise((resolve) => pending.set(url, resolve));
+      const post = async (url, fields) => { posts.push({url, fields}); return {response:{ok:true},body:{ok:true,analysis_run_id:Number(url.match(/\\d+/)[0]),reasoning:fields}}; };
+      const workspace = bindReportReasoning({root, template:'/runs/{run_id}/reasoning/', get, post, showError:(error)=>errors.push(error.message)});
+      const one = workspace.load(1); const two = workspace.load(2);
+      pending.get('/runs/2/reasoning/')({response:{ok:true},body:{ok:true,analysis_run_id:2,reasoning:{final_conclusion:'RUN TWO'}}}); await two;
+      pending.get('/runs/1/reasoning/')({response:{ok:true},body:{ok:true,analysis_run_id:1,reasoning:{final_conclusion:'RUN ONE'}}}); await one;
+      const afterRace = {heading:root.querySelector('h3')?.textContent, value:root.querySelector('[name=final_conclusion]')?.value};
+      root.querySelector('form').requestSubmit(); await new Promise((resolve)=>setTimeout(resolve, 0));
+      const failed = workspace.load(3); pending.get('/runs/3/reasoning/')({response:{ok:false},body:{ok:false,error:{message:'LOAD FAILED'}}}); await failed;
+      return {afterRace, posts, failedForm:!!root.querySelector('form'), failedText:root.textContent, errors};
+    }""")
+    assert result['afterRace'] == {'heading': '我的设计说明 · 分析 #2（由你填写）', 'value': 'RUN TWO'}
+    assert result['posts'][0]['url'] == '/runs/2/reasoning/'
+    assert result['posts'][0]['fields']['final_conclusion'] == 'RUN TWO'
+    assert result['failedForm'] is False
+    assert '加载失败' in result['failedText']
+    assert result['errors'] == ['LOAD FAILED']
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_report_selection_invalidates_previously_displayed_report(context, workspace_page):
+    from analysis.orchestration import analyze_project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    project.refresh_from_db()
+    run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    page = workspace_page(user=owner, project=project)
+    page.locator('#workspace-report-run').select_option(str(run.id))
+    page.locator('#workspace-report-open').click()
+    page.wait_for_function("document.querySelector('#workspace-report-view h2')")
+    assert '计算书资料' in page.locator('#workspace-report-view').text_content()
+
+    page.locator('#workspace-report-run').select_option('')
+
+    assert page.locator('#workspace-report-view').text_content() == ''
+    assert page.locator('#workspace-report-reasoning form').count() == 0
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_workspace_modeling_tools_mutate_draft_and_save(context, workspace_page):
     """The student-facing tools, rather than reducer imports, drive the local draft."""
     owner, project, material, section = context

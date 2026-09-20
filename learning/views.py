@@ -153,17 +153,19 @@ def _reasoning_response(run, reasoning):
 @login_required
 @require_http_methods(["GET", "POST"])
 def reasoning_detail(request, project_id, run_id):
-    project = _project(project_id)
-    if project is None: return _error("PROJECT_NOT_FOUND", 404)
-    run = _reflection_run(project, run_id)
-    if run is None: return _error("PROJECT_NOT_FOUND", 404)
     try:
+        project = _project(project_id)
+        if project is None: return _error("PROJECT_NOT_FOUND", 404)
+        run = _reflection_run(project, run_id)
+        if run is None: return _error("PROJECT_NOT_FOUND", 404)
         if request.method == "GET": return _reasoning_response(run, reasoning_for_run(run=run, actor=request.user))
         payload = _json_body(request)
         if payload is None: return _error("MALFORMED_JSON", 400)
         return _reasoning_response(run, save_reasoning(run=run, actor=request.user, fields=payload))
     except ReasoningError as exc:
         return _error(exc.code, exc.status_code)
+    except Exception:
+        return _error("INTERNAL_ERROR", 500)
 
 
 @login_required

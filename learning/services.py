@@ -53,9 +53,14 @@ def _authorize_reasoning_author(project, actor):
         raise ReasoningError("REASONING_WRITE_DENIED", 403)
 
 
+def _authorize_reasoning_reader(project, actor):
+    if not can_view_project(actor, project) or actor.id != project.owner_user_id or actor.role in {User.Role.MANAGER, User.Role.DEVELOPER}:
+        raise ReasoningError("REASONING_READ_DENIED", 403)
+
+
 def reasoning_for_run(*, run, actor):
     if run.status != AnalysisRun.Status.SUCCESS: raise ReasoningError("REASONING_RUN_NOT_SUCCESS", 422)
-    if actor.id != run.project.owner_user_id: raise ReasoningError("REASONING_READ_DENIED", 403)
+    _authorize_reasoning_reader(run.project, actor)
     return CalculationReportReasoning.objects.filter(analysis_run=run).first()
 
 
