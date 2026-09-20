@@ -1,4 +1,6 @@
-from django.http import HttpResponse
 from django.urls import path
 
-urlpatterns=[path('',lambda request:HttpResponse('赛事'))]
+from .views import event_landing
+
+
+urlpatterns = [path("", event_landing)]

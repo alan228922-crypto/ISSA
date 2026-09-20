@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>赛事与项目</title>
+</head>
+<body>
+  <main>
+    <h1>赛事与项目</h1>
+    <p>选择一个项目进入结构分析工作区。</p>
+
+    {% if event_entries %}
+      {% for entry in event_entries %}
+        <section>
+          <h2>{{ entry.event.name }}</h2>
+          {% if entry.projects %}
+            <ul>
+              {% for project in entry.projects %}
+                <li>
+                  <h3>{{ project.name }}</h3>
+                  <p>{{ project.get_analysis_type_display }}</p>
+                  <a href="{% url 'projects:workspace' project.id %}">进入工作区</a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p>目前没有可进入的项目。</p>
+            <p>需要先取得赛事 / 项目权限后才能进入结构分析工作区。</p>
+          {% endif %}
+        </section>
+      {% endfor %}
+    {% else %}
+      <p>目前没有可进入的项目。</p>
+      <p>需要先取得赛事 / 项目权限后才能进入结构分析工作区。</p>
+    {% endif %}
+  </main>
+</body>
+</html>
