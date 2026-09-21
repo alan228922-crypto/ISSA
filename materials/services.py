@@ -2,6 +2,7 @@ import hashlib
 import json
 
 from accounts.models import User
+from django.db import transaction
 from mechanics.sections.model import Rectangle
 from mechanics.sections.properties import composite_properties, rectangle_properties
 
@@ -47,9 +48,7 @@ def _properties_json(properties):
     }
 
 
-def create_section(*, owner, name, definition):
-    """规范化定义、调用 mechanics.sections，并保存其权威计算结果。"""
-    # 截面計算由純計算模組負責；這裡負責檢查擁有者、整理資料並保存結果。
+def _section_values(*, owner, name, definition):
     canonical_definition, definition_hash = _canonical_definition(definition)
     strip_id = canonical_definition.get("strip_id")
     if strip_id is not None and not Strip.objects.filter(id=strip_id, owner_user=owner).exists():
@@ -68,9 +67,33 @@ def create_section(*, owner, name, definition):
         raise
     except ValueError as exc:
         raise SectionServiceError(str(exc)) from exc
-    return Section.objects.create(
-        owner_user=owner, name=name, section_type=persisted_type,
-        definition_schema_version=canonical_definition.get("schema_version", "section-definition-v1"),
-        definition_json=canonical_definition, properties_schema_version="section-properties-v1",
-        properties_json=_properties_json(properties), definition_hash=definition_hash,
-    )
+    return {
+        "name": name,
+        "section_type": persisted_type,
+        "definition_schema_version": canonical_definition.get("schema_version", "section-definition-v1"),
+        "definition_json": canonical_definition,
+        "properties_schema_version": "section-properties-v1",
+        "properties_json": _properties_json(properties),
+        "definition_hash": definition_hash,
+    }
+
+
+def create_section(*, owner, name, definition):
+    """规范化定义、调用 mechanics.sections，并保存其权威计算结果。"""
+    # 截面計算由純計算模組負責；這裡負責檢查擁有者、整理資料並保存結果。
+    return Section.objects.create(owner_user=owner, **_section_values(owner=owner, name=name, definition=definition))
+
+
+@transaction.atomic
+def update_section(*, actor, section, name, definition):
+    """重新计算并原子更新一个可管理的截面。"""
+    if not can_manage_material(actor, section):
+        raise SectionServiceError("FORBIDDEN")
+    values = _section_values(owner=section.owner_user, name=name, definition=definition)
+    for field, value in values.items():
+        setattr(section, field, value)
+    section.save(update_fields=(
+        "name", "section_type", "definition_schema_version", "definition_json",
+        "properties_schema_version", "properties_json", "definition_hash", "updated_at",
+    ))
+    return section

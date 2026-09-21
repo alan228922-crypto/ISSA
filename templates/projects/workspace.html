@@ -9,6 +9,7 @@
   <style>#workspace-canvas [data-selected="true"] > *, #workspace-canvas [data-focused="true"] > *, #workspace-canvas [data-object-kind]:focus > * { stroke-dasharray: 5 3; stroke-width: 5; }</style>
 </head>
 <body>
+  {% include "shared/product_header.html" %}
   <main id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}">
     <header id="workspace-project-header">
       <h1>{{ bootstrap.project.name }}</h1>
@@ -28,6 +29,20 @@
             <button type="button" data-workspace-tool="LOAD" aria-pressed="false">荷载</button>
           </div>
           <p data-modeling-instruction aria-live="polite">选择工具已启用。</p>
+          <fieldset class="workspace-member-properties">
+            <legend>新构件属性</legend>
+            <label>材料
+              <select data-member-material>
+                {% for material in bootstrap.materials %}<option value="{{ material.id }}">{{ material.name }}（E={{ material.E_MPa }} MPa）</option>{% empty %}<option value="">请先创建材料</option>{% endfor %}
+              </select>
+            </label>
+            <label>截面
+              <select data-member-section>
+                {% for section in bootstrap.sections %}<option value="{{ section.id }}">{{ section.name }}（A={{ section.A_mm2 }} mm²）</option>{% empty %}<option value="">请先创建截面</option>{% endfor %}
+              </select>
+            </label>
+            <a href="{{ bootstrap.urls.materials }}">管理材料与截面</a>
+          </fieldset>
         {% endif %}
         <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>保存</button>
         <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>模型检查</button>

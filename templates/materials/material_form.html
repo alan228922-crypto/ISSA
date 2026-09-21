@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="zh-Hans"><meta charset="utf-8"><title>{% if editing %}编辑{% else %}新建{% endif %}材料</title>
+<body>{% include "shared/product_header.html" %}<main><h1>{% if editing %}编辑{% else %}新建{% endif %}材料</h1>
+{% if form.errors %}<p role="alert">请检查以下输入。</p>{% endif %}
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">保存材料</button></form>
+<a href="{% url 'materials:index' project.id %}">取消</a></main></body></html>

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-Hans"><meta charset="utf-8"><title>材料与截面</title>
+<body>
+{% include "shared/product_header.html" %}
+<nav><a href="{% url 'projects:workspace' project.id %}">返回 {{ project.name }} 工作区</a></nav>
+<main>
+  <h1>材料与截面</h1>
+  <p>材料的弹性模量使用 MPa，密度使用 g/mm³；截面尺寸使用 mm。</p>
+  <section>
+    <h2>材料</h2><a href="{% url 'materials:material_create' project.id %}">新建材料</a>
+    <ul>{% for material in materials %}<li>{{ material.name }} · E={{ material.E_MPa }} MPa · <a href="{% url 'materials:material_edit' project.id material.id %}">编辑</a></li>{% empty %}<li>尚无材料</li>{% endfor %}</ul>
+  </section>
+  <section>
+    <h2>矩形截面</h2><a href="{% url 'materials:section_create' project.id %}">新建矩形截面</a>
+    <ul>{% for section in sections %}<li>{{ section.name }} · A={{ section.properties_json.A_mm2 }} mm²{% if section.section_type == 'RECTANGLE' %} · <a href="{% url 'materials:section_edit' project.id section.id %}">编辑</a>{% endif %}</li>{% empty %}<li>尚无截面</li>{% endfor %}</ul>
+  </section>
+</main></body></html>

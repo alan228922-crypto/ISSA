@@ -1,0 +1,14 @@
+<header class="product-header">
+  <a href="/events/" class="product-home">赛事与项目</a>
+  <div class="product-identity">
+    {% if user.is_authenticated %}<span>当前账号：{% if bootstrap.access %}{{ bootstrap.access.current_user.username }}{% else %}{{ user.username }}{% endif %}</span>{% endif %}
+    {% if bootstrap.access %}
+      <span>赛事：{{ bootstrap.access.event.name }}</span>
+      <strong>{% if bootstrap.access.editable %}可编辑（项目所有者）{% else %}只读（非项目所有者）{% endif %}</strong>
+    {% endif %}
+    {% if user.is_authenticated %}
+      <a href="{% url 'accounts:password_change' %}">修改密码</a>
+      <form method="post" action="{% url 'accounts:logout' %}" class="product-logout">{% csrf_token %}<button type="submit">退出登录</button></form>
+    {% endif %}
+  </div>
+</header>

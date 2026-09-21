@@ -1,1 +1,4 @@
-<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">登录</button></form>
+<!doctype html><html lang="zh-Hans"><meta charset="utf-8"><title>登录</title><body>
+{% include "shared/product_header.html" %}
+<main><h1>登录</h1><p>使用赛事分配的账号进入你的项目。</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">登录</button></form></main></body></html>

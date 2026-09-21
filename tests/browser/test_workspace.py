@@ -7,6 +7,36 @@ from tests.application.test_physical_draft import context, valid_payload
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_blank_project_creates_first_member_from_explicit_material_and_section(context, workspace_page):
+    owner, project, material, section = context
+    page = workspace_page(user=owner, project=project)
+
+    assert page.get_by_text(f"当前账号：{owner.username}").is_visible()
+    assert page.get_by_text("可编辑（项目所有者）").is_visible()
+    page.locator("[data-member-material]").select_option(str(material.id))
+    page.locator("[data-member-section]").select_option(str(section.id))
+
+    canvas = page.locator("#workspace-canvas")
+    box = canvas.bounding_box()
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas.click(position={"x": box["width"] * 0.35, "y": box["height"] * 0.5})
+    canvas.click(position={"x": box["width"] * 0.65, "y": box["height"] * 0.5})
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="node-1"]').click()
+    page.locator('[data-client-key="node-2"]').click()
+
+    assert page.locator('[data-client-key="member-1"]').count() == 1
+    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
+    page.locator("#workspace-save").click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    member = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft.physical_members[0]")
+    assert member["material_id"] == material.id
+    assert member["section_id"] == section.id
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_renderer_emits_stable_physical_svg(context, workspace_page):
     owner, project, material, section = context
     save_physical_draft(

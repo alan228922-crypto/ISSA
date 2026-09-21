@@ -96,12 +96,13 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
         return;
       }
       if (memberStart === node.clientKey) return;
-      const exemplar = current.draft.physical_members[0];
-      if (!exemplar) {
-        showError({ code: "MEMBER_PROPERTIES_REQUIRED", message: "请先在已有构件上确定材料和截面后再创建构件。" });
+      const materialId = Number(root.querySelector("[data-member-material]")?.value);
+      const sectionId = Number(root.querySelector("[data-member-section]")?.value);
+      if (!Number.isInteger(materialId) || materialId <= 0 || !Number.isInteger(sectionId) || sectionId <= 0) {
+        showError({ code: "MEMBER_PROPERTIES_REQUIRED", message: "请选择新构件使用的材料和截面。" });
         return;
       }
-      apply({ type: "CREATE_MEMBER", member: { client_key: nextKey(current.draft.physical_members, "member"), start_node_client_key: memberStart, end_node_client_key: node.clientKey, material_id: exemplar.material_id, section_id: exemplar.section_id, label: "", is_active: true } });
+      apply({ type: "CREATE_MEMBER", member: { client_key: nextKey(current.draft.physical_members, "member"), start_node_client_key: memberStart, end_node_client_key: node.clientKey, material_id: materialId, section_id: sectionId, label: "", is_active: true } });
       memberStart = null;
       updateUi(root, tool, memberStart);
       return;

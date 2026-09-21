@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET
 
 from modeling.models import Connection, GeometryNode, NodeLoad, PhysicalMember, Support
+from materials.models import Material, Section
 
 from .models import Project
 from .services import can_view_project
@@ -93,7 +94,36 @@ def _urls(project):
         "explanation_template": f"{base}/analyses/{{run_id}}/explanation/",
         "reflection_template": f"{base}/analyses/{{run_id}}/reflection/",
         "reflection_complete_template": f"{base}/analyses/{{run_id}}/reflection/complete/",
+        "materials": reverse("materials:index", kwargs={"project_id": project_id}),
     }
+
+
+def _available_materials(owner):
+    return [
+        {
+            "id": material.id,
+            "name": material.name,
+            "E_MPa": float(material.E_MPa),
+            "density_g_per_mm3": (
+                float(material.density_g_per_mm3) if material.density_g_per_mm3 is not None else None
+            ),
+        }
+        for material in Material.objects.filter(owner_user=owner).order_by("name", "id")
+    ]
+
+
+def _available_sections(owner):
+    return [
+        {
+            "id": section.id,
+            "name": section.name,
+            "section_type": section.section_type,
+            "A_mm2": section.properties_json.get("A_mm2"),
+            "Ix_mm4": section.properties_json.get("Ix_mm4"),
+            "Iy_mm4": section.properties_json.get("Iy_mm4"),
+        }
+        for section in Section.objects.filter(owner_user=owner).order_by("name", "id")
+    ]
 
 
 @login_required
@@ -106,11 +136,21 @@ def workspace(request, project_id):
         or not can_view_project(request.user, project)
     ):
         raise Http404
+    read_only = request.user.id != project.owner_user_id
     bootstrap = {
         "schema_version": "workspace-bootstrap-v1",
         "project": {"id": project.id, "name": project.name, "analysis_type": project.analysis_type},
         "draft": _draft(project),
-        "read_only": request.user.id != project.owner_user_id,
+        "read_only": read_only,
+        "access": {
+            "current_user": {"id": request.user.id, "username": request.user.username, "role": request.user.role},
+            "owner": {"id": project.owner_user_id, "username": project.owner_user.username},
+            "event": {"id": project.event_id, "name": project.event.name},
+            "editable": not read_only,
+            "read_only_reason": "你正在以只读身份查看此项目。" if read_only else "",
+        },
+        "materials": _available_materials(project.owner_user),
+        "sections": _available_sections(project.owner_user),
         "urls": _urls(project),
     }
     return render(request, "projects/workspace.html", {"bootstrap": bootstrap})
