@@ -44,10 +44,15 @@ function failed(body) {
 }
 
 export function showLevelOne(run, data, currentDraftVersion, draft = null) {
-  const memberLabels = new Map((draft?.physical_members || []).map((member) => [member.client_key, member.label?.trim() || `构件 ${member.client_key}`]));
+  const memberLabels = new Map((draft?.physical_members || []).map((member) => {
+    const key = member.client_key || member.id;
+    return [key, member.label?.trim() || `构件 ${key}`];
+  }));
   const connectionLabels = new Map((draft?.connections || []).map((connection) => {
-    const node = (draft?.nodes || []).find((item) => item.client_key === connection.geometry_node_client_key);
-    return [connection.client_key, node?.label?.trim() ? `连接 ${node.label}` : `连接 ${connection.client_key}`];
+    const key = connection.client_key || connection.id;
+    const nodeKey = connection.geometry_node_client_key || connection.geometry_node_id;
+    const node = (draft?.nodes || []).find((item) => (item.client_key || item.id) === nodeKey);
+    return [key, node?.label?.trim() ? `连接 ${node.label}` : `连接 ${key}`];
   }));
   const members = (data?.result_json?.member_results || []).flatMap((item) => {
     if (!item?.physical_member_id || !STATE_LABELS[item.state]) return [];
@@ -70,7 +75,7 @@ export function showLevelOne(run, data, currentDraftVersion, draft = null) {
       }) } : {}),
     } : null,
     members,
-    overlay,
+    overlay: data.source_draft_version === currentDraftVersion ? overlay : {},
   });
 }
 

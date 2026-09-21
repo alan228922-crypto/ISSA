@@ -12,9 +12,10 @@ async function required(get, url) {
   return result.body;
 }
 
-async function optionalReflection(get, url) {
+async function optionalReflection(get, url, { deniedAsEmpty = false } = {}) {
   const result = await get(url);
   if (result.response.status === 404 && result.body?.error?.code === "REFLECTION_NOT_FOUND") return null;
+  if (deniedAsEmpty && result.response.status === 403) return null;
   if (!result.response.ok || !result.body?.ok) throw failure(result.body);
   return result.body;
 }
@@ -49,6 +50,7 @@ export function createRunContext({ urls, select, editable = true, get = requestJ
     const token = current.selectionToken + 1;
     current = Object.freeze({ ...current, currentRunId: id, selectionToken: token, payload: null });
     select.value = String(id);
+    await onSelect(null, token);
     if (metadata.status !== "SUCCESS") {
       const payload = Object.freeze({ metadata, status: metadata.status });
       if (current.selectionToken !== token) return null;
@@ -56,15 +58,20 @@ export function createRunContext({ urls, select, editable = true, get = requestJ
       await onSelect(payload, token);
       return payload;
     }
-    // Keep the requests in one run-scoped transaction sequence. This avoids a
-    // later selection interleaving authoring state with an earlier Run.
-    const data = await required(get, urlFromTemplate(urls.resultTemplate, { run_id: id }));
-    const comparison = await required(get, urlFromTemplate(urls.comparisonTemplate, { run_id: id }));
-    const explanation = await required(get, urlFromTemplate(urls.explanationTemplate, { run_id: id }));
-    const report = await required(get, urlFromTemplate(urls.reportTemplate, { run_id: id }));
-    const reasoning = editable ? await required(get, urlFromTemplate(urls.reasoningTemplate, { run_id: id })) : null;
-    const reflection = editable ? await optionalReflection(get, urlFromTemplate(urls.reflectionTemplate, { run_id: id })) : null;
-    if (current.selectionToken !== token || current.currentRunId !== id) return null;
+    const obsolete = () => current.selectionToken !== token || current.currentRunId !== id;
+    let data; let comparison; let explanation; let report; let reasoning; let reflection;
+    try {
+      data = await required(get, urlFromTemplate(urls.resultTemplate, { run_id: id })); if (obsolete()) return null;
+      comparison = await required(get, urlFromTemplate(urls.comparisonTemplate, { run_id: id })); if (obsolete()) return null;
+      explanation = await required(get, urlFromTemplate(urls.explanationTemplate, { run_id: id })); if (obsolete()) return null;
+      report = await required(get, urlFromTemplate(urls.reportTemplate, { run_id: id })); if (obsolete()) return null;
+      reasoning = editable ? await required(get, urlFromTemplate(urls.reasoningTemplate, { run_id: id })) : null; if (obsolete()) return null;
+      reflection = await optionalReflection(get, urlFromTemplate(urls.reflectionTemplate, { run_id: id }), { deniedAsEmpty: !editable });
+    } catch (error) {
+      if (obsolete()) return null;
+      throw error;
+    }
+    if (obsolete()) return null;
     const payload = Object.freeze({ metadata, status: "SUCCESS", data, comparison: comparison.comparison, explanation: explanation.explanation, report, reasoning, reflection });
     current = Object.freeze({ ...current, payload });
     await onSelect(payload, token);

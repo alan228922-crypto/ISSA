@@ -112,6 +112,7 @@ export function renderedObjectsFromSvg(svg) {
 export function bindCanvasInteractions(svg, initialState, render) {
   let state = initialState;
   let panStart = null;
+  let pointerSelection = null;
   let canvasClickHandler = null;
   let stateChangeHandler = null;
   let pointerMoveHandler = null;
@@ -130,7 +131,9 @@ export function bindCanvasInteractions(svg, initialState, render) {
   };
   svg.addEventListener("click", (event) => {
     canvasClickHandler?.(event);
-    select(pickAt({ x: event.clientX, y: event.clientY }, renderedObjectsFromSvg(svg)));
+    const direct = pointerSelection || selectionFromElement(event.target?.closest?.("[data-object-kind]"));
+    pointerSelection = null;
+    select(direct || pickAt({ x: event.clientX, y: event.clientY }, renderedObjectsFromSvg(svg)));
   });
   // Mouse focus is part of an active pointer gesture. Replacing SVG children here
   // would detach the pointer target before pointerup/click is dispatched.
@@ -142,7 +145,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
     event.preventDefault();
     dispatchViewEvent({ type: "ZOOM", factor: event.deltaY < 0 ? 1.1 : 1 / 1.1, anchorScreen: { x: event.clientX, y: event.clientY } });
   }, { passive: false });
-  svg.addEventListener("pointerdown", (event) => { panStart = { x: event.clientX, y: event.clientY }; });
+  svg.addEventListener("pointerdown", (event) => { panStart = { x: event.clientX, y: event.clientY }; pointerSelection = selectionFromElement(event.target?.closest?.("[data-object-kind]")); });
   svg.addEventListener("pointermove", (event) => {
     pointerMoveHandler?.(worldPointFromEvent(svg, event), state, { x: event.clientX, y: event.clientY });
     if (!panStart) return;

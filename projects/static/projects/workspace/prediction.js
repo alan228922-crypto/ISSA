@@ -108,7 +108,7 @@ function choiceButton(documentRef, member, choice, workspace) {
   return button;
 }
 
-export function bindPredictionWorkspace({ root, urls, draft, canvasController, showError, get, post, readOnly = false }) {
+export function bindPredictionWorkspace({ root, urls, draft, canvasController, showError, get, post, readOnly = false, onStateChange = () => {} }) {
   const documentRef = root.ownerDocument;
   const status = root.querySelector("[data-prediction-status]");
   const members = root.querySelector("[data-prediction-members]");
@@ -120,6 +120,7 @@ export function bindPredictionWorkspace({ root, urls, draft, canvasController, s
   const selection = () => canvasController.getState().selectedObject;
   let workspace;
   const render = (view) => {
+    onStateChange(view);
     status.textContent = view.loading ? "预测状态：加载中。" : view.state === "AMBIGUOUS" ? "当前预测记录存在数据歧义，暂时无法继续使用预测。请联系管理员处理。" : view.state === "COMPLETED" ? "预测状态：已完成，只读查看。" : view.state === "DRAFT" ? `预测状态：草稿${view.skipped ? "（已跳过，草稿已保留）" : "，可继续完成。"}` : view.skipped ? "预测状态：已跳过，可直接分析。" : "预测状态：尚未开始。";
     members.replaceChildren(...workspace.memberKeys().map((member) => { const row = documentRef.createElement("p"); row.textContent = `构件 ${member}：`; row.append(...MEMBER_PREDICTION_CHOICES.map((choice) => { const button = choiceButton(documentRef, member, choice, workspace); button.disabled = readOnly || view.loading || view.readonly || view.state !== "DRAFT"; button.setAttribute("aria-pressed", String(view.judgments[member] === choice)); return button; })); return row; }));
     maximum.textContent = view.maximum ? `最大位移预测位置：${view.maximum.connection_client_key ? `连接 ${view.maximum.connection_client_key}` : `构件 ${view.maximum.physical_member_client_key} 的 ${view.maximum.endpoint} 端`}` : "最大位移预测位置：请在画布选择连接后设置。";

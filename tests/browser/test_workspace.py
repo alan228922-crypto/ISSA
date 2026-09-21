@@ -132,6 +132,47 @@ def test_cad_keyboard_tab_accessibility(context, workspace_page):
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_member_numeric_endpoint_uses_visible_dynamic_fields(context, workspace_page):
+    owner, project, material, section = context
+    page = workspace_page(user=owner, project=project)
+    page.locator("[data-member-material]").select_option(str(material.id))
+    page.locator("[data-member-section]").select_option(str(section.id))
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator("[data-cad-command-input]").fill("0,0")
+    page.locator("[data-cad-command-input]").press("Enter")
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="node-1"]').click()
+
+    assert page.locator("[data-cad-distance]").is_enabled()
+    assert page.locator("[data-cad-angle]").is_enabled()
+    page.locator("[data-cad-distance]").fill("1000")
+    page.locator("[data-cad-angle]").fill("30")
+    page.locator("[data-cad-angle]").press("Enter")
+
+    assert page.locator('[data-client-key="member-1"]').count() == 1
+    assert page.locator('[data-client-key="node-2"]').count() == 1
+    assert "1000" in page.locator("#workspace-delta-length").text_content()
+    assert "30" in page.locator("#workspace-angle").text_content()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_grid_snap_off_preserves_object_candidates(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { resolvePointerPoint } = await import('/static/projects/workspace/geometry.js');
+      const candidate = { kind:'NODE', canonicalKey:'NODE:n1', worldPoint:{x:12,y:34} };
+      return resolvePointerPoint({ worldPointer:{x:12.1,y:34.1}, screenPointer:{x:12.1,y:34.1}, candidates:[candidate], viewTransform:{a:1,b:0,c:0,d:1,e:0,f:0}, origin:{x:0,y:0}, ortho:false, gridEnabled:false, explicitNumeric:false });
+    }""")
+    assert result['candidateKey'] == 'NODE:n1'
+    page.locator("[data-cad-snap]").click()
+    assert "对象捕捉: 开" in page.locator("#workspace-snap-indicator").text_content()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_visible_cad_controls_toggle_and_fit_without_module_imports(context, workspace_page):
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
@@ -808,6 +849,122 @@ def test_historical_explicit_run_selection_restores_all_student_artifacts(contex
         assert page.locator('#workspace-report-reasoning [name="final_conclusion"]').input_value() == reasoning
         assert page.locator('#workspace-reflection [name="original_reasoning"]').input_value() == reflection
         assert f"分析 #{run.id}" in page.locator("#workspace-report-view").text_content()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_run_context_clears_previous_payload_before_loading_or_failure(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { createRunContext } = await import('/static/projects/workspace/run-context.js');
+      const select = document.createElement('select');
+      const renders = [];
+      const bodies = {
+        '/runs': { ok:true, runs:[{analysis_run_id:1,status:'SUCCESS'},{analysis_run_id:2,status:'SUCCESS'}] },
+        '/result/1': {ok:true}, '/comparison/1': {ok:true,comparison:{}}, '/explanation/1': {ok:true,explanation:{}}, '/report/1': {ok:true}, '/reasoning/1': {ok:true}, '/reflection/1': {ok:true,status:'COMPLETED'},
+      };
+      const get = async (url) => {
+        if (url === '/result/2') return {response:{ok:false,status:500},body:{error:{code:'BROKEN',message:'broken'}}};
+        return {response:{ok:true,status:200},body:bodies[url]};
+      };
+      const context = createRunContext({
+        urls:{runs:'/runs',resultTemplate:'/result/{run_id}',comparisonTemplate:'/comparison/{run_id}',explanationTemplate:'/explanation/{run_id}',reportTemplate:'/report/{run_id}',reasoningTemplate:'/reasoning/{run_id}',reflectionTemplate:'/reflection/{run_id}'},
+        select, get, onSelect:(payload)=>renders.push(payload ? payload.metadata.analysis_run_id : null),
+      });
+      await context.refreshRuns(); await context.selectRun(1);
+      try { await context.selectRun(2); } catch (_) {}
+      return {renders, current:context.state().currentRunId, payload:context.state().payload};
+    }""")
+    assert result == {'renders': [None, 1, None], 'current': 2, 'payload': None}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_historical_level_one_uses_revision_snapshot_labels_and_no_stale_overlay(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { showLevelOne } = await import('/static/projects/workspace/results.js');
+      const snapshot = {nodes:[{id:'n1',label:'历史节点'}],connections:[{id:'c1',geometry_node_id:'n1'}],physical_members:[{id:'m1',label:'历史构件'}]};
+      const data = {source_draft_version:1,result_json:{member_results:[{physical_member_id:'m1',state:'TENSION'}]},level_one:{maximum_displacement:{maximum_displacement_mm:1,candidate_analysis_node_ids:['connection:c1']}}};
+      const view = showLevelOne({analysis_run_id:7,predictionId:null}, data, 2, snapshot);
+      return {label:view.members[0].displayLabel,maximum:view.maximum.displayCandidateLabels,overlay:view.overlay,stale:view.stale};
+    }""")
+    assert result == {'label': '历史构件', 'maximum': ['连接 历史节点'], 'overlay': {}, 'stale': True}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_workflow_progress_tracks_soft_optional_stages(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { createWorkflowProgress } = await import('/static/projects/workspace/workflow-progress.js');
+      const root = document.querySelector('#workspace-workflow-steps');
+      const progress = createWorkflowProgress(root);
+      const snap = () => Object.fromEntries([...root.querySelectorAll('[data-workflow-step]')].map(x => [x.dataset.workflowStep,x.dataset.state]));
+      const initial=snap(); progress.saved(); const saved=snap(); progress.prediction('SKIPPED'); progress.analyzed(); const analyzed=snap(); progress.understood(); progress.reflection('COMPLETED');
+      return {initial,saved,analyzed,final:snap()};
+    }""")
+    assert result['initial'] == {'model':'active','prediction':'optional','analysis':'pending','understanding':'pending','reflection':'optional'}
+    assert result['saved']['model'] == 'completed' and result['saved']['prediction'] == 'active-optional'
+    assert result['analyzed']['analysis'] == 'completed' and result['analyzed']['understanding'] == 'active'
+    assert result['final']['understanding'] == 'completed' and result['final']['reflection'] == 'completed'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_read_only_run_context_loads_completed_reflection_but_hides_draft(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { createRunContext } = await import('/static/projects/workspace/run-context.js');
+      const select=document.createElement('select'); let reflectionUrl=null;
+      const get=async(url)=>{
+        if(url==='/runs') return {response:{ok:true,status:200},body:{ok:true,runs:[{analysis_run_id:9,status:'SUCCESS'}]}};
+        if(url==='/reflection/9'){reflectionUrl=url;return {response:{ok:true,status:200},body:{ok:true,status:'COMPLETED',original_reasoning:'已完成反思'}};}
+        const body=url.startsWith('/comparison/')?{ok:true,comparison:{}}:url.startsWith('/explanation/')?{ok:true,explanation:{}}:{ok:true};
+        return {response:{ok:true,status:200},body};
+      };
+      const context=createRunContext({urls:{runs:'/runs',resultTemplate:'/result/{run_id}',comparisonTemplate:'/comparison/{run_id}',explanationTemplate:'/explanation/{run_id}',reportTemplate:'/report/{run_id}',reasoningTemplate:'/reasoning/{run_id}',reflectionTemplate:'/reflection/{run_id}'},select,get,editable:false});
+      await context.refreshRuns(); const payload=await context.selectRun(9);
+      return {reflectionUrl,reflection:payload.reflection,reasoning:payload.reasoning};
+    }""")
+    assert result['reflectionUrl'] == '/reflection/9'
+    assert result['reflection']['original_reasoning'] == '已完成反思'
+    assert result['reasoning'] is None
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_read_only_manager_sees_completed_reflection_without_authoring_controls(context, workspace_page):
+    from accounts.models import User
+    from analysis.orchestration import analyze_project
+    from competitions.models import EventMembership
+    from learning.models import Reflection
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    Reflection.objects.create(
+        analysis_run=run,
+        created_by=owner,
+        status=Reflection.Status.COMPLETED,
+        original_reasoning="已完成的原判断",
+        unexpected_results="已完成的差异",
+        next_iteration_intent="已完成的下一步",
+    )
+    manager = User.objects.create_user("reflection-manager", role=User.Role.MANAGER)
+    EventMembership.objects.create(user=manager, event=project.event, membership_type=EventMembership.Type.MANAGER)
+    page = workspace_page(user=manager, project=project)
+    page.locator("#workspace-run-select").select_option(str(run.id))
+    page.wait_for_function("document.querySelector('#workspace-reflection textarea')")
+
+    assert page.locator('#workspace-reflection [name="original_reasoning"]').input_value() == "已完成的原判断"
+    assert page.locator("#workspace-reflection textarea:enabled").count() == 0
+    assert page.locator("#workspace-reflection button").count() == 0
+    assert page.locator("#workspace-report-reasoning").count() == 0
 
 
 @pytest.mark.browser
