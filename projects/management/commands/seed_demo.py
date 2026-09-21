@@ -14,6 +14,7 @@ DEMO_PASSWORD = "demo-only-password"
 DEMO_EVENT_CODE = "DEMO-TRUSS-2026"
 DEMO_EVENT_NAME = "结构设计竞赛 Demo"
 DEMO_PROJECT_NAME = "B/T01 桁架 Demo"
+DEMO_BLANK_PROJECT_NAME = "空白建模 Demo"
 DEMO_MATERIAL_NAME = "Demo B/T01 竹材"
 DEMO_SECTION_NAME = "Demo B/T01 矩形截面"
 
@@ -114,6 +115,19 @@ class Command(BaseCommand):
                     analysis_type=Project.AnalysisType.TRUSS_2D,
                 )
 
+            blank_project = Project.objects.filter(
+                event=event,
+                owner_user=account,
+                name=DEMO_BLANK_PROJECT_NAME,
+            ).order_by("id").first()
+            if blank_project is None:
+                blank_project = Project.objects.create(
+                    event=event,
+                    owner_user=account,
+                    name=DEMO_BLANK_PROJECT_NAME,
+                    analysis_type=Project.AnalysisType.TRUSS_2D,
+                )
+
             material = Material.objects.filter(owner_user=account, name=DEMO_MATERIAL_NAME).order_by("id").first()
             if material is None:
                 material = Material.objects.create(
@@ -148,6 +162,7 @@ class Command(BaseCommand):
                 project.refresh_from_db()
 
         workspace_url = f"http://127.0.0.1:8000/projects/{project.id}/workspace/"
+        blank_workspace_url = f"http://127.0.0.1:8000/projects/{blank_project.id}/workspace/"
         self.stdout.write(
             "\n".join(
                 [
@@ -157,7 +172,10 @@ class Command(BaseCommand):
                     f"Event: {event.name}",
                     f"Project: {project.name}",
                     f"Workspace: {workspace_url}",
-                    "Next: runserver → login → open /events/ → enter project → run Model Check / Analyze.",
+                    f"Blank project: {blank_project.name} — {blank_workspace_url}",
+                    "Entry: runserver → login → open /events/ → choose a project.",
+                    "手动验收（预置模型）：Model Check → Prediction（可跳过）→ Analyze → Compare / Explain → Report → Reasoning → Reflection。",
+                    "手动验收（空白项目）：创建材料与矩形截面 → 建立第一根构件 → 保存并重新载入。",
                 ]
             )
         )

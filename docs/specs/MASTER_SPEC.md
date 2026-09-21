@@ -2229,3 +2229,22 @@ CODEX_IMPLEMENTATION_PLAN.md
 > **`MASTER_SPEC.md v1.12` — CURRENT / APPROVED BASELINE**
 
 後續 Architecture Specs、Implementation Plan、Codex implementation 與測試均必須以本文件為最高層級依據。若需求或 mechanics assumptions 需要改變，應先更新 MASTER_SPEC / Decision Register，再修改 implementation。
+
+---
+
+# 49. POC V1 Product Reconciliation Record（2026-09-21）
+
+【Verified Implementation Record — does not change mechanics policy】
+
+POC V1 已以真实浏览器公开控件完成纵向验收：Login → Events → 空白 Project → Material / Rectangle Section → 精确节点与第一根构件 → Connection / Support / Load → Save / Reload → Model Check → Prediction → Analyze → Result → Compare → Explain → explicit AnalysisRun Report → student Reasoning → Reflection → 第二次 Run → 历史 Run 切换。
+
+实现与验证确认：
+
+- Workspace 明示当前账号、赛事、项目所有者与可编辑/只读原因；
+- 空白项目不再依赖已有构件复制 Material / Section；
+- CAD 可见控件覆盖 SNAP、ORTHO、Fit 与绝对/相对/极坐标输入；
+- Result / Compare / Explain / Report / Reasoning / Reflection 全部绑定明确 `analysis_run_id`，不使用隐式 latest；
+- 历史 Run 保持不可变，当前草稿变化只产生 stale 呈现；
+- 1024×900 桌面布局、初学者错误层级与报告表格溢出均有浏览器回归。
+
+本记录不关闭 O-001、O-003、O-004、O-005、O-006 或 T-M6-001/002/003，不增加 Euler 自动判断、复合截面重叠编辑、任意角 Roller、导出或 AI 力学权威。

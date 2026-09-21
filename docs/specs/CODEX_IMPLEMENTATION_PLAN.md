@@ -12,9 +12,9 @@
 
 ## Current implementation status
 
-**First POC V1: CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING.**
+**First POC V1: PRODUCT-ALIGNED — MANUAL OWNER ACCEPTANCE READY.**
 
-M5 — Student Learning Workspace — **COMPLETE**. M6 — Calculation Report Assistance — **COMPLETE (Gates 0–5)**. Gate 5 automated acceptance and merged-main regression passed on 2026-09-20. The Product Owner manual browser pass remains pending; deferred verification and exclusions are recorded in `POC_V1_KNOWN_ISSUES.md`.
+M5 — Student Learning Workspace — **COMPLETE**. M6 — Calculation Report Assistance — **COMPLETE (Gates 0–5)**. On 2026-09-21, product reconciliation added the owner-scoped Material/Section setup flow, complete visible CAD/property/delete controls, one explicit-Run learning context, beginner presentation, 1024px layout verification, and an authoritative public-control Playwright journey. Product Owner manual acceptance remains pending; policy-open exclusions are recorded in `POC_V1_KNOWN_ISSUES.md`.
 
 The Lifecycle / Research / PoC grouping below is retained as historical implementation-plan content for Tasks 24–26. Those tasks are not M6 and remain a future, unfrozen candidate area after M6.
 

@@ -114,7 +114,7 @@
     import { createWorkspaceWorkflow } from "{% static 'projects/workspace/workflow.js' %}";
     import { bindPredictionWorkspace } from "{% static 'projects/workspace/prediction.js' %}";
     import { createResultsWorkspace, renderComparison, renderExplanation, renderLevelOne, renderResultActions, showLevelOne, showEngineeringDetails, renderEngineeringDetails } from "{% static 'projects/workspace/results.js' %}";
-    import { presentWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
+    import { renderWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
     import { createReflectionWorkspace, renderReflection } from "{% static 'projects/workspace/reflection.js' %}";
     import { renderReport } from "{% static 'projects/workspace/report.js' %}";
     import { bindReportReasoning } from "{% static 'projects/workspace/report-reasoning.js' %}";
@@ -134,7 +134,7 @@
     const workflow = createWorkspaceWorkflow({ urls: bootstrap.urls });
     const errorPanel = document.getElementById("workspace-error");
     const issuePanel = document.getElementById("workspace-check-issues");
-    const showError = (error) => { const view = presentWorkspaceError(error); errorPanel.hidden = false; errorPanel.textContent = `${view.what}：${view.why} ${view.nextAction}（${view.technicalCode}）`; };
+    const showError = (error) => renderWorkspaceError(errorPanel, error);
     bindModelingInteractions({ root: document.getElementById("workspace-root"), svg: canvas, canvasController, showError, readOnly: state.readOnly });
     bindPropertyPanel({ root: document.getElementById("workspace-properties-panel"), canvasController, materials: bootstrap.materials, sections: bootstrap.sections, showError });
     const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly });
@@ -161,7 +161,7 @@
       if (payload.status !== "SUCCESS") { const note = document.createElement("p"); note.textContent = `分析 #${payload.metadata.analysis_run_id} 状态为 ${payload.status}，没有可展示的结果。`; resultsRoot.append(note); return; }
       const runId = payload.metadata.analysis_run_id;
       const current = canvasController.getState();
-      const view = showLevelOne({ analysis_run_id: runId, predictionId: payload.comparison?.comparison_available ? 0 : null }, payload.data, current.draftVersion);
+      const view = showLevelOne({ analysis_run_id: runId, predictionId: payload.comparison?.comparison_available ? 0 : null }, payload.data, current.draftVersion, current.draft);
       renderLevelOne(resultsRoot, view);
       renderResultActions(resultsRoot, {
         onCompare: () => renderComparison(resultsRoot.querySelector("[data-result-comparison]"), payload.comparison, focusMember),

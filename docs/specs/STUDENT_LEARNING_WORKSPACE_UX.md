@@ -293,3 +293,11 @@ An assigned Manager or Developer opens a read-authorized student Workspace. The 
 ## 18. Definition of Done for M5 UX implementation
 
 M5 UX implementation is complete only when a server-rendered single Workspace with the frozen three-panel layout and status bar satisfies all acceptance scenarios; uses SVG and Vanilla JavaScript; preserves the listed authority boundaries; reports the recorded capability gaps as resolved by separately specified work; has accessible text/non-color state; and does not add any non-goal or alter the current mechanics assumptions. Automated tests for each implemented browser/API integration boundary and the existing backend suite must pass in their respective later gates.
+
+## 19. POC V1 reconciliation status（2026-09-21）
+
+BCG-M5-01、BCG-M5-02、BCG-M5-03 已由 Workspace read/bootstrap、current Prediction discovery 与 server-rendered Workspace/static assets 分别解决。它们保留在 §15 作为 Gate 0A 的历史记录，不再是当前 capability gap。
+
+真实 Playwright 旅程 `tests/browser/test_poc_v1_student_journey.py` 只使用公开页面与控件，覆盖 Scenario A、显式 Run 历史恢复和空白项目第一根构件。补充浏览器回归覆盖 Soft Gate、CAD 解析/捕捉、Intersection ≠ Connection、只读角色、依赖删除保护、1024px 桌面布局与技术错误折叠。
+
+Level 1 现在以“荷载 → 支座 → 传力路径”的谨慎观察顺序呈现后端事实，使用对象标签与舍入显示值；源数值仍保持不变。机器码仅位于折叠的“技术信息”中。任何不稳定提示都要求检查支座、连接、孤立节点与整体稳定性，不宣称唯一失稳机制。

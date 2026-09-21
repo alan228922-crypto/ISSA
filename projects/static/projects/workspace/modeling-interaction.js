@@ -221,7 +221,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       return;
     }
     if (tool === "CONNECTION") {
-      const node = nodeTarget(current.draft, target);
+      const node = nodeTarget(current.draft, target) || nodeTarget(current.draft, current.selectedObject);
       if (!node) return;
       const participants = membersAtNode(current.draft, node.clientKey);
       if (!participants.length) {
@@ -231,9 +231,10 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       apply({ type: "CREATE_CONNECTION", connection: { client_key: nextKey(current.draft.connections, "connection"), geometry_node_client_key: node.clientKey, participating_member_client_keys: participants } });
       return;
     }
-    if (target?.kind !== "CONNECTION") return;
-    if (tool === "SUPPORT") apply({ type: "CREATE_SUPPORT", support: { client_key: nextKey(current.draft.supports, "support"), target_connection_client_key: target.clientKey, support_type: "PINNED", restrained_axis: null } });
-    if (tool === "LOAD") apply({ type: "CREATE_NODE_LOAD", nodeLoad: { client_key: nextKey(current.draft.node_loads, "load"), target_connection_client_key: target.clientKey, fx_N: 0, fy_N: -100, label: "" } });
+    const connectionTarget = target?.kind === "CONNECTION" ? target : current.selectedObject?.kind === "CONNECTION" ? current.selectedObject : null;
+    if (!connectionTarget) return;
+    if (tool === "SUPPORT") apply({ type: "CREATE_SUPPORT", support: { client_key: nextKey(current.draft.supports, "support"), target_connection_client_key: connectionTarget.clientKey, support_type: "PINNED", restrained_axis: null } });
+    if (tool === "LOAD") apply({ type: "CREATE_NODE_LOAD", nodeLoad: { client_key: nextKey(current.draft.node_loads, "load"), target_connection_client_key: connectionTarget.clientKey, fx_N: 0, fy_N: -100, label: "" } });
   };
   canvasController.setCanvasClickHandler(handleCanvasClick);
   canvasController.setPointerMoveHandler((world, state, screen) => {

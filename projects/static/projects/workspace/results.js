@@ -43,10 +43,17 @@ function failed(body) {
   return exception;
 }
 
-export function showLevelOne(run, data, currentDraftVersion) {
+export function showLevelOne(run, data, currentDraftVersion, draft = null) {
+  const memberLabels = new Map((draft?.physical_members || []).map((member) => [member.client_key, member.label?.trim() || `构件 ${member.client_key}`]));
+  const connectionLabels = new Map((draft?.connections || []).map((connection) => {
+    const node = (draft?.nodes || []).find((item) => item.client_key === connection.geometry_node_client_key);
+    return [connection.client_key, node?.label?.trim() ? `连接 ${node.label}` : `连接 ${connection.client_key}`];
+  }));
   const members = (data?.result_json?.member_results || []).flatMap((item) => {
     if (!item?.physical_member_id || !STATE_LABELS[item.state]) return [];
-    return [{ physicalMemberClientKey: item.physical_member_id, state: item.state }];
+    const member = { physicalMemberClientKey: item.physical_member_id, state: item.state };
+    if (draft) member.displayLabel = memberLabels.get(item.physical_member_id) || `构件 ${item.physical_member_id}`;
+    return [member];
   });
   const states = new Map();
   for (const member of members) states.set(member.physicalMemberClientKey, [...(states.get(member.physicalMemberClientKey) || []), member.state]);
@@ -55,7 +62,13 @@ export function showLevelOne(run, data, currentDraftVersion) {
     runId: run.analysis_run_id,
     stale: data.source_draft_version !== currentDraftVersion,
     predictionUsed: run.predictionId !== null,
-    maximum: data.level_one?.maximum_displacement || null,
+    maximum: data.level_one?.maximum_displacement ? {
+      ...data.level_one.maximum_displacement,
+      ...(draft ? { displayCandidateLabels: (data.level_one.maximum_displacement.candidate_analysis_node_ids || []).map((id) => {
+        const key = String(id).replace(/^connection:/, "");
+        return connectionLabels.get(key) || `连接 ${key}`;
+      }) } : {}),
+    } : null,
     members,
     overlay,
   });
@@ -94,9 +107,19 @@ export function renderLevelOne(root, view) {
   const title = document.createElement("h2"); title.textContent = `分析结果 · 分析 #${view.runId}`; root.append(title);
   const status = document.createElement("p"); status.textContent = view.stale ? "当前结果对应较早的模型版本。" : "分析已完成，对应当前模型版本。"; root.append(status);
   const prediction = document.createElement("p"); prediction.textContent = view.predictionUsed ? "Prediction 已参与本次分析流程。" : "本次分析未绑定 Prediction。"; root.append(prediction);
-  const maximum = document.createElement("p"); maximum.textContent = view.maximum ? `最大位移出现在 ${view.maximum.candidate_analysis_node_ids.join("、")}，大小为 ${view.maximum.maximum_displacement_mm} mm。` : "最大位移结论暂不可用。"; root.append(maximum);
+  const guidance = document.createElement("p"); guidance.textContent = "观察建议：先看荷载如何进入结构，再看支座如何约束整体运动，最后沿构件观察传力路径；这些提示不替代模型检查。"; root.append(guidance);
+  const maximum = document.createElement("p");
+  if (view.maximum) {
+    const rounded = Number(view.maximum.maximum_displacement_mm).toLocaleString("zh-CN", { maximumFractionDigits: 3 });
+    maximum.textContent = `最大位移出现在 ${(view.maximum.displayCandidateLabels || view.maximum.candidate_analysis_node_ids).join("、")}，约为 `;
+    const value = document.createElement("strong"); value.dataset.studentRoundedValue = ""; value.textContent = `${rounded} mm`; maximum.append(value, "。");
+  } else maximum.textContent = "最大位移结论暂不可用。";
+  root.append(maximum);
+  const counts = { TENSION: 0, COMPRESSION: 0, ZERO: 0 };
+  for (const member of view.members) counts[member.state === "ZERO_FORCE" ? "ZERO" : member.state] = (counts[member.state === "ZERO_FORCE" ? "ZERO" : member.state] || 0) + 1;
+  const summary = document.createElement("p"); summary.textContent = `受力状态概览：受拉 ${counts.TENSION}；受压 ${counts.COMPRESSION}；零杆 ${counts.ZERO}。`; root.append(summary);
   const legend = document.createElement("p"); legend.textContent = "图例：实线=受拉；虚线=受压；点划线=零杆。"; root.append(legend);
-  for (const member of view.members) { const item = document.createElement("p"); item.textContent = `构件 ${member.physicalMemberClientKey}：${STATE_LABELS[member.state]}`; root.append(item); }
+  for (const member of view.members) { const item = document.createElement("p"); item.textContent = `${member.displayLabel || `构件 ${member.physicalMemberClientKey}`}：${STATE_LABELS[member.state]}`; root.append(item); }
 }
 
 export function renderResultActions(root, { onCompare, onExplain, onReport }) {

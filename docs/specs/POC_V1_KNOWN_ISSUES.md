@@ -2,10 +2,10 @@
 
 ## Closure status
 
-- First POC V1: **CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**
+- First POC V1: **PRODUCT-ALIGNED — MANUAL OWNER ACCEPTANCE READY**
 - Automated Critical defects: **0**
 - Automated Important defects: **0**
-- Recommended next mode: **BUG / UX STABILIZATION**
+- Recommended next mode: **MANUAL OWNER ACCEPTANCE**
 
 ## Known issues
 
@@ -13,8 +13,8 @@ No reproducible Critical or Important production defect remains in the automated
 
 ## Deferred manual verification
 
-- Product Owner previously observed Workspace displaying “只读查看” during a real-device session. Automated authorization and Workspace tests have not reproduced a production defect. Status: **DEFERRED RUNTIME VERIFICATION**. Do not change production permission code without a reproducible failing test.
-- Full Product Owner manual browser journey remains pending. This is why the release identity is not “fully user accepted.”
+- The earlier owner “只读查看” observation is closed as non-reproducible after owner and Manager/Developer browser evidence: owners receive editable controls, while authorized non-owners receive an explained read-only state. A future recurrence still requires a reproducible failing test before authorization changes.
+- Product Owner sign-off on a real device remains pending. Automated public-control browser acceptance is complete, so the release is ready for that manual pass but is not described as owner-accepted.
 
 ## Out of scope for POC V1
 
@@ -29,3 +29,13 @@ These are deliberate scope exclusions, not defects.
 
 - O-001, O-003, O-004, O-005, O-006 — **POST-POC / OPEN**
 - T-M6-001, T-M6-002, T-M6-003 — **POST-POC / OPEN**
+
+## Verified reconciliation evidence
+
+- Empty-project Material / Rectangle Section / first-member creation and persistence;
+- visible SNAP / ORTHO / Fit / numeric coordinate workflow;
+- frozen property editing and dependency-safe deletion;
+- explicit AnalysisRun selection across Result / Compare / Explain / Report / Reasoning / Reflection;
+- two-Run historical isolation and stale labeling;
+- beginner result/error presentation and 1024×900 desktop containment;
+- Login-to-history Playwright journey using public controls only.

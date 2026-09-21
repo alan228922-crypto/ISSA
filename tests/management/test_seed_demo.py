@@ -20,6 +20,7 @@ def demo_counts():
         "events": CompetitionEvent.objects.filter(event_code="DEMO-TRUSS-2026").count(),
         "memberships": EventMembership.objects.filter(user__username="demo_student", event__event_code="DEMO-TRUSS-2026").count(),
         "projects": Project.objects.filter(owner_user__username="demo_student", event__event_code="DEMO-TRUSS-2026", name="B/T01 桁架 Demo").count(),
+        "blank_projects": Project.objects.filter(owner_user__username="demo_student", event__event_code="DEMO-TRUSS-2026", name="空白建模 Demo").count(),
         "nodes": GeometryNode.objects.filter(project__owner_user__username="demo_student", project__event__event_code="DEMO-TRUSS-2026").count(),
         "members": PhysicalMember.objects.filter(project__owner_user__username="demo_student", project__event__event_code="DEMO-TRUSS-2026").count(),
         "connections": Connection.objects.filter(project__owner_user__username="demo_student", project__event__event_code="DEMO-TRUSS-2026").count(),
@@ -71,7 +72,7 @@ def test_seed_demo_creates_analyzable_project_without_learning_or_analysis_recor
     )
     owner = project.owner_user
     assert demo_counts() == {
-        "users": 1, "events": 1, "memberships": 1, "projects": 1,
+        "users": 1, "events": 1, "memberships": 1, "projects": 1, "blank_projects": 1,
         "nodes": 2, "members": 1, "connections": 2, "supports": 2, "loads": 1,
         "runs": 0, "predictions": 0, "reflections": 0,
     }
@@ -84,6 +85,8 @@ def test_seed_demo_creates_analyzable_project_without_learning_or_analysis_recor
     assert run.status == "SUCCESS"
     assert "Demo data ready." in output.getvalue()
     assert f"/projects/{project.id}/workspace/" in output.getvalue()
+    assert "空白建模 Demo" in output.getvalue()
+    assert "手动验收" in output.getvalue()
 
 
 @pytest.mark.django_db

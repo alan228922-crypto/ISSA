@@ -219,3 +219,9 @@ Keep platform facts separate from student-authored reasoning and preserve Reflec
 Verify AnalysisRun binding, historical `STALE` behavior, provenance, authorization, student-authored boundaries, and the absence of mechanics duplication.
 
 First POC V1 is **CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**. Automated acceptance covers the explicit-Run Report/Reasoning flow, historical isolation, authorization, failure boundaries, purge, and full regression. It does not close the Post-PoC decisions above or authorize deferred features.
+
+## 11. Product reconciliation verification（2026-09-21）
+
+Report Workspace 已统一到一个明确 Run 选择器。选择某个 `analysis_run_id` 时，Result、Compare、Explain、Report、owner Reasoning 与 Reflection 均从该同一 Run 恢复；失败 Run 只显示安全状态，不回退到其他或最新 Run。Analyze 成功后，新 Run 无需 reload 即进入列表并被明确选中。
+
+两次 Run 的 Reasoning / Reflection 隔离、旧 Run stale 呈现、报告 provenance 与 no-latest 行为均有端点和真实浏览器证据。1024px 报告表格会在所属面板内换行，不造成页面横向溢出。Euler / Stability 自动报告仍为 `UNAVAILABLE`，所有 §8–§9 开放项保持不变。

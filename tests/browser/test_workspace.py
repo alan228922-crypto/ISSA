@@ -944,6 +944,75 @@ def test_engineering_details_authoritative_values(context, workspace_page):
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_beginner_results_use_guidance_labels_and_rounded_values(context, workspace_page):
+    from analysis.orchestration import analyze_project
+    from tests.application.test_analysis_acceptance import save_bt01_draft
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    page = workspace_page(user=owner, project=project)
+    page.locator("#workspace-run-select").select_option(str(run.id))
+    page.wait_for_function("document.querySelector('#workspace-results h2')")
+    text = page.locator("#workspace-results").text_content()
+
+    assert all(word in text for word in ["荷载", "支座", "传力", "受拉", "受压", "零杆"])
+    assert "杆件" in text
+    assert "connection:" not in text
+    assert "hash" not in text.lower()
+    assert page.locator("#workspace-results [data-student-rounded-value]").count() > 0
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_beginner_error_uses_what_why_next_and_collapsed_technical_detail(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-client-key="c1"]').focus()
+    page.keyboard.press("Enter")
+    page.locator("[data-property-delete]").click()
+
+    error = page.locator("#workspace-error")
+    assert error.locator("[data-error-what]").text_content()
+    assert error.locator("[data-error-why]").text_content()
+    assert "请先" in error.locator("[data-error-next]").text_content()
+    technical = error.locator("details[data-error-technical]")
+    assert technical.get_attribute("open") is None
+    assert "EDITOR_DEPENDENCY_CONFLICT" in technical.text_content()
+    assert "EDITOR_DEPENDENCY_CONFLICT" not in error.locator("[data-error-what]").text_content()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_desktop_1024_layout_has_no_page_overflow_and_contains_report(context, workspace_page):
+    from analysis.orchestration import analyze_project
+    from tests.application.test_analysis_acceptance import save_bt01_draft
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    page = workspace_page(user=owner, project=project)
+    page.set_viewport_size({"width": 1024, "height": 900})
+    page.reload()
+    page.locator("#workspace-run-select").select_option(str(run.id))
+    page.wait_for_function("document.querySelector('#workspace-report-view table')")
+
+    layout = page.evaluate("""() => ({
+      pageWidth: document.documentElement.scrollWidth,
+      viewport: window.innerWidth,
+      reportScroll: document.querySelector('#workspace-report-view').scrollWidth,
+      reportClient: document.querySelector('#workspace-report-view').clientWidth,
+    })""")
+    assert layout["pageWidth"] <= layout["viewport"]
+    assert layout["reportScroll"] <= layout["reportClient"]
+    assert page.locator("[data-cad-fit]").is_visible()
+    assert page.locator("#workspace-analyze").is_visible()
+    assert page.locator("#workspace-run-select").is_visible()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_workspace_full_learning_loop(context, workspace_page):
     from competitions.models import CompetitionEvent
     from tests.application.test_analysis_acceptance import save_bt01_draft

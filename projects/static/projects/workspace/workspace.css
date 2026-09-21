@@ -1,9 +1,11 @@
 :root { color-scheme: light; font-family: system-ui, sans-serif; }
+*, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; background: #f4f7fb; color: #172033; }
-#workspace-root { max-width: 1280px; min-width: 960px; margin: 0 auto; padding: 16px; }
+#workspace-root { width: 100%; max-width: 1280px; min-width: 0; margin: 0 auto; padding: 16px; }
 #workspace-project-header { display: flex; align-items: baseline; gap: 16px; }
 #workspace-read-only { color: #7a2e00; font-weight: 700; }
 .workspace-layout { display: grid; grid-template-columns: 240px minmax(440px, 1fr) 260px; min-height: 600px; border: 1px solid #bdc8d8; background: #fff; }
+.workspace-layout > * { min-width: 0; }
 #workspace-modeling-panel, #workspace-workflow-panel, .workspace-center { padding: 16px; }
 #workspace-modeling-panel { border-right: 1px solid #bdc8d8; }
 #workspace-workflow-panel { border-left: 1px solid #bdc8d8; }
@@ -23,5 +25,15 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 #workspace-report-view > section, #workspace-report-view > details { margin-top: 16px; padding-top: 8px; border-top: 1px solid #d8e0eb; }
 #workspace-report table { width: 100%; border-collapse: collapse; margin: 8px 0; }
 #workspace-report th, #workspace-report td { padding: 6px; border: 1px solid #bdc8d8; text-align: left; vertical-align: top; }
+#workspace-report-view { max-width: 100%; overflow-wrap: anywhere; }
+#workspace-report table { table-layout: fixed; }
+#workspace-report th, #workspace-report td, #workspace-report code { overflow-wrap: anywhere; word-break: break-word; }
+#workspace-error { margin: 12px 0; padding: 12px; border: 1px solid #b54708; background: #fff8eb; }
+#workspace-error h3 { margin-top: 0; }
 button:focus-visible, input:focus-visible, #workspace-canvas:focus-visible { outline: 3px solid #0759c7; outline-offset: 2px; }
 button:disabled { cursor: not-allowed; opacity: .6; }
+@media (max-width: 1100px) {
+  .workspace-layout { grid-template-columns: 210px minmax(0, 1fr) 230px; }
+  #workspace-modeling-panel, #workspace-workflow-panel, .workspace-center { padding: 10px; }
+  #workspace-status-bar { flex-wrap: wrap; }
+}
