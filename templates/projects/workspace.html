@@ -162,7 +162,9 @@
     const resultsRoot = document.getElementById("workspace-results");
     const focusMember = (clientKey) => { const now = canvasController.getState(); canvasController.replaceState({ ...now, selectedObject: { kind: "PHYSICAL_MEMBER", clientKey }, focusedObject: { kind: "PHYSICAL_MEMBER", clientKey } }); canvas.querySelector(`[data-client-key="${CSS.escape(clientKey)}"]`)?.focus(); };
     const renderSelectedRun = (payload) => {
-      resultsRoot.replaceChildren(); reportView.replaceChildren(); reasoningWorkspace?.render(null, null); reflectionWorkspace.useReflection(null, null); renderReflectionView(null); reportOpen.disabled = !payload;
+      resultsRoot.replaceChildren(); reportView.replaceChildren(); document.querySelector("[data-engineering-content]").replaceChildren(); reasoningWorkspace?.render(null, null); reflectionWorkspace.useReflection(null, null); renderReflectionView(null); reportOpen.disabled = !payload;
+      const previous = canvasController.getState();
+      if (previous.resultOverlay) canvasController.replaceState({ ...previous, resultOverlay: null });
       if (!payload) return;
       if (payload.status !== "SUCCESS") { const note = document.createElement("p"); note.textContent = `分析 #${payload.metadata.analysis_run_id} 状态为 ${payload.status}，没有可展示的结果。`; resultsRoot.append(note); return; }
       const runId = payload.metadata.analysis_run_id;

@@ -157,6 +157,38 @@ def test_member_numeric_endpoint_uses_visible_dynamic_fields(context, workspace_
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_member_dynamic_tab_escape_and_blank_pointer_endpoint(context, workspace_page):
+    owner, project, material, section = context
+    page = workspace_page(user=owner, project=project)
+    page.locator("[data-member-material]").select_option(str(material.id))
+    page.locator("[data-member-section]").select_option(str(section.id))
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator("[data-cad-command-input]").fill("0,0")
+    page.locator("[data-cad-command-input]").press("Enter")
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="node-1"]').click()
+
+    distance = page.locator("[data-cad-distance]")
+    angle = page.locator("[data-cad-angle]")
+    distance.focus()
+    distance.press("Tab")
+    page.wait_for_function("document.activeElement === document.querySelector('[data-cad-angle]')")
+    angle.press("Tab")
+    page.wait_for_function("document.activeElement === document.querySelector('[data-cad-distance]')")
+    distance.press("Escape")
+    assert page.locator('[data-workspace-tool="SELECT"]').get_attribute("aria-pressed") == "true"
+
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="node-1"]').click()
+    canvas = page.locator("#workspace-canvas")
+    box = canvas.bounding_box()
+    canvas.click(position={"x": box["width"] * 0.72, "y": box["height"] * 0.35})
+    assert page.locator('[data-client-key="member-1"]').count() == 1
+    assert page.locator('[data-client-key="node-2"]').count() == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_grid_snap_off_preserves_object_candidates(context, workspace_page):
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
@@ -877,6 +909,39 @@ def test_run_context_clears_previous_payload_before_loading_or_failure(context, 
       return {renders, current:context.state().currentRunId, payload:context.state().payload};
     }""")
     assert result == {'renders': [None, 1, None], 'current': 2, 'payload': None}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_switching_to_failed_run_clears_engineering_details_and_canvas_overlay(context, workspace_page):
+    from analysis.models import AnalysisRun
+    from analysis.orchestration import analyze_project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    success = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    failed = AnalysisRun.objects.create(
+        project=project,
+        model_revision=success.model_revision,
+        analysis_type=success.analysis_type,
+        solver_version=success.solver_version,
+        input_schema_version=success.input_schema_version,
+        input_hash=success.input_hash,
+        status=AnalysisRun.Status.SOLVER_FAILED,
+        solver_input_json=success.solver_input_json,
+        failure_code="CONTROLLED_FAILURE",
+        result_schema_version="truss2d-result-v1",
+        created_by=owner,
+    )
+    page = workspace_page(user=owner, project=project)
+    page.locator("#workspace-run-select").select_option(str(success.id))
+    page.wait_for_function("document.querySelector('[data-engineering-content] table')")
+    assert page.locator('#workspace-canvas [data-result-state="TENSION"]').count() > 0
+
+    page.locator("#workspace-run-select").select_option(str(failed.id))
+    page.wait_for_function("runId => document.querySelector('#workspace-results').textContent.includes(`#${runId}`)", arg=failed.id)
+    assert page.locator("[data-engineering-content]").text_content() == ""
+    assert page.locator('#workspace-canvas [data-result-state]:not([data-result-state=""])').count() == 0
 
 
 @pytest.mark.browser

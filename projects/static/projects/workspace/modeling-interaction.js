@@ -9,7 +9,7 @@ const TOOL_LABELS = Object.freeze({ SELECT: "选择", NODE: "节点", MEMBER: "�
 const OBJECT_KINDS = Object.freeze({ GeometryNode: "GEOMETRY_NODE", Connection: "CONNECTION" });
 
 function selectedTarget(event) {
-  const group = event.composedPath?.().find((element) => element?.matches?.("[data-object-kind]"));
+  const group = event.composedPath?.().find((element) => element?.matches?.("[data-object-kind]")) || event.target?.closest?.("[data-object-kind]");
   const kind = OBJECT_KINDS[group?.dataset.objectKind];
   return kind && group?.dataset.clientKey ? { kind, clientKey: group.dataset.clientKey } : null;
 }
@@ -116,9 +116,14 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   orthoButton?.addEventListener("click", () => toggleCad("ortho", orthoButton)); snapButton?.addEventListener("click", () => toggleCad("gridSnap", snapButton));
   const dynamicPoint = () => { const origin = memberOrigin(); const distance = Number(distanceInput?.value); const angle = Number(angleInput?.value); if (!origin || !Number.isFinite(distance) || distance <= 0 || !Number.isFinite(angle)) return null; const radians = angle * Math.PI / 180; return { x: origin.x + distance * Math.cos(radians), y: origin.y + distance * Math.sin(radians) }; };
   for (const [input, field] of [[distanceInput, "DISTANCE"], [angleInput, "ANGLE"]]) input?.addEventListener("input", () => { commandState = transition(commandState, { type: "INPUT_CHANGE", mode: "DYNAMIC", field, value: input.value }); updateDynamics(dynamicPoint()); });
-  for (const input of [distanceInput, angleInput]) input?.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") { event.preventDefault(); memberStart = null; commandState = transition(commandState, { type: "ESC" }); distanceInput.value = ""; angleInput.value = ""; updateUi(root, tool, memberStart); return; }
-    if (event.key === "Tab") { commandState = transition(commandState, { type: "TAB" }); return; }
+  for (const [input, field] of [[distanceInput, "DISTANCE"], [angleInput, "ANGLE"]]) input?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { event.preventDefault(); memberStart = null; commandState = transition(commandState, { type: "ESC" }); tool = "SELECT"; distanceInput.value = ""; angleInput.value = ""; updateUi(root, tool, memberStart); return; }
+    if (event.key === "Tab") {
+      commandState = transition(commandState, { type: "INPUT_CHANGE", mode: "DYNAMIC", field, value: input.value });
+      commandState = transition(commandState, { type: "TAB" });
+      if (input === angleInput && !event.shiftKey) { event.preventDefault(); distanceInput.focus(); }
+      return;
+    }
     if (event.key === "Enter") { event.preventDefault(); const point = dynamicPoint(); if (!point || !completeMemberAt(point)) showError({ code: "CAD_INPUT_MALFORMED", message: "请输入大于 0 的距离和有效角度。" }); }
   });
   commandInput?.addEventListener("keydown", (event) => {
@@ -141,7 +146,14 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       apply({ type: "CREATE_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point }); commandState = transition(commandState, { type: "POINTER_POINT", point }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
     }
     if (tool === "MEMBER") {
-      const node = nodeTarget(current.draft, target) || nodeTarget(current.draft, current.selectedObject); if (!node) return;
+      const selectedNode = nodeTarget(current.draft, current.selectedObject);
+      const node = nodeTarget(current.draft, target) || ((!memberStart || selectedNode?.clientKey !== memberStart) ? selectedNode : null);
+      if (!node && memberStart && ["DRAW_MEMBER_WAIT_END", "DYNAMIC_INPUT"].includes(commandState.state)) {
+        const world = worldPointFromEvent(svg, event); const cad = cadState(current); if (!world) return;
+        const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: { x: event.clientX, y: event.clientY }, candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: memberOrigin(), ortho: cad.ortho, gridEnabled: cad.gridSnap, explicitNumeric: false });
+        completeMemberAt({ x: Math.round(resolved.point.x * 1e9) / 1e9, y: Math.round(resolved.point.y * 1e9) / 1e9 }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
+      }
+      if (!node) return;
       if (!memberStart) { memberStart = node.clientKey; const start = current.draft.nodes.find((item) => item.client_key === memberStart); commandState = transition(commandState, { type: "POINTER_POINT", point: { x: start.x_mm, y: start.y_mm } }); updateUi(root, tool, memberStart); return; }
       const endpoint = current.draft.nodes.find((item) => item.client_key === node.clientKey); completeMemberAt({ x: endpoint.x_mm, y: endpoint.y_mm }); return;
     }
