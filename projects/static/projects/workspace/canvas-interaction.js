@@ -144,16 +144,16 @@ export function bindCanvasInteractions(svg, initialState, render) {
   }, { passive: false });
   svg.addEventListener("pointerdown", (event) => { panStart = { x: event.clientX, y: event.clientY }; });
   svg.addEventListener("pointermove", (event) => {
-    pointerMoveHandler?.(worldPointFromEvent(svg, event), state);
+    pointerMoveHandler?.(worldPointFromEvent(svg, event), state, { x: event.clientX, y: event.clientY });
     if (!panStart) return;
     dispatchViewEvent({ type: "PAN", deltaScreen: { x: event.clientX - panStart.x, y: event.clientY - panStart.y } });
     panStart = { x: event.clientX, y: event.clientY };
   });
   svg.addEventListener("pointerup", () => { panStart = null; });
-  const replaceState = (nextState) => {
+  const replaceState = (nextState, notify = true) => {
     state = nextState;
     redraw();
-    notifyStateChange();
+    if (notify) notifyStateChange();
   };
   return Object.freeze({ dispatchViewEvent, getState: () => state, replaceState, setCanvasClickHandler: (handler) => { canvasClickHandler = handler; }, setStateChangeHandler: (handler) => { stateChangeHandler = handler; }, setPointerMoveHandler: (handler) => { pointerMoveHandler = handler; } });
 }

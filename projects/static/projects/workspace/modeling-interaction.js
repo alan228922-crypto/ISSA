@@ -1,5 +1,7 @@
 import { EditorActionError } from "./editor.js";
 import { worldPointFromEvent } from "./canvas-interaction.js";
+import { parseCadInput } from "./cad-input.js";
+import { resolvePointerPoint } from "./geometry.js";
 import { applyWorkspaceEditorAction } from "./state.js";
 
 const TOOL_LABELS = Object.freeze({
@@ -53,13 +55,60 @@ function updateUi(root, tool, memberStart) {
   if (instruction) instruction.textContent = memberStart ? "请选择构件的终点节点。" : `${TOOL_LABELS[tool]}工具已启用。`;
 }
 
+function segmentIntersection(left, right) {
+  const denominator = (left.end.x - left.start.x) * (right.end.y - right.start.y) - (left.end.y - left.start.y) * (right.end.x - right.start.x);
+  if (Math.abs(denominator) < 1e-12) return null;
+  const dx = right.start.x - left.start.x;
+  const dy = right.start.y - left.start.y;
+  const t = (dx * (right.end.y - right.start.y) - dy * (right.end.x - right.start.x)) / denominator;
+  const u = (dx * (left.end.y - left.start.y) - dy * (left.end.x - left.start.x)) / denominator;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: left.start.x + t * (left.end.x - left.start.x), y: left.start.y + t * (left.end.y - left.start.y) };
+}
+
+function drawingCandidates(draft) {
+  const nodes = new Map(draft.nodes.map((node) => [node.client_key, node]));
+  const nodeCandidates = draft.nodes.map((node) => ({
+    kind: "NODE",
+    canonicalKey: `NODE:${node.client_key}`,
+    worldPoint: { x: node.x_mm, y: node.y_mm },
+  }));
+  const segments = draft.physical_members.flatMap((member) => {
+    const start = nodes.get(member.start_node_client_key);
+    const end = nodes.get(member.end_node_client_key);
+    return start && end ? [{ key: member.client_key, start: { x: start.x_mm, y: start.y_mm }, end: { x: end.x_mm, y: end.y_mm } }] : [];
+  });
+  const intersections = [];
+  for (let left = 0; left < segments.length; left += 1) {
+    for (let right = left + 1; right < segments.length; right += 1) {
+      const point = segmentIntersection(segments[left], segments[right]);
+      if (!point) continue;
+      const keys = [segments[left].key, segments[right].key].sort();
+      intersections.push({ kind: "INTERSECTION", canonicalKey: `INTERSECTION:${keys[0]}|${keys[1]}`, worldPoint: point });
+    }
+  }
+  return [...nodeCandidates, ...intersections];
+}
+
+function cadState(state) {
+  return state.cad || { ortho: false, gridSnap: true, gridVisible: true, activeCommand: "SELECT", origin: null };
+}
+
+function cadStatus(root, cad, resolution = null) {
+  const indicator = root.querySelector("#workspace-snap-indicator");
+  if (!indicator) return;
+  indicator.textContent = `ORTHO: ${cad.ortho ? "开" : "关"} · SNAP: ${cad.gridSnap ? "开" : "关"} · 捕捉: ${resolution?.snapType || "无"}`;
+  indicator.dataset.snapType = resolution?.snapType || "";
+}
+
 export function bindModelingInteractions({ root, svg, canvasController, showError, readOnly }) {
   if (readOnly) return Object.freeze({ getTool: () => "SELECT" });
   let tool = "SELECT";
   let memberStart = null;
-  const apply = (action) => {
+  const apply = (action, cadChanges = null) => {
     try {
-      canvasController.replaceState(applyWorkspaceEditorAction(canvasController.getState(), action));
+      const edited = applyWorkspaceEditorAction(canvasController.getState(), action);
+      canvasController.replaceState(cadChanges ? { ...edited, cad: Object.freeze({ ...cadState(edited), ...cadChanges }) } : edited);
       root.querySelector("#workspace-save-status").textContent = "未保存修改：有";
     } catch (error) {
       if (error instanceof EditorActionError) showError({ code: error.code, message: "当前工具目标不满足建模条件。" });
@@ -69,26 +118,90 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   const chooseTool = (nextTool) => {
     tool = nextTool;
     memberStart = null;
+    const current = canvasController.getState();
+    canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool }) });
     updateUi(root, tool, memberStart);
   };
 
   for (const button of root.querySelectorAll("[data-workspace-tool]")) {
     button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
   }
+  const orthoButton = root.querySelector("[data-cad-ortho]");
+  const snapButton = root.querySelector("[data-cad-snap]");
+  const commandInput = root.querySelector("[data-cad-command-input]");
+  const toggleCad = (field, button) => {
+    const current = canvasController.getState();
+    const nextCad = Object.freeze({ ...cadState(current), [field]: !cadState(current)[field] });
+    canvasController.replaceState({ ...current, cad: nextCad });
+    button.setAttribute("aria-pressed", nextCad[field] ? "true" : "false");
+    cadStatus(root, nextCad);
+  };
+  orthoButton?.addEventListener("click", () => toggleCad("ortho", orthoButton));
+  snapButton?.addEventListener("click", () => toggleCad("gridSnap", snapButton));
+  commandInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      commandInput.value = "";
+      const current = canvasController.getState();
+      canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), origin: null }) });
+      return;
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (tool !== "NODE") {
+      showError({ code: "CAD_COMMAND_CONTEXT", message: "请先选择节点工具再输入坐标。" });
+      return;
+    }
+    const current = canvasController.getState();
+    const parsed = parseCadInput(commandInput.value, cadState(current).origin);
+    if (!parsed.ok) {
+      showError({ code: `CAD_INPUT_${parsed.code}`, message: "坐标格式无效，请输入 x,y、@dx,dy 或 长度<角度。" });
+      return;
+    }
+    const point = resolvePointerPoint({
+      worldPointer: parsed.point,
+      screenPointer: parsed.point,
+      candidates: [],
+      viewTransform: current.viewTransform,
+      origin: cadState(current).origin || parsed.point,
+      ortho: false,
+      gridEnabled: false,
+      explicitNumeric: true,
+    }).point;
+    apply({ type: "CREATE_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point });
+    commandInput.value = "";
+    cadStatus(root, cadState(canvasController.getState()));
+  });
   const handleCanvasClick = (event) => {
     const current = canvasController.getState();
     const target = selectedTarget(event);
     if (tool === "SELECT") return;
     if (tool === "NODE") {
       if (target) return;
-      const resolved = worldPointFromEvent(svg, event);
-      const point = resolved && { x: Math.round(resolved.x), y: Math.round(resolved.y) };
+      const world = worldPointFromEvent(svg, event);
+      const cad = cadState(current);
+      const resolved = world && resolvePointerPoint({
+        worldPointer: world,
+        screenPointer: { x: event.clientX, y: event.clientY },
+        candidates: cad.gridSnap ? drawingCandidates(current.draft) : [],
+        viewTransform: current.viewTransform,
+        origin: cad.origin || world,
+        ortho: cad.ortho,
+        gridEnabled: cad.gridSnap,
+        explicitNumeric: false,
+      });
+      const point = resolved?.point && { x: Math.round(resolved.point.x * 1e9) / 1e9, y: Math.round(resolved.point.y * 1e9) / 1e9 };
       if (!point) return;
-      apply({ type: "CREATE_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } });
+      if (resolved.candidateKey?.startsWith("NODE:")) {
+        cadStatus(root, cad, resolved);
+        return;
+      }
+      apply({ type: "CREATE_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point });
+      cadStatus(root, cadState(canvasController.getState()), resolved);
       return;
     }
     if (tool === "MEMBER") {
-      const node = nodeTarget(current.draft, target);
+      const node = nodeTarget(current.draft, target) || nodeTarget(current.draft, current.selectedObject);
       if (!node) return;
       if (!memberStart) {
         memberStart = node.clientKey;
@@ -123,6 +236,24 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (tool === "LOAD") apply({ type: "CREATE_NODE_LOAD", nodeLoad: { client_key: nextKey(current.draft.node_loads, "load"), target_connection_client_key: target.clientKey, fx_N: 0, fy_N: -100, label: "" } });
   };
   canvasController.setCanvasClickHandler(handleCanvasClick);
+  canvasController.setPointerMoveHandler((world, state, screen) => {
+    if (!world) return;
+    root.querySelector("#workspace-pointer-x").textContent = `X: ${Math.round(world.x)} mm`;
+    root.querySelector("#workspace-pointer-y").textContent = `Y: ${Math.round(world.y)} mm`;
+    const cad = cadState(state);
+    const resolution = resolvePointerPoint({
+      worldPointer: world,
+      screenPointer: screen,
+      candidates: cad.gridSnap ? drawingCandidates(state.draft) : [],
+      viewTransform: state.viewTransform,
+      origin: cad.origin || world,
+      ortho: cad.ortho,
+      gridEnabled: cad.gridSnap,
+      explicitNumeric: false,
+    });
+    cadStatus(root, cad, resolution);
+  });
   updateUi(root, tool, memberStart);
+  cadStatus(root, cadState(canvasController.getState()));
   return Object.freeze({ getTool: () => tool });
 }

@@ -28,6 +28,15 @@
             <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false">支座</button>
             <button type="button" data-workspace-tool="LOAD" aria-pressed="false">荷载</button>
           </div>
+          <div class="workspace-cad-controls" role="toolbar" aria-label="CAD 辅助">
+            <button type="button" data-cad-ortho aria-pressed="false">ORTHO 正交</button>
+            <button type="button" data-cad-snap aria-pressed="true">SNAP 捕捉</button>
+            <button type="button" data-cad-fit>Fit 全图</button>
+          </div>
+          <label class="workspace-command">坐标命令
+            <input type="text" data-cad-command-input inputmode="decimal" autocomplete="off" placeholder="1000,500 / @1000,0 / 1000&lt;30">
+          </label>
+          <p data-cad-command-help>节点工具中输入绝对、相对或极坐标，按 Enter 确认，Esc 取消。</p>
           <p data-modeling-instruction aria-live="polite">选择工具已启用。</p>
           <fieldset class="workspace-member-properties">
             <legend>新构件属性</legend>
@@ -87,13 +96,9 @@
       <section id="workspace-report-view" aria-live="polite"></section>
       {% if not bootstrap.read_only %}<section id="workspace-report-reasoning" aria-label="我的设计说明"></section>{% endif %}
     </section>
-    <section id="workspace-dynamic-input" data-active-field="distance" hidden aria-label="动态输入">
-      <label>距离 <input id="workspace-dynamic-distance" type="text" disabled></label>
-      <label>角度 <input id="workspace-dynamic-angle" type="text" disabled></label>
-    </section>
     <footer id="workspace-status-bar" aria-live="polite">
       <span id="workspace-pointer-x">X: —</span><span id="workspace-pointer-y">Y: —</span><span>ΔL: —</span><span>Angle: —</span>
-      <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 关</span>
+      <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 开 · 捕捉: 无</span>
       <span id="workspace-save-status">未保存修改：无</span>
     </footer>
     <section id="workspace-error" hidden aria-live="polite"></section>
@@ -120,17 +125,17 @@
     const canvasController = bindCanvasInteractions(canvas, state, renderWorkspace);
     const canvasRect = canvas.getBoundingClientRect();
     canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(state.draft), viewport: { width: canvasRect.width, height: canvasRect.height } });
-    canvasController.setPointerMoveHandler((point) => {
-      if (!point) return;
-      document.getElementById("workspace-pointer-x").textContent = `X: ${Math.round(point.x)} mm`;
-      document.getElementById("workspace-pointer-y").textContent = `Y: ${Math.round(point.y)} mm`;
+    document.querySelector("[data-cad-fit]")?.addEventListener("click", () => {
+      const current = canvasController.getState();
+      const rect = canvas.getBoundingClientRect();
+      canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(current.draft), viewport: { width: rect.width, height: rect.height } });
     });
     const workflow = createWorkspaceWorkflow({ urls: bootstrap.urls });
     const errorPanel = document.getElementById("workspace-error");
     const issuePanel = document.getElementById("workspace-check-issues");
     const showError = (error) => { const view = presentWorkspaceError(error); errorPanel.hidden = false; errorPanel.textContent = `${view.what}：${view.why} ${view.nextAction}（${view.technicalCode}）`; };
     bindModelingInteractions({ root: document.getElementById("workspace-root"), svg: canvas, canvasController, showError, readOnly: state.readOnly });
-    bindPropertyPanel({ root: document.getElementById("workspace-properties-panel"), canvasController });
+    bindPropertyPanel({ root: document.getElementById("workspace-properties-panel"), canvasController, materials: bootstrap.materials, sections: bootstrap.sections, showError });
     const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly });
     const resultsWorkspace = createResultsWorkspace({ urls: { analyze: bootstrap.urls.analyze, resultTemplate: bootstrap.urls.result_template } });
     const reflectionRoot = document.getElementById("workspace-reflection");

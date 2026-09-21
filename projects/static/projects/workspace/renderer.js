@@ -138,6 +138,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   marker.append(element("path", { d: "M 0 0 L 8 4 L 0 8 z", fill: "currentColor" }));
   defs.append(marker);
   const world = element("g", { "data-world-layer": "true", transform: viewTransform(uiState.viewTransform) });
-  world.append(grid, ...layers);
+  if (uiState.cad?.gridVisible !== false) world.append(grid);
+  world.append(...layers);
   svg.replaceChildren(defs, world, orientationLayer());
 }

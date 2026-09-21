@@ -1,3 +1,4 @@
+import { EditorActionError } from "./editor.js";
 import { applyWorkspaceEditorAction } from "./state.js";
 
 const OBJECTS = Object.freeze({
@@ -16,10 +17,84 @@ function selectedRecord(state) {
   return record ? { definition, record, selected } : null;
 }
 
-function updateState(canvasController, action) {
+function updateState(canvasController, action, notifyPanel = false) {
   const next = applyWorkspaceEditorAction(canvasController.getState(), action);
-  canvasController.replaceState(next);
+  canvasController.replaceState(next, notifyPanel);
   document.getElementById("workspace-save-status").textContent = "未保存修改：有";
+}
+
+function labeledInput(root, { text, value, type = "text", dataName, onChange }) {
+  const label = document.createElement("label");
+  label.textContent = text;
+  const input = document.createElement("input");
+  input.type = type;
+  if (type === "number") input.step = "any";
+  input.dataset[dataName] = "";
+  input.value = String(value ?? "");
+  input.addEventListener("change", () => onChange(input));
+  label.append(input);
+  root.append(label);
+}
+
+function appendLabelControl(root, selected, record, canvasController) {
+  labeledInput(root, { text: "标签", value: record.label, dataName: "propertyLabel", onChange: (input) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { label: input.value } });
+  } });
+}
+
+function appendNodeControls(root, selected, node, canvasController) {
+  for (const [field, text, dataName] of [["x_mm", "X（mm）", "propertyX"], ["y_mm", "Y（mm）", "propertyY"]]) {
+    labeledInput(root, { text, value: node[field], type: "number", dataName, onChange: (input) => {
+      const value = Number(input.value);
+      if (Number.isFinite(value)) updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: value } });
+    } });
+  }
+  appendLabelControl(root, selected, node, canvasController);
+}
+
+function appendChoice(root, { text, value, choices, dataName, onChange }) {
+  const label = document.createElement("label");
+  label.textContent = text;
+  const select = document.createElement("select");
+  select.dataset[dataName] = "";
+  for (const choice of choices) {
+    const option = document.createElement("option");
+    option.value = String(choice.id);
+    option.textContent = choice.name;
+    select.append(option);
+  }
+  select.value = String(value);
+  select.addEventListener("change", () => onChange(select));
+  label.append(select);
+  root.append(label);
+}
+
+function appendMemberControls(root, selected, member, canvasController, materials, sections) {
+  appendChoice(root, { text: "材料", value: member.material_id, choices: materials, dataName: "propertyMaterial", onChange: (select) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { material_id: Number(select.value) } });
+  } });
+  appendChoice(root, { text: "截面", value: member.section_id, choices: sections, dataName: "propertySection", onChange: (select) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { section_id: Number(select.value) } });
+  } });
+  appendLabelControl(root, selected, member, canvasController);
+  const label = document.createElement("label");
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.dataset.propertyActive = "";
+  checkbox.checked = member.is_active;
+  checkbox.addEventListener("change", () => updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { is_active: checkbox.checked } }));
+  label.append(checkbox, " 参与分析");
+  root.append(label);
+}
+
+function appendConnectionDetails(root, connection) {
+  const node = document.createElement("p");
+  node.dataset.propertyConnectionNode = "";
+  node.textContent = `节点：${connection.geometry_node_client_key}`;
+  const members = document.createElement("p");
+  members.dataset.propertyConnectionMembers = "";
+  members.textContent = `参与构件：${connection.participating_member_client_keys.join("、")}`;
+  root.append(node, members);
 }
 
 function supportValue(support) {
@@ -43,30 +118,47 @@ function appendSupportControls(root, selected, support, canvasController) {
 }
 
 function appendLoadControls(root, selected, load, canvasController) {
-  for (const [field, text] of [["fx_N", "Fx (N)"], ["fy_N", "Fy (N)"]]) {
-    const label = document.createElement("label"); label.textContent = text;
-    const input = document.createElement("input"); input.type = "number"; input.step = "any";
-    input.dataset[field === "fx_N" ? "propertyFx" : "propertyFy"] = "";
-    input.value = String(load[field]);
-    input.addEventListener("change", () => {
-      if (input.value.trim() === "") return;
+  for (const [field, text, dataName] of [["fx_N", "Fx (N)", "propertyFx"], ["fy_N", "Fy (N)", "propertyFy"]]) {
+    labeledInput(root, { text, value: load[field], type: "number", dataName, onChange: (input) => {
       const value = Number(input.value);
-      if (!Number.isFinite(value)) return;
-      updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: value } });
-    });
-    label.append(input); root.append(label);
+      if (Number.isFinite(value)) updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: value } });
+    } });
   }
+  appendLabelControl(root, selected, load, canvasController);
 }
 
-export function bindPropertyPanel({ root, canvasController }) {
+function appendDelete(root, selected, canvasController, showError) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.propertyDelete = "";
+  button.textContent = "删除对象";
+  button.addEventListener("click", () => {
+    try {
+      updateState(canvasController, { type: "DELETE_OBJECT", target: selected }, true);
+    } catch (error) {
+      if (error instanceof EditorActionError && error.code === "EDITOR_DEPENDENCY_CONFLICT") {
+        showError({ code: error.code, message: "请先删除或调整依赖该对象的构件、连接、支座或荷载。" });
+        return;
+      }
+      throw error;
+    }
+  });
+  root.append(button);
+}
+
+export function bindPropertyPanel({ root, canvasController, materials = [], sections = [], showError = () => {} }) {
   const render = (state) => {
     root.replaceChildren();
     const current = selectedRecord(state);
     if (!current) { const hint = document.createElement("p"); hint.textContent = "请选择对象查看属性。"; root.append(hint); return; }
     const identity = document.createElement("p"); identity.dataset.propertyIdentity = ""; identity.textContent = `${current.definition.label} ${current.record.client_key}`; root.append(identity);
+    if (current.selected.kind === "CONNECTION") appendConnectionDetails(root, current.record);
     if (state.readOnly) return;
+    if (current.selected.kind === "GEOMETRY_NODE") appendNodeControls(root, current.selected, current.record, canvasController);
+    if (current.selected.kind === "PHYSICAL_MEMBER") appendMemberControls(root, current.selected, current.record, canvasController, materials, sections);
     if (current.selected.kind === "SUPPORT") appendSupportControls(root, current.selected, current.record, canvasController);
     if (current.selected.kind === "NODE_LOAD") appendLoadControls(root, current.selected, current.record, canvasController);
+    appendDelete(root, current.selected, canvasController, showError);
   };
   canvasController.setStateChangeHandler(render);
   render(canvasController.getState());

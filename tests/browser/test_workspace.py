@@ -132,6 +132,126 @@ def test_cad_keyboard_tab_accessibility(context, workspace_page):
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_visible_cad_controls_toggle_and_fit_without_module_imports(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+
+    ortho = page.locator("[data-cad-ortho]")
+    snap = page.locator("[data-cad-snap]")
+    fit = page.locator("[data-cad-fit]")
+    assert ortho.get_attribute("aria-pressed") == "false"
+    assert snap.get_attribute("aria-pressed") == "true"
+    ortho.click()
+    snap.click()
+    assert ortho.get_attribute("aria-pressed") == "true"
+    assert snap.get_attribute("aria-pressed") == "false"
+    assert "ORTHO: 开" in page.locator("#workspace-snap-indicator").text_content()
+    assert "SNAP: 关" in page.locator("#workspace-snap-indicator").text_content()
+
+    canvas = page.locator("#workspace-canvas")
+    before = canvas.locator("[data-world-layer]").get_attribute("transform")
+    canvas.hover()
+    page.mouse.wheel(0, -500)
+    zoomed = canvas.locator("[data-world-layer]").get_attribute("transform")
+    assert zoomed != before
+    fit.click()
+    fitted = canvas.locator("[data-world-layer]").get_attribute("transform")
+    assert fitted != zoomed
+    fit.click()
+    assert canvas.locator("[data-world-layer]").get_attribute("transform") == fitted
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_numeric_modeling_accepts_absolute_relative_and_polar_input(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    command = page.locator("[data-cad-command-input]")
+
+    for value in ("1000,500", "@1000,0", "1000<30"):
+        command.fill(value)
+        command.press("Enter")
+
+    points = page.locator('[data-object-kind="GeometryNode"] circle').evaluate_all(
+        "nodes => nodes.map(node => ({x:Number(node.getAttribute('cx')), y:Number(node.getAttribute('cy'))}))"
+    )
+    assert points[0] == {"x": 1000, "y": 500}
+    assert points[1] == {"x": 2000, "y": 500}
+    assert points[2]["x"] == pytest.approx(2000 + 1000 * 3**0.5 / 2)
+    assert points[2]["y"] == pytest.approx(1000)
+    command.fill("待取消")
+    command.press("Escape")
+    assert command.input_value() == ""
+    command.press("Tab")
+    assert page.evaluate("document.activeElement !== document.querySelector('[data-cad-command-input]')") is True
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_property_and_delete_controls_edit_persist_and_block_dependencies(context, workspace_page):
+    from materials.models import Material
+    from materials.services import create_section
+
+    owner, project, material, section = context
+    alternate_material = Material.objects.create(
+        owner_user=owner, name="替代材料", E_MPa="2400", density_g_per_mm3="0.0008", source_type="MEASURED",
+    )
+    alternate_section = create_section(owner=owner, name="替代截面", definition={
+        "schema_version": "section-definition-v1", "type": "rectangle",
+        "width_mm": 2.0, "height_mm": 6.0, "density_g_per_mm3": 0.0008,
+    })
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+
+    page.locator('[data-client-key="n2"] circle').click(force=True)
+    page.locator("[data-property-x]").fill("1200")
+    page.locator("[data-property-y]").fill("100")
+    page.locator("[data-property-label]").fill("右端节点")
+    page.locator("[data-property-label]").press("Tab")
+
+    page.locator('[data-client-key="m1"] line').click(force=True)
+    page.locator("[data-property-material]").select_option(str(alternate_material.id))
+    page.locator("[data-property-section]").select_option(str(alternate_section.id))
+    page.locator("[data-property-label]").fill("上弦杆")
+    page.locator("[data-property-label]").press("Tab")
+    page.locator("[data-property-active]").uncheck()
+
+    page.locator('[data-client-key="c1"]').focus()
+    page.keyboard.press("Enter")
+    assert page.locator("[data-property-connection-node]").text_content() == "节点：n1"
+    assert page.locator("[data-property-connection-members]").text_content() == "参与构件：m1"
+    page.locator("[data-property-delete]").click()
+    assert "请先删除或调整依赖该对象的构件、连接、支座或荷载。" in page.locator("#workspace-error").text_content()
+    assert page.locator('[data-client-key="c1"]').count() == 1
+
+    page.locator('[data-workspace-tool="NODE"]').click()
+    command = page.locator("[data-cad-command-input]")
+    command.fill("3000,3000")
+    command.press("Enter")
+    page.locator('[data-client-key="node-1"]').focus()
+    page.keyboard.press("Enter")
+    page.locator("[data-property-delete]").click()
+    assert page.locator('[data-client-key="node-1"]').count() == 0
+
+    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
+    page.locator("#workspace-save").click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    page.locator('[data-client-key="n2"] circle').click(force=True)
+    assert page.locator("[data-property-x]").input_value() == "1200"
+    assert page.locator("[data-property-y]").input_value() == "100"
+    assert page.locator("[data-property-label]").input_value() == "右端节点"
+    page.locator('[data-client-key="m1"] line').click(force=True)
+    assert page.locator("[data-property-material]").input_value() == str(alternate_material.id)
+    assert page.locator("[data-property-section]").input_value() == str(alternate_section.id)
+    assert page.locator("[data-property-label]").input_value() == "上弦杆"
+    assert page.locator("[data-property-active]").is_checked() is False
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_snap_resolver_priority_grid_and_intersection_boundary(context, workspace_page):
     owner, project, _, _ = context; page = workspace_page(user=owner, project=project)
     result = page.evaluate("""async () => { const { resolvePointerPoint } = await import('/static/projects/workspace/geometry.js'); const base={worldPointer:{x:493,y:75},screenPointer:{x:493,y:75},viewTransform:{a:1,b:0,c:0,d:1,e:0,f:0},origin:{x:100,y:75},ortho:false,gridEnabled:true,explicitNumeric:false}; const candidates=[{kind:'INTERSECTION',canonicalKey:'INTERSECTION:m1|m2',worldPoint:{x:493,y:75}},{kind:'NODE',canonicalKey:'NODE:n2',worldPoint:{x:500,y:75}},{kind:'NODE',canonicalKey:'NODE:n1',worldPoint:{x:500,y:75}},{kind:'NODE',canonicalKey:'',worldPoint:{x:0,y:0}}]; const draft={connections:[]}; const before=JSON.stringify(candidates); return {node:resolvePointerPoint({...base,candidates}), reversed:resolvePointerPoint({...base,candidates:[...candidates].reverse()}), endpointNearest:resolvePointerPoint({...base,candidates:[{kind:'NODE',canonicalKey:'NODE:n1',worldPoint:{x:501,y:75}},{kind:'ENDPOINT',canonicalKey:'ENDPOINT:m1:START',worldPoint:{x:494,y:75}}]}), affine:resolvePointerPoint({...base,worldPointer:{x:0,y:0},screenPointer:{x:10,y:0},viewTransform:{a:.1,b:0,c:0,d:.1,e:0,f:0},candidates:[{kind:'NODE',canonicalKey:'NODE:scaled',worldPoint:{x:200,y:0}}]}), int:resolvePointerPoint({...base,candidates:[candidates[0]]}), malformed:resolvePointerPoint({...base,candidates:[null,{kind:'NODE',canonicalKey:'bad',worldPoint:{x:493,y:75}},{kind:'NODE',canonicalKey:{toString:()=> 'NODE:coerced'},worldPoint:{x:493,y:75}},{kind:'NODE',canonicalKey:'INTERSECTION:m1|m2',worldPoint:{x:493,y:75}},{kind:'INTERSECTION',canonicalKey:'INTERSECTION:m2|m1',worldPoint:{x:493,y:75}},{kind:'INTERSECTION',canonicalKey:'XXXXXXXXXXXXXa|b',worldPoint:{x:493,y:75}}]}), outside:resolvePointerPoint({...base,screenPointer:{x:506,y:75},candidates:[candidates[0]]}), numeric:resolvePointerPoint({...base,worldPointer:{x:1000,y:500},ortho:true,candidates,explicitNumeric:true}), unchanged:before===JSON.stringify(candidates), connectionCount:draft.connections.length}; }""")
