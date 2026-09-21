@@ -413,9 +413,9 @@ def test_workspace_report_requires_an_explicit_analysis_run_selection(context, w
     page = workspace_page(user=owner, project=project)
 
     assert page.locator('#workspace-report-open').count() == 1
-    assert page.locator('#workspace-report-run').count() == 1
+    assert page.locator('#workspace-run-select').count() == 1
     assert page.locator('#workspace-report-view').count() == 1
-    assert page.locator('#workspace-report-run').input_value() == ''
+    assert page.locator('#workspace-run-select').input_value() == ''
 
 
 @pytest.mark.browser
@@ -466,13 +466,15 @@ def test_report_selection_invalidates_previously_displayed_report(context, works
     project.refresh_from_db()
     run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
     page = workspace_page(user=owner, project=project)
-    page.locator('#workspace-report-run').select_option(str(run.id))
+    page.locator('#workspace-run-select').select_option(str(run.id))
     page.locator('#workspace-report-open').click()
     page.wait_for_function("document.querySelector('#workspace-report-view h2')")
     assert '计算书资料' in page.locator('#workspace-report-view').text_content()
 
-    page.locator('#workspace-report-run').select_option('')
+    page.locator('#workspace-run-select').select_option('')
 
+    page.wait_for_function("document.querySelector('#workspace-report-view').textContent === ''")
+    page.wait_for_function("document.querySelectorAll('#workspace-report-reasoning form').length === 0")
     assert page.locator('#workspace-report-view').text_content() == ''
     assert page.locator('#workspace-report-reasoning form').count() == 0
 
@@ -726,6 +728,86 @@ def test_compare_explain_states_and_canvas_link(context, workspace_page):
     assert result['c'][0]['status'] == 'MATCH' and result['c'][0]['actual']['actual_state'] == 'MIXED'
     assert result['n']['reason'] == 'NO_PREDICTION' and result['e'][0]['text'] == '后端说明'
     assert result['f'] == '0' and result['mechanics'] == 'undefined'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_compare_explain_reachable_from_real_analysis_controls(context, workspace_page):
+    from competitions.models import CompetitionEvent
+    from tests.application.test_analysis_acceptance import save_bt01_draft
+
+    owner, project, material, section = context
+    CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
+    save_bt01_draft(owner, project, material, section)
+    page = workspace_page(user=owner, project=project)
+    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
+
+    page.locator("#workspace-analyze").click()
+    page.wait_for_function("document.querySelector('[data-result-compare]')")
+    page.locator("[data-result-compare]").click()
+    page.wait_for_function("document.querySelector('[data-result-comparison]').textContent.length > 0")
+    assert "没有绑定已完成 Prediction" in page.locator("[data-result-comparison]").text_content()
+    page.locator("[data-result-explain]").click()
+    page.wait_for_function("document.querySelector('[data-result-explanation]').textContent.length > 0")
+    assert page.locator("[data-result-explanation] [data-explanation-block]").count() > 0
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_explicit_run_refresh_selects_new_analysis_without_reload(context, workspace_page):
+    from competitions.models import CompetitionEvent
+    from tests.application.test_analysis_acceptance import save_bt01_draft
+
+    owner, project, material, section = context
+    CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
+    save_bt01_draft(owner, project, material, section)
+    page = workspace_page(user=owner, project=project)
+    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
+
+    assert page.locator("#workspace-run-select").input_value() == ""
+    page.locator("#workspace-analyze").click()
+    page.wait_for_function("document.querySelector('#workspace-run-select').value !== ''")
+    selected = page.locator("#workspace-run-select").input_value()
+    assert page.locator(f'#workspace-run-select option[value="{selected}"]').count() == 1
+    page.wait_for_function("runId => document.querySelector('#workspace-results').textContent.includes(`分析 #${runId}`)", arg=int(selected))
+    assert f"分析 #{selected}" in page.locator("#workspace-results").text_content()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_historical_explicit_run_selection_restores_all_student_artifacts(context, workspace_page):
+    from analysis.orchestration import analyze_project
+    from competitions.models import CompetitionEvent
+    from learning.models import CalculationReportReasoning, Reflection
+    from tests.application.test_analysis_acceptance import save_bt01_draft
+
+    owner, project, material, section = context
+    CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
+    save_bt01_draft(owner, project, material, section, fx_N=100.0)
+    run_one = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    save_bt01_draft(owner, project, material, section, fx_N=125.0)
+    run_two = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    save_bt01_draft(owner, project, material, section, fx_N=150.0)
+    CalculationReportReasoning.objects.create(analysis_run=run_one, created_by=owner, final_conclusion="RUN ONE REASONING")
+    CalculationReportReasoning.objects.create(analysis_run=run_two, created_by=owner, final_conclusion="RUN TWO REASONING")
+    Reflection.objects.create(analysis_run=run_one, created_by=owner, original_reasoning="RUN ONE REFLECTION")
+    Reflection.objects.create(analysis_run=run_two, created_by=owner, original_reasoning="RUN TWO REFLECTION")
+    page = workspace_page(user=owner, project=project)
+
+    for run, reasoning, reflection in [
+        (run_one, "RUN ONE REASONING", "RUN ONE REFLECTION"),
+        (run_two, "RUN TWO REASONING", "RUN TWO REFLECTION"),
+    ]:
+        page.locator("#workspace-run-select").select_option(str(run.id))
+        page.wait_for_function(
+            "runId => document.querySelector('#workspace-report-view h3')?.textContent.includes(`#${runId}`)",
+            arg=run.id,
+        )
+        assert f"分析 #{run.id}" in page.locator("#workspace-results").text_content()
+        assert "较早的模型版本" in page.locator("#workspace-results").text_content()
+        assert page.locator('#workspace-report-reasoning [name="final_conclusion"]').input_value() == reasoning
+        assert page.locator('#workspace-reflection [name="original_reasoning"]').input_value() == reflection
+        assert f"分析 #{run.id}" in page.locator("#workspace-report-view").text_content()
 
 
 @pytest.mark.browser

@@ -15,6 +15,8 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 .workspace-command { display: grid; gap: 4px; margin-top: 12px; font-weight: 700; }
 .workspace-command input { min-width: 0; padding: 7px; }
 [data-cad-command-help] { margin: 5px 0 10px; color: #536274; font-size: .82rem; }
+.workspace-result-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+[data-result-comparison], [data-result-explanation] { display: grid; gap: 6px; margin-top: 8px; }
 #workspace-canvas { width: 100%; height: 100%; min-height: 560px; background: #fbfdff; outline: 2px solid transparent; }
 #workspace-status-bar { display: flex; gap: 16px; padding: 10px 14px; background: #172033; color: #fff; font-variant-numeric: tabular-nums; }
 #workspace-report { margin-top: 16px; padding: 20px; border: 1px solid #bdc8d8; background: #fff; }

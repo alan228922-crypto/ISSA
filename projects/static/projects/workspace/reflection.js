@@ -54,7 +54,13 @@ export function createReflectionWorkspace({ urls, request = postJson, get = requ
     onChange(current);
     return current;
   };
-  return Object.freeze({ loadReflection: load, saveReflection: save, completeReflection: complete, state });
+  const useReflection = (id, reflection) => {
+    runId = Number.isInteger(id) ? id : null;
+    current = reflection;
+    onChange(current);
+    return current;
+  };
+  return Object.freeze({ loadReflection: load, saveReflection: save, completeReflection: complete, useReflection, state });
 }
 
 export function renderReflection(root, reflection, { readOnly = false, onStart = () => {}, onSave = () => {}, onComplete = () => {}, onSkip = () => {} } = {}) {

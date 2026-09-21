@@ -75,16 +75,76 @@ export function createResultsWorkspace({ urls, post = postJson, get = requestJso
       onChange(state());
       return state();
     },
+    async comparison(runId) {
+      const result = await get(urlFromTemplate(urls.comparisonTemplate, { run_id: runId }));
+      if (!result.response.ok || !result.body?.ok) throw failed(result.body);
+      return result.body.comparison;
+    },
+    async explanation(runId) {
+      const result = await get(urlFromTemplate(urls.explanationTemplate, { run_id: runId }));
+      if (!result.response.ok || !result.body?.ok) throw failed(result.body);
+      return result.body.explanation;
+    },
     state,
   });
 }
 
 export function renderLevelOne(root, view) {
   root.replaceChildren();
-  const title = document.createElement("h2"); title.textContent = "分析结果"; root.append(title);
+  const title = document.createElement("h2"); title.textContent = `分析结果 · 分析 #${view.runId}`; root.append(title);
   const status = document.createElement("p"); status.textContent = view.stale ? "当前结果对应较早的模型版本。" : "分析已完成，对应当前模型版本。"; root.append(status);
   const prediction = document.createElement("p"); prediction.textContent = view.predictionUsed ? "Prediction 已参与本次分析流程。" : "本次分析未绑定 Prediction。"; root.append(prediction);
   const maximum = document.createElement("p"); maximum.textContent = view.maximum ? `最大位移出现在 ${view.maximum.candidate_analysis_node_ids.join("、")}，大小为 ${view.maximum.maximum_displacement_mm} mm。` : "最大位移结论暂不可用。"; root.append(maximum);
   const legend = document.createElement("p"); legend.textContent = "图例：实线=受拉；虚线=受压；点划线=零杆。"; root.append(legend);
   for (const member of view.members) { const item = document.createElement("p"); item.textContent = `构件 ${member.physicalMemberClientKey}：${STATE_LABELS[member.state]}`; root.append(item); }
+}
+
+export function renderResultActions(root, { onCompare, onExplain, onReport }) {
+  const actions = document.createElement("div");
+  actions.className = "workspace-result-actions";
+  for (const [name, text, handler] of [["compare", "查看预测对比", onCompare], ["explain", "查看结果解释", onExplain], ["report", "查看计算书资料", onReport]]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset[`result${name[0].toUpperCase()}${name.slice(1)}`] = "";
+    button.textContent = text;
+    button.addEventListener("click", handler);
+    actions.append(button);
+  }
+  const comparison = document.createElement("section");
+  comparison.dataset.resultComparison = "";
+  comparison.setAttribute("aria-live", "polite");
+  const explanation = document.createElement("section");
+  explanation.dataset.resultExplanation = "";
+  explanation.setAttribute("aria-live", "polite");
+  root.append(actions, comparison, explanation);
+}
+
+export function renderComparison(root, payload, focus = () => {}) {
+  root.replaceChildren();
+  const comparison = showComparison(payload);
+  if (!Array.isArray(comparison)) {
+    const note = document.createElement("p");
+    note.textContent = comparison.text;
+    root.append(note);
+    return;
+  }
+  for (const item of comparison) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.comparisonMember = item.clientKey;
+    button.textContent = `构件 ${item.clientKey}：${item.text}`;
+    button.addEventListener("click", () => focusPhysicalMember(item.clientKey, focus));
+    root.append(button);
+  }
+}
+
+export function renderExplanation(root, payload, focus = () => {}) {
+  root.replaceChildren();
+  for (const item of showExplanation(payload)) {
+    const block = document.createElement(item.clientKey ? "button" : "p");
+    if (item.clientKey) { block.type = "button"; block.addEventListener("click", () => focusPhysicalMember(item.clientKey, focus)); }
+    block.dataset.explanationBlock = "";
+    block.textContent = item.text || "该结果块暂无进一步说明。";
+    root.append(block);
+  }
 }

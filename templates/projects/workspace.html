@@ -90,8 +90,8 @@
     <section id="workspace-report" aria-label="计算书资料">
       <h2>计算书资料</h2>
       <p>选择一次明确的分析记录后查看计算书资料。</p>
-      <label for="workspace-report-run">当前分析</label>
-      <select id="workspace-report-run"><option value="">请选择分析记录</option></select>
+      <label for="workspace-run-select">当前分析</label>
+      <select id="workspace-run-select"><option value="">请选择分析记录</option></select>
       <button id="workspace-report-open" type="button" disabled>查看计算书资料</button>
       <section id="workspace-report-view" aria-live="polite"></section>
       {% if not bootstrap.read_only %}<section id="workspace-report-reasoning" aria-label="我的设计说明"></section>{% endif %}
@@ -113,11 +113,12 @@
     import { bindPropertyPanel } from "{% static 'projects/workspace/properties.js' %}";
     import { createWorkspaceWorkflow } from "{% static 'projects/workspace/workflow.js' %}";
     import { bindPredictionWorkspace } from "{% static 'projects/workspace/prediction.js' %}";
-    import { createResultsWorkspace, renderLevelOne, showLevelOne, showEngineeringDetails, renderEngineeringDetails } from "{% static 'projects/workspace/results.js' %}";
+    import { createResultsWorkspace, renderComparison, renderExplanation, renderLevelOne, renderResultActions, showLevelOne, showEngineeringDetails, renderEngineeringDetails } from "{% static 'projects/workspace/results.js' %}";
     import { presentWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
     import { createReflectionWorkspace, renderReflection } from "{% static 'projects/workspace/reflection.js' %}";
-    import { createReportWorkspace, renderReport } from "{% static 'projects/workspace/report.js' %}";
+    import { renderReport } from "{% static 'projects/workspace/report.js' %}";
     import { bindReportReasoning } from "{% static 'projects/workspace/report-reasoning.js' %}";
+    import { createRunContext } from "{% static 'projects/workspace/run-context.js' %}";
     const bootstrap = readWorkspaceBootstrap();
     const canvas = document.getElementById("workspace-canvas");
     const state = createWorkspaceState(bootstrap);
@@ -137,18 +138,13 @@
     bindModelingInteractions({ root: document.getElementById("workspace-root"), svg: canvas, canvasController, showError, readOnly: state.readOnly });
     bindPropertyPanel({ root: document.getElementById("workspace-properties-panel"), canvasController, materials: bootstrap.materials, sections: bootstrap.sections, showError });
     const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly });
-    const resultsWorkspace = createResultsWorkspace({ urls: { analyze: bootstrap.urls.analyze, resultTemplate: bootstrap.urls.result_template } });
+    const resultsWorkspace = createResultsWorkspace({ urls: { analyze: bootstrap.urls.analyze, resultTemplate: bootstrap.urls.result_template, comparisonTemplate: bootstrap.urls.comparison_template, explanationTemplate: bootstrap.urls.explanation_template } });
     const reflectionRoot = document.getElementById("workspace-reflection");
     const reflectionWorkspace = createReflectionWorkspace({ urls: { reflectionTemplate: bootstrap.urls.reflection_template, reflectionCompleteTemplate: bootstrap.urls.reflection_complete_template }, workflow });
-    const reportSelect = document.getElementById("workspace-report-run");
+    const reportSelect = document.getElementById("workspace-run-select");
     const reportOpen = document.getElementById("workspace-report-open");
     const reportView = document.getElementById("workspace-report-view");
-    const reportWorkspace = createReportWorkspace({ urls: { runs: bootstrap.urls.analysis_runs, reportTemplate: bootstrap.urls.report_template } });
     const reasoningWorkspace = bootstrap.read_only ? null : bindReportReasoning({ root: document.getElementById("workspace-report-reasoning"), template: bootstrap.urls.reasoning_template, showError });
-    const loadReportRuns = async () => { try { const runs = await reportWorkspace.listRuns(); if (!runs.some((run) => run.status === "SUCCESS")) reportView.textContent = "还没有可用的计算书资料。请先完成一次成功分析。"; for (const run of runs) { const option = document.createElement("option"); option.value = run.analysis_run_id; option.textContent = `分析 #${run.analysis_run_id} · ${run.status} · 草稿 v${run.source_draft_version}`; reportSelect.append(option); } } catch (error) { showError(error); } };
-    reportSelect.addEventListener("change", () => { reportOpen.disabled = !reportSelect.value; reportView.replaceChildren(); reasoningWorkspace?.load(reportSelect.value ? Number(reportSelect.value) : null); });
-    reportOpen.addEventListener("click", async () => { const runId = Number(reportSelect.value); try { const report = await reportWorkspace.loadReport(runId); if (reportSelect.value !== String(runId)) return; renderReport(reportView, report); errorPanel.hidden = true; } catch (error) { showError(error); } });
-    loadReportRuns();
     const renderReflectionView = (reflection) => renderReflection(reflectionRoot, reflection, {
       readOnly: state.readOnly,
       onStart: () => renderReflectionView({ status: "DRAFT", original_reasoning: "", unexpected_results: "", next_iteration_intent: "" }),
@@ -157,7 +153,35 @@
       onSkip: () => { reflectionRoot.replaceChildren(); const note = document.createElement("p"); note.textContent = "已跳过反思，之后仍可继续编辑或分析。"; reflectionRoot.append(note); },
     });
     renderReflectionView(null);
-    document.getElementById("workspace-analyze").addEventListener("click", async () => { try { const current = canvasController.getState(); const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); const view = showLevelOne(result.run, result.data, current.draftVersion); renderLevelOne(document.getElementById("workspace-results"), view); renderEngineeringDetails(document.querySelector("[data-engineering-content]"), showEngineeringDetails(result.data.result_json), view.stale); const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, state]) => [key, { state, label: state === "TENSION" ? "受拉" : state === "COMPRESSION" ? "受压" : "零杆", color: state === "TENSION" ? "#b91c1c" : state === "COMPRESSION" ? "#1d4ed8" : "#374151", dash: state === "TENSION" ? "none" : state === "COMPRESSION" ? "10 5" : "2 4" }])); canvasController.replaceState({ ...current, resultOverlay: overlay }); renderReflectionView(await reflectionWorkspace.loadReflection(result.run.analysis_run_id)); errorPanel.hidden = true; } catch (error) { showError(error); } });
+    const resultsRoot = document.getElementById("workspace-results");
+    const focusMember = (clientKey) => { const now = canvasController.getState(); canvasController.replaceState({ ...now, selectedObject: { kind: "PHYSICAL_MEMBER", clientKey }, focusedObject: { kind: "PHYSICAL_MEMBER", clientKey } }); canvas.querySelector(`[data-client-key="${CSS.escape(clientKey)}"]`)?.focus(); };
+    const renderSelectedRun = (payload) => {
+      resultsRoot.replaceChildren(); reportView.replaceChildren(); reasoningWorkspace?.render(null, null); reflectionWorkspace.useReflection(null, null); renderReflectionView(null); reportOpen.disabled = !payload;
+      if (!payload) return;
+      if (payload.status !== "SUCCESS") { const note = document.createElement("p"); note.textContent = `分析 #${payload.metadata.analysis_run_id} 状态为 ${payload.status}，没有可展示的结果。`; resultsRoot.append(note); return; }
+      const runId = payload.metadata.analysis_run_id;
+      const current = canvasController.getState();
+      const view = showLevelOne({ analysis_run_id: runId, predictionId: payload.comparison?.comparison_available ? 0 : null }, payload.data, current.draftVersion);
+      renderLevelOne(resultsRoot, view);
+      renderResultActions(resultsRoot, {
+        onCompare: () => renderComparison(resultsRoot.querySelector("[data-result-comparison]"), payload.comparison, focusMember),
+        onExplain: () => renderExplanation(resultsRoot.querySelector("[data-result-explanation]"), payload.explanation, focusMember),
+        onReport: () => document.getElementById("workspace-report").scrollIntoView({ behavior: "smooth", block: "start" }),
+      });
+      renderEngineeringDetails(document.querySelector("[data-engineering-content]"), showEngineeringDetails(payload.data.result_json), view.stale);
+      const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, memberState]) => [key, { state: memberState, label: memberState === "TENSION" ? "受拉" : memberState === "COMPRESSION" ? "受压" : "零杆", color: memberState === "TENSION" ? "#b91c1c" : memberState === "COMPRESSION" ? "#1d4ed8" : "#374151", dash: memberState === "TENSION" ? "none" : memberState === "COMPRESSION" ? "10 5" : "2 4" }]));
+      canvasController.replaceState({ ...current, resultOverlay: overlay });
+      renderReport(reportView, payload.report);
+      reasoningWorkspace?.render(runId, payload.reasoning);
+      reflectionWorkspace.useReflection(runId, payload.reflection);
+      renderReflectionView(payload.reflection);
+      errorPanel.hidden = true;
+    };
+    const runContext = createRunContext({ urls: { runs: bootstrap.urls.analysis_runs, resultTemplate: bootstrap.urls.result_template, comparisonTemplate: bootstrap.urls.comparison_template, explanationTemplate: bootstrap.urls.explanation_template, reportTemplate: bootstrap.urls.report_template, reasoningTemplate: bootstrap.urls.reasoning_template, reflectionTemplate: bootstrap.urls.reflection_template }, select: reportSelect, editable: !bootstrap.read_only, onSelect: renderSelectedRun });
+    reportSelect.addEventListener("change", async () => { try { if (!reportSelect.value) { resultsRoot.replaceChildren(); reportView.replaceChildren(); document.getElementById("workspace-report-reasoning")?.replaceChildren(); reflectionRoot.replaceChildren(); } await runContext.selectRun(reportSelect.value ? Number(reportSelect.value) : null); } catch (error) { showError(error); } });
+    reportOpen.addEventListener("click", () => document.getElementById("workspace-report").scrollIntoView({ behavior: "smooth", block: "start" }));
+    predictionWorkspace.ready.then(() => runContext.refreshRuns()).then((runs) => { if (!runs.some((run) => run.status === "SUCCESS")) reportView.textContent = "还没有可用的计算书资料。请先完成一次成功分析。"; }).catch(showError);
+    document.getElementById("workspace-analyze").addEventListener("click", async () => { try { const current = canvasController.getState(); const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); await runContext.refreshRuns({ selectRunId: result.run.analysis_run_id }); errorPanel.hidden = true; } catch (error) { showError(error); } });
     document.getElementById("workspace-save").addEventListener("click", async () => {
       try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null }); document.getElementById("workspace-results").replaceChildren(); await predictionWorkspace.refreshDraft(next.draft); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
       catch (error) { showError(error); }

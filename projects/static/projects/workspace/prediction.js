@@ -136,7 +136,7 @@ export function bindPredictionWorkspace({ root, urls, draft, canvasController, s
   start.addEventListener("click", async () => { try { await workspace.startPrediction(); } catch (error) { showError(error); } });
   complete.addEventListener("click", async () => { try { await workspace.completePrediction(); } catch (error) { showError(error); } });
   skip.addEventListener("click", () => workspace.skipPrediction());
-  workspace.loadPrediction().catch(showError);
+  const ready = workspace.loadPrediction().catch((error) => { showError(error); return workspace.state(); });
   render(workspace.state());
-  return workspace;
+  return Object.freeze({ ...workspace, ready });
 }

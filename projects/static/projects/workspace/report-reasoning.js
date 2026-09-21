@@ -41,6 +41,12 @@ export function bindReportReasoning({ root, template, get = requestJson, post = 
     root.append(form);
   };
   return Object.freeze({
+    render(id, payload) {
+      activeRunId = Number.isInteger(id) ? id : null;
+      loadGeneration += 1;
+      if (!activeRunId || !payload?.ok || payload.analysis_run_id !== activeRunId) { renderStatus(""); return; }
+      renderEditor(activeRunId, payload.reasoning);
+    },
     async load(id) {
       activeRunId = Number.isInteger(id) ? id : null;
       const requestedRunId = activeRunId;
@@ -52,10 +58,12 @@ export function bindReportReasoning({ root, template, get = requestJson, post = 
         if (generation !== loadGeneration || requestedRunId !== activeRunId) return;
         if (!result.response.ok || !result.body?.ok || result.body.analysis_run_id !== requestedRunId) throw Object.assign(new Error(result.body?.error?.message || "加载失败"), result.body?.error);
         renderEditor(requestedRunId, result.body.reasoning);
+        return result.body;
       } catch (error) {
         if (generation !== loadGeneration || requestedRunId !== activeRunId) return;
         renderStatus("设计说明加载失败，请重新选择分析记录后重试。");
         showError(error);
+        return null;
       }
     },
   });
