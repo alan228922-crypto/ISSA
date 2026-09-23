@@ -4,7 +4,7 @@
 
 - Source of Truth: `MASTER_SPEC.md v1.12`
 - Architecture: `FINAL_FROZEN`
-- Current milestone: First POC V1 closure — **CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**
+- Current milestone: **POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**
 - Production baseline: M1–M5 complete; M6 Gates 0–5 complete on merged `main`
 - Learning flow: Build → Check → optional Prediction → Analyze → Compare / Explain → Report → optional Reasoning → optional Reflection → Iterate
 - Prediction, Reasoning, and Reflection remain non-blocking; mechanics authority remains `Truss2DSolver`
@@ -66,7 +66,7 @@ These gates do not invalidate MASTER_SPEC v1.12 or the overall final architectur
 
 ## Next Execution Point
 
-First POC V1 code closure is complete. The next mode is BUG / UX STABILIZATION and Product Owner manual browser acceptance; no new feature Gate is authorized.
+POC V1 frontend contract closure is complete with P1 remaining **0** and P2 remaining **0**. The next mode is BUG / UX STABILIZATION and Product Owner manual browser acceptance; no new feature Gate is authorized. Euler automatic product behavior remains a `SPEC_CONFLICT` success criterion blocked by O-001, not an implementation gap.
 
 Before any task, the implementer must read:
 

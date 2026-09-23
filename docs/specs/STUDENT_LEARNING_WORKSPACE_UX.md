@@ -301,3 +301,9 @@ BCG-M5-01、BCG-M5-02、BCG-M5-03 已由 Workspace read/bootstrap、current Pred
 真实 Playwright 旅程 `tests/browser/test_poc_v1_student_journey.py` 只使用公开页面与控件，覆盖 Scenario A、显式 Run 历史恢复和空白项目第一根构件。补充浏览器回归覆盖 Soft Gate、CAD 解析/捕捉、Intersection ≠ Connection、只读角色、依赖删除保护、1024px 桌面布局与技术错误折叠。
 
 Level 1 现在以“荷载 → 支座 → 传力路径”的谨慎观察顺序呈现后端事实，使用对象标签与舍入显示值；源数值仍保持不变。机器码仅位于折叠的“技术信息”中。任何不稳定提示都要求检查支座、连接、孤立节点与整体稳定性，不宣称唯一失稳机制。
+
+## 20. Frontend contract closure status（2026-09-23）
+
+状态：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**。本轮确认的前端 P1 与 P2 差距均已归零，并补入 transient CAD feedback、初学者稳定标签、MIXED 分段证据、Canvas→教学项目焦点、持久化事实流程投影、键盘视图控制与多视窗核验。所有变更停留在交互与教学呈现边界，没有修改 mechanics、idealization、postprocess 或结果 schema。
+
+Euler 自动产品行为的成功条件标记为 `SPEC_CONFLICT`，继续由 O-001 阻塞；本轮没有实现或暗示任何 K、控制轴或风险等级政策。

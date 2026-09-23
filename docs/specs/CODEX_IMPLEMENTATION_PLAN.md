@@ -12,9 +12,9 @@
 
 ## Current implementation status
 
-**First POC V1: PRODUCT-ALIGNED — MANUAL OWNER ACCEPTANCE READY.**
+**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING.**
 
-M5 — Student Learning Workspace — **COMPLETE**. M6 — Calculation Report Assistance — **COMPLETE (Gates 0–5)**. On 2026-09-21, product reconciliation added the owner-scoped Material/Section setup flow, complete visible CAD/property/delete controls, one explicit-Run learning context, beginner presentation, 1024px layout verification, and an authoritative public-control Playwright journey. Product Owner manual acceptance remains pending; policy-open exclusions are recorded in `POC_V1_KNOWN_ISSUES.md`.
+M5 — Student Learning Workspace — **COMPLETE**. M6 — Calculation Report Assistance — **COMPLETE (Gates 0–5)**. Product reconciliation and the 2026-09-23 frontend contract closure provide the owner-scoped Material/Section setup flow, complete visible CAD/property/delete controls, one explicit-Run learning context, transient CAD feedback, stable beginner labels, persisted-state workflow projection, keyboard-operable viewport controls, desktop containment, and an authoritative public-control Playwright journey. P1 remaining is **0** and P2 remaining is **0**. Product Owner manual acceptance remains pending; policy-open exclusions are recorded in `POC_V1_KNOWN_ISSUES.md`.
 
 The Lifecycle / Research / PoC grouping below is retained as historical implementation-plan content for Tasks 24–26. Those tasks are not M6 and remain a future, unfrozen candidate area after M6.
 
@@ -34,7 +34,7 @@ The Lifecycle / Research / PoC grouping below is retained as historical implemen
 - Authorization must be enforced server-side.
 - Every analysis must be traceable to immutable ModelRevision + SolverVersion + InputHash.
 - Event project operational data is purged after the 7-day grace policy; only approved anonymous derived research metrics may survive.
-- Euler automatic K behavior is blocked pending mechanics review.
+- Euler automatic K behavior is a `SPEC_CONFLICT` success criterion blocked by O-001 pending mechanics review; this frontend closure does not implement it.
 - P0 ROLLER restrains global X or Y only; arbitrary-angle support is out of scope.
 - No Frame/3D/nonlinear/optimization/microservice/CQRS/event-sourcing scope in P0.
 

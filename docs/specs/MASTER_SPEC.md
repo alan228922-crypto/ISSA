@@ -9,7 +9,7 @@
 - 核准日期：2026-09-10
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
 - P0 核心分析類型：`TRUSS_2D`
-- First POC V1：**CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**（2026-09-20）
+- First POC V1：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**（2026-09-23）
 
 > 本文件已由 Product Owner 指示執行升格，作為目前專案唯一最高層級 Source of Truth。
 >
@@ -2248,3 +2248,21 @@ POC V1 已以真实浏览器公开控件完成纵向验收：Login → Events �
 - 1024×900 桌面布局、初学者错误层级与报告表格溢出均有浏览器回归。
 
 本记录不关闭 O-001、O-003、O-004、O-005、O-006 或 T-M6-001/002/003，不增加 Euler 自动判断、复合截面重叠编辑、任意角 Roller、导出或 AI 力学权威。
+
+---
+
+# 50. POC V1 Frontend Contract Closure Record（2026-09-23）
+
+【Verified Frontend Reconciliation Record — does not change mechanics policy】
+
+状态：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**。
+
+本次闭合补齐 transient 构件预览与 SNAP 标记、未连接交叉警告、统一 Esc 取消、稳定学生标签、MIXED 分段证据、Canvas 到既有 Result / Compare / Explain 项目的焦点联动、由持久化事实投影的学习流程，以及键盘平移、缩放、Fit 与状态语义。公开控件学生旅程与 1024×768、1280×800、1440×900 视窗均完成自动化或人工视觉核验。
+
+- P1 remaining：**0**
+- P2 remaining：**0**
+- Critical / Important automated findings：**0 / 0**
+- Mechanics formulas、solver、idealization、postprocess 与 result schema：**unchanged**
+- Euler automatic product success criterion：`SPEC_CONFLICT`，受 O-001 阻塞；O-001 保持 open，未推断 K、未选择控制轴、未增加风险等级或相关教学结论。
+
+此记录只表示前端产品契约与自动化验收闭合；真实设备上的 Product Owner 人工验收仍待完成。

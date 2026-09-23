@@ -218,7 +218,7 @@ Keep platform facts separate from student-authored reasoning and preserve Reflec
 
 Verify AnalysisRun binding, historical `STALE` behavior, provenance, authorization, student-authored boundaries, and the absence of mechanics duplication.
 
-First POC V1 is **CODE COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**. Automated acceptance covers the explicit-Run Report/Reasoning flow, historical isolation, authorization, failure boundaries, purge, and full regression. It does not close the Post-PoC decisions above or authorize deferred features.
+First POC V1 is **POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**. Automated acceptance covers the explicit-Run Report/Reasoning flow, historical isolation, authorization, failure boundaries, purge, and full regression. It does not close the Post-PoC decisions above or authorize deferred features.
 
 ## 11. Product reconciliation verification（2026-09-21）
 

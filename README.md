@@ -1,6 +1,6 @@
 # 校内结构设计学习平台 — POC V1
 
-当前状态：**PRODUCT-ALIGNED — MANUAL OWNER ACCEPTANCE READY**。
+当前状态：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**。
 
 这是一个 Django + Vanilla JavaScript 的 Truss-first 教学 POC。P0 仅支持二维线弹性、小位移、铰接、轴向受力桁架；单位为 mm / N / MPa / g。浏览器负责交互与呈现，所有授权、版本、分析和力学事实由服务端及纯 Python mechanics 层保持权威。
 

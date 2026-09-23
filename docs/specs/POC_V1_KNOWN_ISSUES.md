@@ -2,10 +2,11 @@
 
 ## Closure status
 
-- First POC V1: **PRODUCT-ALIGNED — MANUAL OWNER ACCEPTANCE READY**
+- First POC V1: **POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**
 - Automated Critical defects: **0**
 - Automated Important defects: **0**
-- Recommended next mode: **MANUAL OWNER ACCEPTANCE**
+- Frontend reconciliation gaps: **P1 0 / P2 0**
+- Recommended next mode: **MANUAL PRODUCT ACCEPTANCE**
 
 ## Known issues
 
@@ -18,7 +19,7 @@ No reproducible Critical or Important production defect remains in the automated
 
 ## Out of scope for POC V1
 
-- Euler / Buckling automatic reporting is unavailable. O-001 remains **POST-POC / OPEN**.
+- Euler / Buckling automatic reporting is unavailable. Its automatic-product success criterion is `SPEC_CONFLICT`, blocked by O-001, which remains **POST-POC / OPEN**; this closure does not infer K, choose a controlling axis, or add risk bands.
 - PDF, DOCX, and Excel export were not implemented.
 - Advanced CAD, arbitrary-angle Roller, Frame2D, 3D, nonlinear mechanics, and a new optimization engine were not implemented.
 - AI-generated report reasoning, AI scoring, reviewer workflow, teacher approval workflow, and new lifecycle states were not implemented.
@@ -39,3 +40,6 @@ These are deliberate scope exclusions, not defects.
 - two-Run historical isolation and stale labeling;
 - beginner result/error presentation and 1024×900 desktop containment;
 - Login-to-history Playwright journey using public controls only.
+- frontend contract closure checks for transient CAD preview/SNAP feedback, stable student labels, MIXED evidence, persisted-state workflow projection, keyboard pan/zoom/Fit, and 1024/1280/1440 viewport containment.
+
+No mechanics formula, solver, idealization, postprocess, or result-schema behavior changed in the frontend contract closure.
