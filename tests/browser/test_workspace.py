@@ -1119,21 +1119,70 @@ def test_historical_level_one_uses_revision_snapshot_labels_and_no_stale_overlay
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_workflow_progress_tracks_soft_optional_stages(context, workspace_page):
-    owner, project, _, _ = context
+def test_workflow_progress_projects_persisted_state_and_never_double_activates(context, workspace_page):
+    """Reintroducing click-history setters or treating stale runs as current must fail."""
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
     result = page.evaluate("""async () => {
-      const { createWorkflowProgress } = await import('/static/projects/workspace/workflow-progress.js');
-      const root = document.querySelector('#workspace-workflow-steps');
-      const progress = createWorkflowProgress(root);
-      const snap = () => Object.fromEntries([...root.querySelectorAll('[data-workflow-step]')].map(x => [x.dataset.workflowStep,x.dataset.state]));
-      const initial=snap(); progress.saved(); const saved=snap(); progress.prediction('SKIPPED'); progress.analyzed(); const analyzed=snap(); progress.understood(); progress.reflection('COMPLETED');
-      return {initial,saved,analyzed,final:snap()};
+      const { projectWorkflow } = await import('/static/projects/workspace/workflow-progress.js');
+      const blank={version:0,physical_members:[]};
+      const saved={version:3,physical_members:[{client_key:'m1',is_active:true}]};
+      const cases={
+        blank:projectWorkflow({draft:blank,prediction:{state:'NONE'},runs:[]}),
+        saved:projectWorkflow({draft:saved,prediction:{state:'NONE'},runs:[]}),
+        predicted:projectWorkflow({draft:saved,prediction:{state:'COMPLETED'},runs:[]}),
+        analyzed:projectWorkflow({draft:saved,prediction:{state:'NONE'},runs:[{status:'SUCCESS',source_draft_version:3,is_stale:false}]}),
+        staleOnly:projectWorkflow({draft:saved,prediction:{state:'NONE'},runs:[{status:'SUCCESS',source_draft_version:2,is_stale:true}]}),
+        reflected:projectWorkflow({draft:saved,prediction:{state:'COMPLETED'},runs:[{status:'SUCCESS',source_draft_version:3,is_stale:false}],selectedRun:{status:'SUCCESS',source_draft_version:3,is_stale:false},reflection:{status:'COMPLETED'}}),
+      };
+      return {cases,activeCounts:Object.fromEntries(Object.entries(cases).map(([name,state])=>[name,Object.values(state).filter(value=>value.startsWith('active')).length]))};
     }""")
-    assert result['initial'] == {'model':'active','prediction':'optional','analysis':'pending','understanding':'pending','reflection':'optional'}
-    assert result['saved']['model'] == 'completed' and result['saved']['prediction'] == 'active-optional'
-    assert result['analyzed']['analysis'] == 'completed' and result['analyzed']['understanding'] == 'active'
-    assert result['final']['understanding'] == 'completed' and result['final']['reflection'] == 'completed'
+    assert result['cases']['blank'] == {'model':'active','prediction':'optional','analysis':'pending','understanding':'pending','reflection':'optional'}
+    assert result['cases']['saved']['model'] == 'completed' and result['cases']['saved']['prediction'] == 'active-optional' and result['cases']['saved']['analysis'] == 'available'
+    assert result['cases']['predicted']['prediction'] == 'completed' and result['cases']['predicted']['analysis'] == 'active'
+    assert result['cases']['analyzed']['analysis'] == 'completed' and result['cases']['analyzed']['understanding'] == 'active'
+    assert result['cases']['staleOnly']['analysis'] == 'available' and result['cases']['staleOnly']['understanding'] == 'pending'
+    assert result['cases']['reflected']['reflection'] == 'completed' and result['cases']['reflected']['understanding'] == 'completed'
+    assert all(count <= 1 for count in result['activeCounts'].values())
+
+    page.reload()
+    page.wait_for_function("document.querySelector('[data-workflow-step=prediction]').dataset.state === 'active-optional'")
+    assert page.locator('[data-workflow-step][aria-current="step"]').count() == 1
+    assert page.locator('[data-workflow-step="model"]').get_attribute('data-state') == 'completed'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_canvas_keyboard_pan_zoom_fit_and_status_semantics(context, workspace_page):
+    """Removing any keyboard view path or status semantics must fail."""
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    canvas = page.locator('#workspace-canvas')
+    canvas.focus()
+    before_pan = canvas.locator('[data-world-layer]').get_attribute('transform')
+    page.keyboard.press('ArrowRight')
+    after_pan = canvas.locator('[data-world-layer]').get_attribute('transform')
+    assert after_pan != before_pan
+
+    zoom_in = page.get_by_role('button', name='放大画布')
+    zoom_in.focus()
+    page.keyboard.press('Enter')
+    after_zoom_in = canvas.locator('[data-world-layer]').get_attribute('transform')
+    assert after_zoom_in != after_pan
+    zoom_out = page.get_by_role('button', name='缩小画布')
+    zoom_out.focus()
+    page.keyboard.press('Enter')
+    assert canvas.locator('[data-world-layer]').get_attribute('transform') != after_zoom_in
+
+    fit = page.get_by_role('button', name='显示全图')
+    fit.focus()
+    page.keyboard.press('Enter')
+    assert page.evaluate("document.activeElement === document.querySelector('[data-cad-fit]')") is True
+    assert canvas.get_attribute('tabindex') == '0'
+    assert page.locator('#workspace-status-bar').get_attribute('role') == 'status'
+    assert page.locator('[data-modeling-instruction]').get_attribute('role') == 'status'
 
 
 @pytest.mark.browser

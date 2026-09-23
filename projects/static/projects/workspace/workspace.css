@@ -11,7 +11,7 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 #workspace-workflow-panel { border-left: 1px solid #bdc8d8; }
 .workspace-tool-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .workspace-tool-list [data-active="true"] { background: #0759c7; color: #fff; }
-.workspace-cad-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.workspace-cad-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
 .workspace-cad-controls button { padding: 6px 3px; font-size: .78rem; }
 .workspace-cad-controls [aria-pressed="true"] { background: #0759c7; color: #fff; }
 .workspace-command { display: grid; gap: 4px; margin-top: 12px; font-weight: 700; }
@@ -40,6 +40,7 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 #workspace-error { margin: 12px 0; padding: 12px; border: 1px solid #b54708; background: #fff8eb; }
 #workspace-error h3 { margin-top: 0; }
 button:focus-visible, input:focus-visible, #workspace-canvas:focus-visible { outline: 3px solid #0759c7; outline-offset: 2px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 button:disabled { cursor: not-allowed; opacity: .6; }
 @media (max-width: 1100px) {
   .workspace-layout { grid-template-columns: 210px minmax(0, 1fr) 230px; }

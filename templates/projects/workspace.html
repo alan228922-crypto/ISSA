@@ -31,7 +31,9 @@
           <div class="workspace-cad-controls" role="toolbar" aria-label="CAD 辅助">
             <button type="button" data-cad-ortho aria-pressed="false">ORTHO 正交</button>
             <button type="button" data-cad-snap aria-pressed="true">SNAP 捕捉</button>
-            <button type="button" data-cad-fit>Fit 全图</button>
+            <button type="button" data-cad-zoom-in aria-label="放大画布">放大 +</button>
+            <button type="button" data-cad-zoom-out aria-label="缩小画布">缩小 −</button>
+            <button type="button" data-cad-fit aria-label="显示全图">Fit 全图</button>
           </div>
           <label class="workspace-command">坐标命令
             <input type="text" data-cad-command-input inputmode="decimal" autocomplete="off" placeholder="1000,500 / @1000,0 / 1000&lt;30">
@@ -41,7 +43,7 @@
             <label>角度 (°)<input type="number" step="any" data-cad-angle disabled></label>
           </div>
           <p data-cad-command-help>节点或构件工具中输入绝对、相对或极坐标；构件也可输入距离和角度。Enter 确认，Tab 切换，Esc 取消。</p>
-          <p data-modeling-instruction aria-live="polite">选择工具已启用。</p>
+          <p data-modeling-instruction role="status" aria-live="polite">选择工具已启用。</p>
           <fieldset class="workspace-member-properties">
             <legend>新构件属性</legend>
             <label>材料
@@ -65,7 +67,8 @@
         </section>
       </aside>
       <section class="workspace-center" aria-label="结构画布">
-        <svg id="workspace-canvas" role="img" aria-label="结构画布" viewBox="0 0 1000 600"></svg>
+        <svg id="workspace-canvas" role="img" tabindex="0" aria-label="结构画布；使用方向键平移，使用放大、缩小和全图按钮调整视图" aria-describedby="workspace-canvas-keyboard-help" viewBox="0 0 1000 600"></svg>
+        <p id="workspace-canvas-keyboard-help" class="visually-hidden">画布取得焦点后，可使用方向键平移；使用放大、缩小和全图按钮调整视图。</p>
       </section>
       <aside id="workspace-workflow-panel" aria-label="学习流程">
         <h2>学习流程</h2>
@@ -100,7 +103,7 @@
       <section id="workspace-report-view" aria-live="polite"></section>
       {% if not bootstrap.read_only %}<section id="workspace-report-reasoning" aria-label="我的设计说明"></section>{% endif %}
     </section>
-    <footer id="workspace-status-bar" aria-live="polite">
+    <footer id="workspace-status-bar" role="status" aria-label="建模状态" aria-live="polite" aria-atomic="false">
       <span id="workspace-pointer-x">X: —</span><span id="workspace-pointer-y">Y: —</span><span id="workspace-delta-length">ΔL: —</span><span id="workspace-angle">Angle: —</span>
       <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 开 · 捕捉: 无</span>
       <span id="workspace-save-status">未保存修改：无</span>
@@ -137,14 +140,17 @@
       const rect = canvas.getBoundingClientRect();
       canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(current.draft), viewport: { width: rect.width, height: rect.height } });
     });
+    const zoomCanvas = (factor) => canvasController.dispatchViewEvent({ type: "ZOOM", factor, anchorScreen: { x: 500, y: 300 } });
+    document.querySelector("[data-cad-zoom-in]")?.addEventListener("click", () => zoomCanvas(1.25));
+    document.querySelector("[data-cad-zoom-out]")?.addEventListener("click", () => zoomCanvas(0.8));
     const workflow = createWorkspaceWorkflow({ urls: bootstrap.urls });
     const errorPanel = document.getElementById("workspace-error");
     const issuePanel = document.getElementById("workspace-check-issues");
     const showError = (error) => renderWorkspaceError(errorPanel, error);
-    const workflowProgress = createWorkflowProgress(document.getElementById("workspace-workflow-steps"));
+    const workflowProgress = createWorkflowProgress(document.getElementById("workspace-workflow-steps"), { draft: state.draft });
     bindModelingInteractions({ root: document.getElementById("workspace-root"), svg: canvas, canvasController, showError, readOnly: state.readOnly });
     bindPropertyPanel({ root: document.getElementById("workspace-properties-panel"), canvasController, materials: bootstrap.materials, sections: bootstrap.sections, showError });
-    const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly, onStateChange: (view) => workflowProgress.prediction(view.state === "COMPLETED" ? "COMPLETED" : view.skipped ? "SKIPPED" : view.state) });
+    const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly, onStateChange: (view) => workflowProgress.project({ prediction: view }) });
     const resultsWorkspace = createResultsWorkspace({ urls: { analyze: bootstrap.urls.analyze, resultTemplate: bootstrap.urls.result_template, comparisonTemplate: bootstrap.urls.comparison_template, explanationTemplate: bootstrap.urls.explanation_template } });
     const reflectionRoot = document.getElementById("workspace-reflection");
     const reflectionWorkspace = createReflectionWorkspace({ urls: { reflectionTemplate: bootstrap.urls.reflection_template, reflectionCompleteTemplate: bootstrap.urls.reflection_complete_template }, workflow });
@@ -152,7 +158,7 @@
     const reportOpen = document.getElementById("workspace-report-open");
     const reportView = document.getElementById("workspace-report-view");
     const reasoningWorkspace = bootstrap.read_only ? null : bindReportReasoning({ root: document.getElementById("workspace-report-reasoning"), template: bootstrap.urls.reasoning_template, showError });
-    const renderReflectionView = (reflection) => { workflowProgress.reflection(reflection?.status || null); renderReflection(reflectionRoot, reflection, {
+    const renderReflectionView = (reflection) => { workflowProgress.project({ reflection }); renderReflection(reflectionRoot, reflection, {
       readOnly: state.readOnly,
       onStart: () => renderReflectionView({ status: "DRAFT", original_reasoning: "", unexpected_results: "", next_iteration_intent: "" }),
       onSave: async (fields) => { try { renderReflectionView(await reflectionWorkspace.saveReflection(fields)); errorPanel.hidden = true; } catch (error) { showError(error); } },
@@ -174,7 +180,7 @@
       target.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     const renderSelectedRun = (payload) => {
-      resultsRoot.replaceChildren(); reportView.replaceChildren(); document.querySelector("[data-engineering-content]").replaceChildren(); reasoningWorkspace?.render(null, null); reflectionWorkspace.useReflection(null, null); renderReflectionView(null); reportOpen.disabled = !payload;
+      resultsRoot.replaceChildren(); reportView.replaceChildren(); document.querySelector("[data-engineering-content]").replaceChildren(); reasoningWorkspace?.render(null, null); reflectionWorkspace.useReflection(null, null); workflowProgress.project({ selectedRun: payload?.metadata || null, reflection: payload?.reflection || null }); renderReflectionView(null); reportOpen.disabled = !payload;
       const previous = canvasController.getState();
       if (previous.resultOverlay) canvasController.replaceState({ ...previous, resultOverlay: null });
       if (!payload) return;
@@ -186,8 +192,8 @@
       const view = showLevelOne({ analysis_run_id: runId, predictionId: payload.comparison?.comparison_available ? 0 : null }, payload.data, current.draftVersion, snapshot);
       renderLevelOne(resultsRoot, view, focusMember);
       renderResultActions(resultsRoot, {
-        onCompare: () => { renderComparison(resultsRoot.querySelector("[data-result-comparison]"), payload.comparison, focusMember, labels); workflowProgress.understood(); },
-        onExplain: () => { renderExplanation(resultsRoot.querySelector("[data-result-explanation]"), payload.explanation, focusMember, labels); workflowProgress.understood(); },
+        onCompare: () => renderComparison(resultsRoot.querySelector("[data-result-comparison]"), payload.comparison, focusMember, labels),
+        onExplain: () => renderExplanation(resultsRoot.querySelector("[data-result-explanation]"), payload.explanation, focusMember, labels),
         onReport: () => document.getElementById("workspace-report").scrollIntoView({ behavior: "smooth", block: "start" }),
       });
       renderEngineeringDetails(document.querySelector("[data-engineering-content]"), showEngineeringDetails(payload.data.result_json), view.stale);
@@ -197,16 +203,15 @@
       reasoningWorkspace?.render(runId, payload.reasoning);
       reflectionWorkspace.useReflection(runId, payload.reflection);
       renderReflectionView(payload.reflection);
-      workflowProgress.analyzed();
       errorPanel.hidden = true;
     };
-    const runContext = createRunContext({ urls: { runs: bootstrap.urls.analysis_runs, resultTemplate: bootstrap.urls.result_template, comparisonTemplate: bootstrap.urls.comparison_template, explanationTemplate: bootstrap.urls.explanation_template, reportTemplate: bootstrap.urls.report_template, reasoningTemplate: bootstrap.urls.reasoning_template, reflectionTemplate: bootstrap.urls.reflection_template }, select: reportSelect, editable: !bootstrap.read_only, onSelect: renderSelectedRun });
+    const runContext = createRunContext({ urls: { runs: bootstrap.urls.analysis_runs, resultTemplate: bootstrap.urls.result_template, comparisonTemplate: bootstrap.urls.comparison_template, explanationTemplate: bootstrap.urls.explanation_template, reportTemplate: bootstrap.urls.report_template, reasoningTemplate: bootstrap.urls.reasoning_template, reflectionTemplate: bootstrap.urls.reflection_template }, select: reportSelect, editable: !bootstrap.read_only, onSelect: renderSelectedRun, onRunsChange: (runs) => workflowProgress.project({ runs }) });
     reportSelect.addEventListener("change", async () => { try { if (!reportSelect.value) { resultsRoot.replaceChildren(); reportView.replaceChildren(); document.getElementById("workspace-report-reasoning")?.replaceChildren(); reflectionRoot.replaceChildren(); } await runContext.selectRun(reportSelect.value ? Number(reportSelect.value) : null); } catch (error) { showError(error); } });
     reportOpen.addEventListener("click", () => document.getElementById("workspace-report").scrollIntoView({ behavior: "smooth", block: "start" }));
     predictionWorkspace.ready.then(() => runContext.refreshRuns()).then((runs) => { if (!runs.some((run) => run.status === "SUCCESS")) reportView.textContent = "还没有可用的计算书资料。请先完成一次成功分析。"; }).catch(showError);
-    document.getElementById("workspace-analyze").addEventListener("click", async () => { try { const current = canvasController.getState(); const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); await runContext.refreshRuns({ selectRunId: result.run.analysis_run_id }); workflowProgress.analyzed(); errorPanel.hidden = true; } catch (error) { showError(error); } });
+    document.getElementById("workspace-analyze").addEventListener("click", async () => { try { const current = canvasController.getState(); const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); await runContext.refreshRuns({ selectRunId: result.run.analysis_run_id }); errorPanel.hidden = true; } catch (error) { showError(error); } });
     document.getElementById("workspace-save").addEventListener("click", async () => {
-      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null }); document.getElementById("workspace-results").replaceChildren(); await predictionWorkspace.refreshDraft(next.draft); workflowProgress.saved(); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
+      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null }); workflowProgress.project({ draft: next.draft, selectedRun: null, reflection: null }); document.getElementById("workspace-results").replaceChildren(); await predictionWorkspace.refreshDraft(next.draft); await runContext.refreshRuns(); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
       catch (error) { showError(error); }
     });
     document.getElementById("workspace-model-check").addEventListener("click", async () => {

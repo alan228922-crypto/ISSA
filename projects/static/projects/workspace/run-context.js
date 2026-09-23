@@ -20,7 +20,7 @@ async function optionalReflection(get, url, { deniedAsEmpty = false } = {}) {
   return result.body;
 }
 
-export function createRunContext({ urls, select, editable = true, get = requestJson, onSelect = () => {} }) {
+export function createRunContext({ urls, select, editable = true, get = requestJson, onSelect = () => {}, onRunsChange = () => {} }) {
   let current = Object.freeze({ runs: Object.freeze([]), currentRunId: null, selectionToken: 0, payload: null });
   const state = () => current;
   const replaceOptions = (runs) => {
@@ -82,6 +82,7 @@ export function createRunContext({ urls, select, editable = true, get = requestJ
     const runs = Object.freeze([...(result.runs || [])].map((run) => Object.freeze({ ...run })));
     current = Object.freeze({ ...current, runs });
     replaceOptions(runs);
+    onRunsChange(runs);
     if (Number.isInteger(selectRunId) && runs.some((run) => run.analysis_run_id === selectRunId)) return selectRun(selectRunId);
     select.value = "";
     return runs;

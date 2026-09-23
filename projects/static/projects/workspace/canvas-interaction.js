@@ -140,6 +140,8 @@ export function bindCanvasInteractions(svg, initialState, render) {
   svg.addEventListener("focusin", (event) => select(selectionFromElement(event.target), false));
   svg.addEventListener("keydown", (event) => {
     if (event.key === "Enter") select(selectionFromElement(event.target));
+    const delta = { ArrowLeft: { x: -24, y: 0 }, ArrowRight: { x: 24, y: 0 }, ArrowUp: { x: 0, y: -24 }, ArrowDown: { x: 0, y: 24 } }[event.key];
+    if (event.target === svg && delta) { event.preventDefault(); dispatchViewEvent({ type: "PAN", deltaScreen: delta }); }
   });
   svg.addEventListener("wheel", (event) => {
     event.preventDefault();
