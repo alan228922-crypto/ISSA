@@ -1,11 +1,12 @@
 import { requestJson, postJson, urlFromTemplate } from "./api.js";
 import { normalizeApiError } from "./errors.js";
+import { createStudentLabelResolver } from "./labels.js";
 
-const STATE_LABELS = Object.freeze({ TENSION: "受拉", COMPRESSION: "受压", ZERO: "零杆", ZERO_FORCE: "零杆" });
-const COMPARISON_LABELS = Object.freeze({ MATCH: "预测与分析结果一致。", MISMATCH: "预测与分析结果不同。", UNSURE: "学生原本选择“不确定”。", NOT_COMPARABLE: "当前项目没有可直接比较的结果。" });
+const STATE_LABELS = Object.freeze({ TENSION: "受拉", COMPRESSION: "受压", ZERO: "近似零力", ZERO_FORCE: "近似零力", MIXED: "不同分析段的受力状态不同" });
+const COMPARISON_LABELS = Object.freeze({ MATCH: "和预测一致", MISMATCH: "和预测不同", UNSURE: "之前选择“不确定”", NOT_COMPARABLE: "暂不比较" });
 
 export function showComparison(comparison) {
-  if (!comparison?.comparison_available) return Object.freeze({ reason: "NO_PREDICTION", text: "本次分析没有绑定已完成 Prediction。" });
+  if (!comparison?.comparison_available) return Object.freeze({ reason: "NO_PREDICTION", text: "未进行预测，仍可查看分析说明。" });
   return (comparison.member_comparisons || []).map((item) => Object.freeze({ clientKey: item.physical_member_client_key, status: item.comparison_status, text: COMPARISON_LABELS[item.comparison_status] || "", actual: item.actual }));
 }
 
@@ -29,7 +30,7 @@ export function showEngineeringDetails(resultJson) {
 
 export function renderEngineeringDetails(root, details, stale = false) {
   const table = (title, headings, rows) => { const section = document.createElement("section"); const h = document.createElement("h3"); h.textContent = title; section.append(h); const t = document.createElement("table"); const head = document.createElement("tr"); headings.forEach((x) => { const th=document.createElement("th"); th.textContent=x; head.append(th); }); t.append(head); rows.forEach((row) => { const tr=document.createElement("tr"); row.forEach((x) => { const td=document.createElement("td"); td.textContent=x == null ? "—" : String(x); tr.append(td); }); t.append(tr); }); section.append(t); return section; };
-  root.replaceChildren(); const note=document.createElement("p"); note.textContent=stale ? "当前结果对应较早的模型版本。" : "工程详情对应当前模型版本。"; root.append(note);
+  root.replaceChildren(); const note=document.createElement("p"); note.textContent=stale ? "这份工程数据对应较早的模型版本，不能代表当前草稿。请重新分析当前模型，才能得到当前结果。" : "工程详情对应当前模型版本。"; root.append(note);
   root.append(table("节点位移",["分析节点","ux (mm)","uy (mm)"],details.displacements.map((x)=>[x.analysis_node_id,x.ux_mm,x.uy_mm])));
   root.append(table("支座反力",["分析节点","Rx (N)","Ry (N)"],details.reactions.map((x)=>[x.analysis_node_id,x.rx_N,x.ry_N])));
   root.append(table("构件工程数据",["分析段","实体杆件","轴力 (N)","应力 (MPa)","质量 (g)"],details.members.map((x)=>[x.analysis_member_id,x.physical_member_id,x.axial_force_N,x.axial_stress_MPa,x.mass_g])));
@@ -44,20 +45,11 @@ function failed(body) {
 }
 
 export function showLevelOne(run, data, currentDraftVersion, draft = null) {
-  const memberLabels = new Map((draft?.physical_members || []).map((member) => {
-    const key = member.client_key || member.id;
-    return [key, member.label?.trim() || `构件 ${key}`];
-  }));
-  const connectionLabels = new Map((draft?.connections || []).map((connection) => {
-    const key = connection.client_key || connection.id;
-    const nodeKey = connection.geometry_node_client_key || connection.geometry_node_id;
-    const node = (draft?.nodes || []).find((item) => (item.client_key || item.id) === nodeKey);
-    return [key, node?.label?.trim() ? `连接 ${node.label}` : `连接 ${key}`];
-  }));
+  const labels = createStudentLabelResolver(draft || {});
   const members = (data?.result_json?.member_results || []).flatMap((item) => {
     if (!item?.physical_member_id || !STATE_LABELS[item.state]) return [];
     const member = { physicalMemberClientKey: item.physical_member_id, state: item.state };
-    if (draft) member.displayLabel = memberLabels.get(item.physical_member_id) || `构件 ${item.physical_member_id}`;
+    if (draft) member.displayLabel = labels.label("PHYSICAL_MEMBER", item.physical_member_id);
     return [member];
   });
   const states = new Map();
@@ -71,7 +63,7 @@ export function showLevelOne(run, data, currentDraftVersion, draft = null) {
       ...data.level_one.maximum_displacement,
       ...(draft ? { displayCandidateLabels: (data.level_one.maximum_displacement.candidate_analysis_node_ids || []).map((id) => {
         const key = String(id).replace(/^connection:/, "");
-        return connectionLabels.get(key) || `连接 ${key}`;
+        return labels.label("CONNECTION", key);
       }) } : {}),
     } : null,
     members,
@@ -107,11 +99,11 @@ export function createResultsWorkspace({ urls, post = postJson, get = requestJso
   });
 }
 
-export function renderLevelOne(root, view) {
+export function renderLevelOne(root, view, focus = () => {}) {
   root.replaceChildren();
   const title = document.createElement("h2"); title.textContent = `分析结果 · 分析 #${view.runId}`; root.append(title);
-  const status = document.createElement("p"); status.textContent = view.stale ? "当前结果对应较早的模型版本。" : "分析已完成，对应当前模型版本。"; root.append(status);
-  const prediction = document.createElement("p"); prediction.textContent = view.predictionUsed ? "Prediction 已参与本次分析流程。" : "本次分析未绑定 Prediction。"; root.append(prediction);
+  const status = document.createElement("p"); status.textContent = view.stale ? "这份分析结果对应较早的模型版本，不能代表当前草稿。请重新分析当前模型，才能得到当前结果。" : "分析已完成，对应当前模型版本。"; root.append(status);
+  const prediction = document.createElement("p"); prediction.textContent = view.predictionUsed ? "预测已参与本次分析流程。" : "本次分析未使用预测。"; root.append(prediction);
   const guidance = document.createElement("p"); guidance.textContent = "观察建议：先看荷载如何进入结构，再看支座如何约束整体运动，最后沿构件观察传力路径；这些提示不替代模型检查。"; root.append(guidance);
   const maximum = document.createElement("p");
   if (view.maximum) {
@@ -122,9 +114,15 @@ export function renderLevelOne(root, view) {
   root.append(maximum);
   const counts = { TENSION: 0, COMPRESSION: 0, ZERO: 0 };
   for (const member of view.members) counts[member.state === "ZERO_FORCE" ? "ZERO" : member.state] = (counts[member.state === "ZERO_FORCE" ? "ZERO" : member.state] || 0) + 1;
-  const summary = document.createElement("p"); summary.textContent = `受力状态概览：受拉 ${counts.TENSION}；受压 ${counts.COMPRESSION}；零杆 ${counts.ZERO}。`; root.append(summary);
-  const legend = document.createElement("p"); legend.textContent = "图例：实线=受拉；虚线=受压；点划线=零杆。"; root.append(legend);
-  for (const member of view.members) { const item = document.createElement("p"); item.textContent = `${member.displayLabel || `构件 ${member.physicalMemberClientKey}`}：${STATE_LABELS[member.state]}`; root.append(item); }
+  const summary = document.createElement("p"); summary.textContent = `受力状态概览：受拉 ${counts.TENSION}；受压 ${counts.COMPRESSION}；近似零力 ${counts.ZERO}。`; root.append(summary);
+  const legend = document.createElement("p"); legend.textContent = "图例：实线=受拉；虚线=受压；点划线=近似零力。"; root.append(legend);
+  for (const member of view.members) {
+    const item = document.createElement("button"); item.type = "button";
+    item.dataset.teachingMember = member.physicalMemberClientKey;
+    item.textContent = `${member.displayLabel || "构件"}：${STATE_LABELS[member.state]}`;
+    item.addEventListener("click", () => focusPhysicalMember(member.physicalMemberClientKey, focus));
+    root.append(item);
+  }
 }
 
 export function renderResultActions(root, { onCompare, onExplain, onReport }) {
@@ -147,7 +145,21 @@ export function renderResultActions(root, { onCompare, onExplain, onReport }) {
   root.append(actions, comparison, explanation);
 }
 
-export function renderComparison(root, payload, focus = () => {}) {
+function appendMixedEvidence(root, item) {
+  if (item.actual?.actual_state !== "MIXED") return;
+  const explanation = document.createElement("p");
+  explanation.textContent = "一根实际构件在分析模型中可能被分成多个分析段，这些分析段的受力状态并不完全相同。";
+  const list = document.createElement("ul");
+  for (const [index, segment] of (item.actual.segments || []).entries()) {
+    const evidence = document.createElement("li");
+    const force = Number.isFinite(segment.axial_force_N) ? `，轴力 ${segment.axial_force_N} N` : "";
+    evidence.textContent = `分析段 ${index + 1}：${STATE_LABELS[segment.teaching_state] || "状态暂不可用"}${force}。`;
+    list.append(evidence);
+  }
+  root.append(explanation, list);
+}
+
+export function renderComparison(root, payload, focus = () => {}, labels = createStudentLabelResolver()) {
   root.replaceChildren();
   const comparison = showComparison(payload);
   if (!Array.isArray(comparison)) {
@@ -157,20 +169,25 @@ export function renderComparison(root, payload, focus = () => {}) {
     return;
   }
   for (const item of comparison) {
+    const section = document.createElement("section");
+    section.dataset.comparisonEvidenceMember = item.clientKey;
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.comparisonMember = item.clientKey;
-    button.textContent = `构件 ${item.clientKey}：${item.text}`;
+    button.dataset.teachingMember = item.clientKey;
+    button.textContent = `${labels.label("PHYSICAL_MEMBER", item.clientKey)}：${item.text}`;
     button.addEventListener("click", () => focusPhysicalMember(item.clientKey, focus));
-    root.append(button);
+    section.append(button);
+    appendMixedEvidence(section, item);
+    root.append(section);
   }
 }
 
-export function renderExplanation(root, payload, focus = () => {}) {
+export function renderExplanation(root, payload, focus = () => {}, labels = createStudentLabelResolver()) {
   root.replaceChildren();
   for (const item of showExplanation(payload)) {
     const block = document.createElement(item.clientKey ? "button" : "p");
-    if (item.clientKey) { block.type = "button"; block.addEventListener("click", () => focusPhysicalMember(item.clientKey, focus)); }
+    if (item.clientKey) { block.type = "button"; block.dataset.teachingMember = item.clientKey; block.setAttribute("aria-label", `${labels.label("PHYSICAL_MEMBER", item.clientKey)}：${item.text || "结果说明"}`); block.addEventListener("click", () => focusPhysicalMember(item.clientKey, focus)); }
     block.dataset.explanationBlock = "";
     block.textContent = item.text || "该结果块暂无进一步说明。";
     root.append(block);

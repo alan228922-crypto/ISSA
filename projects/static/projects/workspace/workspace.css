@@ -27,6 +27,7 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 #workspace-workflow-steps [data-state$="optional"]::before, #workspace-workflow-steps [data-state="optional"]::before { content: "可选 "; font-size: .72rem; color: #6b7280; }
 .workspace-result-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 [data-result-comparison], [data-result-explanation] { display: grid; gap: 6px; margin-top: 8px; }
+[data-teaching-focused="true"] { outline: 3px solid #7c3aed; outline-offset: 3px; background: #f3e8ff; }
 #workspace-canvas { width: 100%; height: 100%; min-height: 560px; background: #fbfdff; outline: 2px solid transparent; }
 #workspace-status-bar { display: flex; gap: 16px; padding: 10px 14px; background: #172033; color: #fff; font-variant-numeric: tabular-nums; }
 #workspace-report { margin-top: 16px; padding: 20px; border: 1px solid #bdc8d8; background: #fff; }

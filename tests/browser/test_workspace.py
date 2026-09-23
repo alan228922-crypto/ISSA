@@ -374,8 +374,8 @@ def test_property_and_delete_controls_edit_persist_and_block_dependencies(contex
 
     page.locator('[data-client-key="c1"]').focus()
     page.keyboard.press("Enter")
-    assert page.locator("[data-property-connection-node]").text_content() == "节点：n1"
-    assert page.locator("[data-property-connection-members]").text_content() == "参与构件：m1"
+    assert page.locator("[data-property-connection-node]").text_content() == "节点 左"
+    assert page.locator("[data-property-connection-members]").text_content() == "参与构件：构件 上弦杆"
     page.locator("[data-property-delete]").click()
     assert "请先删除或调整依赖该对象的构件、连接、支座或荷载。" in page.locator("#workspace-error").text_content()
     assert page.locator('[data-client-key="c1"]').count() == 1
@@ -886,6 +886,83 @@ def test_compare_explain_states_and_canvas_link(context, workspace_page):
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_beginner_labels_mixed_evidence_and_frozen_copy(context, workspace_page):
+    """Raw client keys, generic MIXED copy, or stale wording regressions must fail."""
+    owner, project, material, section = context
+    payload = valid_payload(material, section)
+    payload["physical_members"][0]["label"] = ""
+    save_physical_draft(actor=owner, project=project, payload=payload)
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const { createStudentLabelResolver } = await import('/static/projects/workspace/labels.js');
+      const { renderComparison, renderLevelOne, renderEngineeringDetails } = await import('/static/projects/workspace/results.js');
+      const draft = JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft;
+      const labels = createStudentLabelResolver(draft);
+      const fallbackLabels = createStudentLabelResolver({
+        nodes:[{client_key:'n1',label:''}], physical_members:[{client_key:'m1',label:''}],
+        connections:[{client_key:'c1'}], supports:[{client_key:'s1'}], node_loads:[{client_key:'l1',label:''}],
+      });
+      const comparisonRoot = document.createElement('section');
+      document.body.append(comparisonRoot);
+      renderComparison(comparisonRoot, {comparison_available:true,member_comparisons:[{
+        physical_member_client_key:'m1', predicted_state:'TENSION', comparison_status:'NOT_COMPARABLE',
+        actual:{actual_state:'MIXED',segments:[
+          {analysis_member_id:'m1:1',axial_force_N:12.5,teaching_state:'TENSION'},
+          {analysis_member_id:'m1:2',axial_force_N:-4.25,teaching_state:'COMPRESSION'},
+        ]},
+      }]}, () => {}, labels);
+      const staleRoot = document.createElement('section');
+      document.body.append(staleRoot);
+      renderLevelOne(staleRoot, {runId:4,stale:true,predictionUsed:true,maximum:null,members:[],overlay:{}});
+      const engineeringRoot = document.createElement('section');
+      document.body.append(engineeringRoot);
+      renderEngineeringDetails(engineeringRoot, {displacements:[],reactions:[],members:[],total_mass_g:null}, true);
+      return {
+        labels:['GEOMETRY_NODE','PHYSICAL_MEMBER','CONNECTION','SUPPORT','NODE_LOAD'].map((kind) => fallbackLabels.label(kind, ({GEOMETRY_NODE:'n1',PHYSICAL_MEMBER:'m1',CONNECTION:'c1',SUPPORT:'s1',NODE_LOAD:'l1'})[kind])),
+        comparison:comparisonRoot.textContent,
+        stale:staleRoot.textContent,
+        engineeringStale:engineeringRoot.textContent,
+      };
+    }""")
+    assert result["labels"] == ["节点 N1", "构件 M1", "连接 C1", "支座 S1", "荷载 L1"]
+    assert "一根实际构件在分析模型中可能被分成多个分析段，这些分析段的受力状态并不完全相同。" in result["comparison"]
+    assert "分析段 1" in result["comparison"] and "12.5 N" in result["comparison"] and "受拉" in result["comparison"]
+    assert "分析段 2" in result["comparison"] and "-4.25 N" in result["comparison"] and "受压" in result["comparison"]
+    assert "m1" not in result["comparison"]
+    assert "预测已参与本次分析流程" in result["stale"] and "Prediction" not in result["stale"]
+    assert "不能代表当前草稿" in result["stale"] and "重新分析当前模型" in result["stale"]
+    assert "不能代表当前草稿" in result["engineeringStale"] and "重新分析当前模型" in result["engineeringStale"]
+
+    page.get_by_role("button", name="开始预测").click()
+    prediction = page.locator("#workspace-prediction")
+    assert prediction.get_by_role("button", name="近似零力").count() == 1
+    assert "构件 M1" in prediction.locator("[data-prediction-members]").text_content()
+    assert "m1" not in prediction.locator("[data-prediction-members]").text_content()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_canvas_member_selection_focuses_existing_teaching_item_without_loop(context, workspace_page):
+    """Removing the selection observer or making it write selection recursively must fail."""
+    from competitions.models import CompetitionEvent
+
+    owner, project, material, section = context
+    CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
+    save_bt01_draft(owner, project, material, section)
+    page = workspace_page(user=owner, project=project)
+    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
+    page.locator("#workspace-analyze").click()
+    page.wait_for_function("document.querySelector('[data-teaching-member]')")
+    member_key = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft.physical_members[0].client_key")
+
+    page.locator(f'[data-client-key="{member_key}"] line').click(force=True)
+    page.wait_for_function("key => document.activeElement?.dataset.teachingMember === key", arg=member_key)
+    assert page.locator(f'[data-teaching-member="{member_key}"][data-teaching-focused="true"]').count() == 1
+    assert page.evaluate("document.activeElement.dataset.teachingMember") == member_key
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_compare_explain_reachable_from_real_analysis_controls(context, workspace_page):
     from competitions.models import CompetitionEvent
     from tests.application.test_analysis_acceptance import save_bt01_draft
@@ -900,7 +977,7 @@ def test_compare_explain_reachable_from_real_analysis_controls(context, workspac
     page.wait_for_function("document.querySelector('[data-result-compare]')")
     page.locator("[data-result-compare]").click()
     page.wait_for_function("document.querySelector('[data-result-comparison]').textContent.length > 0")
-    assert "没有绑定已完成 Prediction" in page.locator("[data-result-comparison]").text_content()
+    assert "未进行预测，仍可查看分析说明" in page.locator("[data-result-comparison]").text_content()
     page.locator("[data-result-explain]").click()
     page.wait_for_function("document.querySelector('[data-result-explanation]').textContent.length > 0")
     assert page.locator("[data-result-explanation] [data-explanation-block]").count() > 0
@@ -1037,7 +1114,7 @@ def test_historical_level_one_uses_revision_snapshot_labels_and_no_stale_overlay
       const view = showLevelOne({analysis_run_id:7,predictionId:null}, data, 2, snapshot);
       return {label:view.members[0].displayLabel,maximum:view.maximum.displayCandidateLabels,overlay:view.overlay,stale:view.stale};
     }""")
-    assert result == {'label': '历史构件', 'maximum': ['连接 历史节点'], 'overlay': {}, 'stale': True}
+    assert result == {'label': '构件 历史构件', 'maximum': ['连接 C1'], 'overlay': {}, 'stale': True}
 
 
 @pytest.mark.browser
@@ -1259,7 +1336,7 @@ def test_beginner_results_use_guidance_labels_and_rounded_values(context, worksp
     page.wait_for_function("document.querySelector('#workspace-results h2')")
     text = page.locator("#workspace-results").text_content()
 
-    assert all(word in text for word in ["荷载", "支座", "传力", "受拉", "受压", "零杆"])
+    assert all(word in text for word in ["荷载", "支座", "传力", "受拉", "受压", "近似零力"])
     assert "杆件" in text
     assert "connection:" not in text
     assert "hash" not in text.lower()

@@ -109,8 +109,15 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
         page.wait_for_function("document.querySelector('[data-result-compare]')")
         page.locator("[data-result-compare]").click()
         page.wait_for_function("document.querySelector('[data-result-comparison]').textContent.length > 0")
+        first_member_key = page.locator('[data-object-kind="PhysicalMember"]').first.get_attribute("data-client-key")
+        page.locator(f'[data-client-key="{first_member_key}"] line').click(force=True)
+        page.wait_for_function("key => document.activeElement?.dataset.teachingMember === key", arg=first_member_key)
+        assert page.locator(f'[data-result-comparison] [data-teaching-member="{first_member_key}"][data-teaching-focused="true"]').count() == 1
         page.locator("[data-result-explain]").click()
         page.wait_for_function("document.querySelector('[data-result-explanation]').textContent.length > 0")
+        page.locator(f'[data-client-key="{first_member_key}"] line').click(force=True)
+        page.wait_for_function("key => document.activeElement?.dataset.teachingMember === key", arg=first_member_key)
+        assert page.locator(f'[data-result-explanation] [data-teaching-member="{first_member_key}"][data-teaching-focused="true"]').count() == 1
         page.locator("[data-result-report]").click()
         assert f"分析 #{first_run}" in page.locator("#workspace-report-view").text_content()
 

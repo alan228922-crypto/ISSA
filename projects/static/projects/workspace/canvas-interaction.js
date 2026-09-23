@@ -114,9 +114,9 @@ export function bindCanvasInteractions(svg, initialState, render) {
   let panStart = null;
   let pointerSelection = null;
   let canvasClickHandler = null;
-  let stateChangeHandler = null;
+  const stateChangeHandlers = new Set();
   let pointerMoveHandler = null;
-  const notifyStateChange = () => stateChangeHandler?.(state);
+  const notifyStateChange = () => { for (const handler of stateChangeHandlers) handler(state); };
   const redraw = () => render(svg, state.draft, state);
   const select = (selection, redrawSelection = true) => {
     if (!selection) return;
@@ -158,5 +158,13 @@ export function bindCanvasInteractions(svg, initialState, render) {
     if (redrawState) redraw();
     if (notify) notifyStateChange();
   };
-  return Object.freeze({ dispatchViewEvent, getState: () => state, replaceState, setCanvasClickHandler: (handler) => { canvasClickHandler = handler; }, setStateChangeHandler: (handler) => { stateChangeHandler = handler; }, setPointerMoveHandler: (handler) => { pointerMoveHandler = handler; } });
+  return Object.freeze({
+    dispatchViewEvent,
+    getState: () => state,
+    replaceState,
+    setCanvasClickHandler: (handler) => { canvasClickHandler = handler; },
+    setStateChangeHandler: (handler) => { stateChangeHandlers.clear(); if (handler) stateChangeHandlers.add(handler); },
+    subscribeStateChange: (handler) => { stateChangeHandlers.add(handler); return () => stateChangeHandlers.delete(handler); },
+    setPointerMoveHandler: (handler) => { pointerMoveHandler = handler; },
+  });
 }

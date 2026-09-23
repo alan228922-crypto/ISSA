@@ -124,6 +124,7 @@
     import { bindReportReasoning } from "{% static 'projects/workspace/report-reasoning.js' %}";
     import { createRunContext } from "{% static 'projects/workspace/run-context.js' %}";
     import { createWorkflowProgress } from "{% static 'projects/workspace/workflow-progress.js' %}";
+    import { createStudentLabelResolver } from "{% static 'projects/workspace/labels.js' %}";
     const bootstrap = readWorkspaceBootstrap();
     const canvas = document.getElementById("workspace-canvas");
     const state = createWorkspaceState(bootstrap);
@@ -161,6 +162,17 @@
     renderReflectionView(null);
     const resultsRoot = document.getElementById("workspace-results");
     const focusMember = (clientKey) => { const now = canvasController.getState(); canvasController.replaceState({ ...now, selectedObject: { kind: "PHYSICAL_MEMBER", clientKey }, focusedObject: { kind: "PHYSICAL_MEMBER", clientKey } }); canvas.querySelector(`[data-client-key="${CSS.escape(clientKey)}"]`)?.focus(); };
+    canvasController.subscribeStateChange((currentState) => {
+      for (const item of resultsRoot.querySelectorAll("[data-teaching-focused]")) item.removeAttribute("data-teaching-focused");
+      const selected = currentState.selectedObject;
+      if (!["PHYSICAL_MEMBER", "PhysicalMember"].includes(selected?.kind)) return;
+      const matches = [...resultsRoot.querySelectorAll(`[data-teaching-member="${CSS.escape(selected.clientKey)}"]`)];
+      const target = matches.at(-1);
+      if (!target) return;
+      target.dataset.teachingFocused = "true";
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
     const renderSelectedRun = (payload) => {
       resultsRoot.replaceChildren(); reportView.replaceChildren(); document.querySelector("[data-engineering-content]").replaceChildren(); reasoningWorkspace?.render(null, null); reflectionWorkspace.useReflection(null, null); renderReflectionView(null); reportOpen.disabled = !payload;
       const previous = canvasController.getState();
@@ -170,15 +182,16 @@
       const runId = payload.metadata.analysis_run_id;
       const current = canvasController.getState();
       const snapshot = payload.report?.report?.geometry_connectivity || {};
+      const labels = createStudentLabelResolver(snapshot);
       const view = showLevelOne({ analysis_run_id: runId, predictionId: payload.comparison?.comparison_available ? 0 : null }, payload.data, current.draftVersion, snapshot);
-      renderLevelOne(resultsRoot, view);
+      renderLevelOne(resultsRoot, view, focusMember);
       renderResultActions(resultsRoot, {
-        onCompare: () => { renderComparison(resultsRoot.querySelector("[data-result-comparison]"), payload.comparison, focusMember); workflowProgress.understood(); },
-        onExplain: () => { renderExplanation(resultsRoot.querySelector("[data-result-explanation]"), payload.explanation, focusMember); workflowProgress.understood(); },
+        onCompare: () => { renderComparison(resultsRoot.querySelector("[data-result-comparison]"), payload.comparison, focusMember, labels); workflowProgress.understood(); },
+        onExplain: () => { renderExplanation(resultsRoot.querySelector("[data-result-explanation]"), payload.explanation, focusMember, labels); workflowProgress.understood(); },
         onReport: () => document.getElementById("workspace-report").scrollIntoView({ behavior: "smooth", block: "start" }),
       });
       renderEngineeringDetails(document.querySelector("[data-engineering-content]"), showEngineeringDetails(payload.data.result_json), view.stale);
-      const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, memberState]) => [key, { state: memberState, label: memberState === "TENSION" ? "受拉" : memberState === "COMPRESSION" ? "受压" : "零杆", color: memberState === "TENSION" ? "#b91c1c" : memberState === "COMPRESSION" ? "#1d4ed8" : "#374151", dash: memberState === "TENSION" ? "none" : memberState === "COMPRESSION" ? "10 5" : "2 4" }]));
+      const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, memberState]) => [key, { state: memberState, label: memberState === "TENSION" ? "受拉" : memberState === "COMPRESSION" ? "受压" : "近似零力", color: memberState === "TENSION" ? "#b91c1c" : memberState === "COMPRESSION" ? "#1d4ed8" : "#374151", dash: memberState === "TENSION" ? "none" : memberState === "COMPRESSION" ? "10 5" : "2 4" }]));
       canvasController.replaceState({ ...current, resultOverlay: overlay });
       renderReport(reportView, payload.report);
       reasoningWorkspace?.render(runId, payload.reasoning);

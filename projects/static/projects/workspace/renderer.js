@@ -1,5 +1,6 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 import { GRID_SPACING } from "./canvas-interaction.js";
+import { createStudentLabelResolver } from "./labels.js";
 
 function element(name, attributes = {}) {
   const node = document.createElementNS(SVG_NS, name);
@@ -126,6 +127,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   const supports = ordered(draft.supports || []);
   const nodePositions = pointMap(nodes);
   const connectionByKey = new Map(connections.map((connection) => [connection.client_key, connection]));
+  const labels = createStudentLabelResolver(draft);
   const grid = gridLayer();
   const layers = [element("g", { "data-render-layer": "members" }), element("g", { "data-render-layer": "supports-loads" }), element("g", { "data-render-layer": "nodes-connections" })];
 
@@ -134,7 +136,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const end = nodePositions.get(member.end_node_client_key);
     if (!start || !end) continue;
     const result = uiState.resultOverlay?.[member.client_key];
-    const group = selectable("PhysicalMember", member.client_key, `构件 ${member.client_key}${result ? `，结果：${result.label}` : ""}`, uiState);
+    const group = selectable("PhysicalMember", member.client_key, `${labels.label("PHYSICAL_MEMBER", member.client_key)}${result ? `，结果：${result.label}` : ""}`, uiState);
     group.dataset.resultState = result?.state || "";
     group.append(element("line", { x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: result?.color || "currentColor", "stroke-width": 8, "stroke-dasharray": result?.dash || "none" }));
     layers[0].append(group);
@@ -144,7 +146,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const connection = connectionByKey.get(support.target_connection_client_key);
     const target = connection && position(connection, nodePositions);
     if (!target) continue;
-    const label = support.support_type === "ROLLER" ? `滚动支座 ${support.restrained_axis} ${support.target_connection_client_key}` : `铰支座 ${support.target_connection_client_key}`;
+    const label = support.support_type === "ROLLER" ? `${labels.label("SUPPORT", support.client_key)}，滚动支座，限制 ${support.restrained_axis}` : `${labels.label("SUPPORT", support.client_key)}，铰支座`;
     const group = selectable("Support", support.client_key, label, uiState);
     group.append(element("path", { d: `M ${target.x - 18} ${target.y + 22} L ${target.x + 18} ${target.y + 22} L ${target.x} ${target.y}`, fill: "none", stroke: "currentColor", "stroke-width": 3 }));
     if (support.support_type === "ROLLER") group.append(element("line", support.restrained_axis === "X" ? { x1: target.x - 13, y1: target.y + 30, x2: target.x + 13, y2: target.y + 30, stroke: "currentColor", "stroke-width": 3 } : { x1: target.x, y1: target.y + 27, x2: target.x, y2: target.y + 39, stroke: "currentColor", "stroke-width": 3 }));
@@ -155,7 +157,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const connection = connectionByKey.get(load.target_connection_client_key);
     const target = connection && position(connection, nodePositions);
     if (!target) continue;
-    const group = selectable("NodeLoad", load.client_key, `节点荷载 ${load.client_key}`, uiState);
+    const group = selectable("NodeLoad", load.client_key, labels.label("NODE_LOAD", load.client_key), uiState);
     const dx = load.fx_N === 0 ? 0 : (load.fx_N > 0 ? 30 : -30);
     const dy = load.fy_N === 0 ? 0 : (load.fy_N > 0 ? -30 : 30);
     if (dx === 0 && dy === 0) group.append(element("circle", { cx: target.x, cy: target.y, r: 10, fill: "none", stroke: "currentColor", "stroke-width": 3 }));
@@ -165,14 +167,14 @@ export function renderWorkspace(svg, draft, uiState = {}) {
 
   for (const node of nodes) {
     const point = nodePositions.get(node.client_key);
-    const group = selectable("GeometryNode", node.client_key, `节点 ${node.client_key}`, uiState);
+    const group = selectable("GeometryNode", node.client_key, labels.label("GEOMETRY_NODE", node.client_key), uiState);
     group.append(element("circle", { cx: point.x, cy: point.y, r: 7, fill: "currentColor" }));
     layers[2].append(group);
   }
   for (const connection of connections) {
     const target = position(connection, nodePositions);
     if (!target) continue;
-    const group = selectable("Connection", connection.client_key, `连接 ${connection.client_key}`, uiState);
+    const group = selectable("Connection", connection.client_key, labels.label("CONNECTION", connection.client_key), uiState);
     group.append(element("rect", { x: target.x - 5, y: target.y - 5, width: 10, height: 10, fill: "white", stroke: "currentColor", "stroke-width": 2 }));
     layers[2].append(group);
   }

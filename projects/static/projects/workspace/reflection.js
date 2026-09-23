@@ -76,7 +76,7 @@ export function renderReflection(root, reflection, { readOnly = false, onStart =
   }
   const completed = reflection.status === "COMPLETED";
   if (completed) {
-    const note = document.createElement("p"); note.textContent = "这份 Reflection 已完成，不能修改。"; root.append(note);
+    const note = document.createElement("p"); note.textContent = "这份反思已完成，不能修改。"; root.append(note);
   }
   const form = document.createElement("form");
   for (const [name, label] of FIELDS) {

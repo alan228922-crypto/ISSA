@@ -1,9 +1,10 @@
 import { requestJson, postJson, urlFromTemplate } from "./api.js";
 import { normalizeApiError } from "./errors.js";
+import { createStudentLabelResolver } from "./labels.js";
 
 export const MEMBER_PREDICTION_CHOICES = Object.freeze(["TENSION", "COMPRESSION", "ZERO_FORCE", "UNSURE"]);
 
-const MEMBER_LABELS = Object.freeze({ TENSION: "受拉", COMPRESSION: "受压", ZERO_FORCE: "零杆", UNSURE: "不确定" });
+const MEMBER_LABELS = Object.freeze({ TENSION: "受拉", COMPRESSION: "受压", ZERO_FORCE: "近似零力", UNSURE: "不确定" });
 
 function failure(body) {
   const error = normalizeApiError(body);
@@ -120,11 +121,12 @@ export function bindPredictionWorkspace({ root, urls, draft, canvasController, s
   const selection = () => canvasController.getState().selectedObject;
   let workspace;
   const render = (view) => {
+    const labels = createStudentLabelResolver(canvasController.getState().draft);
     onStateChange(view);
     status.textContent = view.loading ? "预测状态：加载中。" : view.state === "AMBIGUOUS" ? "当前预测记录存在数据歧义，暂时无法继续使用预测。请联系管理员处理。" : view.state === "COMPLETED" ? "预测状态：已完成，只读查看。" : view.state === "DRAFT" ? `预测状态：草稿${view.skipped ? "（已跳过，草稿已保留）" : "，可继续完成。"}` : view.skipped ? "预测状态：已跳过，可直接分析。" : "预测状态：尚未开始。";
-    members.replaceChildren(...workspace.memberKeys().map((member) => { const row = documentRef.createElement("p"); row.textContent = `构件 ${member}：`; row.append(...MEMBER_PREDICTION_CHOICES.map((choice) => { const button = choiceButton(documentRef, member, choice, workspace); button.disabled = readOnly || view.loading || view.readonly || view.state !== "DRAFT"; button.setAttribute("aria-pressed", String(view.judgments[member] === choice)); return button; })); return row; }));
-    maximum.textContent = view.maximum ? `最大位移预测位置：${view.maximum.connection_client_key ? `连接 ${view.maximum.connection_client_key}` : `构件 ${view.maximum.physical_member_client_key} 的 ${view.maximum.endpoint} 端`}` : "最大位移预测位置：请在画布选择连接后设置。";
-    path.textContent = view.path.length ? `代表性传力路径：${view.path.map((entry) => entry.connection_client_key || entry.physical_member_client_key).join(" → ")}` : "请选择你认为比较关键的一条传力路径。";
+    members.replaceChildren(...workspace.memberKeys().map((member) => { const row = documentRef.createElement("p"); row.textContent = `${labels.label("PHYSICAL_MEMBER", member)}：`; row.append(...MEMBER_PREDICTION_CHOICES.map((choice) => { const button = choiceButton(documentRef, member, choice, workspace); button.disabled = readOnly || view.loading || view.readonly || view.state !== "DRAFT"; button.setAttribute("aria-pressed", String(view.judgments[member] === choice)); return button; })); return row; }));
+    maximum.textContent = view.maximum ? `最大位移预测位置：${view.maximum.connection_client_key ? labels.label("CONNECTION", view.maximum.connection_client_key) : `${labels.label("PHYSICAL_MEMBER", view.maximum.physical_member_client_key)} 的 ${view.maximum.endpoint} 端`}` : "最大位移预测位置：请在画布选择连接后设置。";
+    path.textContent = view.path.length ? `代表性传力路径：${view.path.map((entry) => entry.connection_client_key ? labels.label("CONNECTION", entry.connection_client_key) : labels.label("PHYSICAL_MEMBER", entry.physical_member_client_key)).join(" → ")}` : "请选择你认为比较关键的一条传力路径。";
     start.hidden = view.state !== "NONE"; start.disabled = readOnly || view.loading; complete.disabled = readOnly || view.loading || view.state !== "DRAFT"; skip.disabled = readOnly || view.loading || view.state === "COMPLETED" || view.state === "AMBIGUOUS";
     root.querySelector("[data-prediction-maximum-select]").disabled = readOnly || view.loading || view.readonly || view.state !== "DRAFT";
     root.querySelector("[data-prediction-path-add]").disabled = readOnly || view.loading || view.readonly || view.state !== "DRAFT";

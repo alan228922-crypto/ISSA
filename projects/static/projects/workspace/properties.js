@@ -1,5 +1,6 @@
 import { EditorActionError } from "./editor.js";
 import { applyWorkspaceEditorAction } from "./state.js";
+import { createStudentLabelResolver } from "./labels.js";
 
 const OBJECTS = Object.freeze({
   GEOMETRY_NODE: { collection: "nodes", label: "节点" },
@@ -87,13 +88,13 @@ function appendMemberControls(root, selected, member, canvasController, material
   root.append(label);
 }
 
-function appendConnectionDetails(root, connection) {
+function appendConnectionDetails(root, connection, labels) {
   const node = document.createElement("p");
   node.dataset.propertyConnectionNode = "";
-  node.textContent = `节点：${connection.geometry_node_client_key}`;
+  node.textContent = `${labels.label("GEOMETRY_NODE", connection.geometry_node_client_key)}`;
   const members = document.createElement("p");
   members.dataset.propertyConnectionMembers = "";
-  members.textContent = `参与构件：${connection.participating_member_client_keys.join("、")}`;
+  members.textContent = `参与构件：${connection.participating_member_client_keys.map((key) => labels.label("PHYSICAL_MEMBER", key)).join("、")}`;
   root.append(node, members);
 }
 
@@ -151,8 +152,9 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     root.replaceChildren();
     const current = selectedRecord(state);
     if (!current) { const hint = document.createElement("p"); hint.textContent = "请选择对象查看属性。"; root.append(hint); return; }
-    const identity = document.createElement("p"); identity.dataset.propertyIdentity = ""; identity.textContent = `${current.definition.label} ${current.record.client_key}`; root.append(identity);
-    if (current.selected.kind === "CONNECTION") appendConnectionDetails(root, current.record);
+    const labels = createStudentLabelResolver(state.draft);
+    const identity = document.createElement("p"); identity.dataset.propertyIdentity = ""; identity.textContent = labels.label(current.selected.kind, current.selected.clientKey); root.append(identity);
+    if (current.selected.kind === "CONNECTION") appendConnectionDetails(root, current.record, labels);
     if (state.readOnly) return;
     if (current.selected.kind === "GEOMETRY_NODE") appendNodeControls(root, current.selected, current.record, canvasController);
     if (current.selected.kind === "PHYSICAL_MEMBER") appendMemberControls(root, current.selected, current.record, canvasController, materials, sections);
