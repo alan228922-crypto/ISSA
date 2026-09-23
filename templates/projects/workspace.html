@@ -31,9 +31,6 @@
           <div class="workspace-cad-controls" role="toolbar" aria-label="CAD 辅助">
             <button type="button" data-cad-ortho aria-pressed="false">ORTHO 正交</button>
             <button type="button" data-cad-snap aria-pressed="true">SNAP 捕捉</button>
-            <button type="button" data-cad-zoom-in aria-label="放大画布">放大 +</button>
-            <button type="button" data-cad-zoom-out aria-label="缩小画布">缩小 −</button>
-            <button type="button" data-cad-fit aria-label="显示全图">Fit 全图</button>
           </div>
           <label class="workspace-command">坐标命令
             <input type="text" data-cad-command-input inputmode="decimal" autocomplete="off" placeholder="1000,500 / @1000,0 / 1000&lt;30">
@@ -59,6 +56,11 @@
             <a href="{{ bootstrap.urls.materials }}">管理材料与截面</a>
           </fieldset>
         {% endif %}
+        <div class="workspace-view-controls" role="toolbar" aria-label="画布视图">
+          <button type="button" data-cad-zoom-in aria-label="放大画布">放大 +</button>
+          <button type="button" data-cad-zoom-out aria-label="缩小画布">缩小 −</button>
+          <button type="button" data-cad-fit aria-label="显示全图">Fit 全图</button>
+        </div>
         <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>保存</button>
         <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>模型检查</button>
         <section id="workspace-properties-panel" aria-label="对象属性">

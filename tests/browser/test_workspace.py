@@ -709,6 +709,16 @@ def test_workspace_modeling_tools_are_unavailable_for_read_only_viewer(context, 
     page = workspace_page(user=viewer, project=project)
     assert page.locator('[data-workspace-tool]').count() == 0
     assert page.locator('#workspace-save').is_disabled()
+    canvas = page.locator('#workspace-canvas')
+    before_zoom = canvas.locator('[data-world-layer]').get_attribute('transform')
+    zoom_in = page.get_by_role('button', name='放大画布')
+    zoom_in.focus()
+    page.keyboard.press('Enter')
+    assert canvas.locator('[data-world-layer]').get_attribute('transform') != before_zoom
+    fit = page.get_by_role('button', name='显示全图')
+    fit.focus()
+    page.keyboard.press('Enter')
+    assert page.evaluate("document.activeElement === document.querySelector('[data-cad-fit]')") is True
 
 
 @pytest.mark.browser
