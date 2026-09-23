@@ -722,15 +722,16 @@ def test_workspace_properties_edit_support_and_load_and_persist(context, workspa
     page.locator('#workspace-canvas').click(position={'x': 300, 'y': 180})
     page.locator('[data-workspace-tool="SELECT"]').click()
     page.locator('[data-object-kind="GeometryNode"]').last.locator('circle').click(force=True)
-    assert page.locator('[data-property-identity]').text_content() == '节点 node-1'
+    assert page.locator('[data-property-identity]').text_content() == '节点 N3'
+    assert 'node-1' not in page.locator('[data-property-identity]').text_content()
     page.locator('[data-client-key="m1"] line').click(force=True)
-    assert page.locator('[data-property-identity]').text_content() == '构件 m1'
+    assert page.locator('[data-property-identity]').text_content() == '构件 杆件'
     page.locator('[data-client-key="c1"]').focus()
     page.keyboard.press('Enter')
-    assert page.locator('[data-property-identity]').text_content() == '连接 c1'
+    assert page.locator('[data-property-identity]').text_content() == '连接 C1'
 
     page.locator('[data-client-key="s1"] path').click(force=True)
-    assert page.locator('[data-property-identity]').text_content() == '支座 s1'
+    assert page.locator('[data-property-identity]').text_content() == '支座 S1'
     support_type = page.locator('[data-property-support-type]')
     support_type.select_option('ROLLER_X')
     assert support_type.input_value() == 'ROLLER_X'
@@ -739,7 +740,7 @@ def test_workspace_properties_edit_support_and_load_and_persist(context, workspa
     assert page.locator('#workspace-save-status').text_content() == '未保存修改：有'
 
     page.locator('[data-client-key="l1"] line').click(force=True)
-    assert page.locator('[data-property-identity]').text_content() == '荷载 l1'
+    assert page.locator('[data-property-identity]').text_content() == '荷载 荷载'
     page.locator('[data-property-fx]').fill('0')
     page.locator('[data-property-fy]').fill('-250')
     assert page.locator('[data-property-fx]').input_value() == '0'
@@ -1367,7 +1368,8 @@ def test_engineering_details_authoritative_values(context, workspace_page):
     assert all(unit in result['currentText'] for unit in ['ux (mm)', 'Rx (N)', '轴力 (N)', '应力 (MPa)', '质量 (g)'])
     assert result['missingText'].endswith('总质量：—')
     assert '总质量：0 g' not in result['missingText']
-    assert '当前结果对应较早的模型版本。' in result['staleText']
+    assert '不能代表当前草稿' in result['staleText']
+    assert '请重新分析当前模型' in result['staleText']
     assert result['detailsClosed'] is True and result['mechanics'] == 'undefined'
 
 
