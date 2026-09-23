@@ -63,6 +63,50 @@ function orientationLayer() {
   return group;
 }
 
+function cadPresentationLayer(cad = {}) {
+  const group = element("g", { "data-cad-presentation": "true", "pointer-events": "none" });
+  if (cad.preview?.start && cad.preview?.end) {
+    group.append(element("line", {
+      "data-cad-member-preview": "true",
+      x1: cad.preview.start.x,
+      y1: cad.preview.start.y,
+      x2: cad.preview.end.x,
+      y2: cad.preview.end.y,
+      stroke: "#7c3aed",
+      "stroke-width": 5,
+      "stroke-dasharray": "14 8",
+      opacity: .85,
+      "pointer-events": "none",
+    }));
+  }
+  const feedback = cad.snapFeedback;
+  if (feedback?.point && ["NODE", "INT", "GRID"].includes(feedback.snapType)) {
+    const marker = element("g", {
+      "data-cad-snap-marker": "true",
+      "data-snap-type": feedback.snapType,
+      transform: `translate(${feedback.point.x} ${feedback.point.y})`,
+      "pointer-events": "none",
+    });
+    const shape = feedback.snapType === "NODE"
+      ? element("circle", { cx: 0, cy: 0, r: 13, fill: "none", stroke: "#0759c7", "stroke-width": 4 })
+      : feedback.snapType === "INT"
+        ? element("path", { d: "M -12 -12 L 12 12 M -12 12 L 12 -12", stroke: "#b54708", "stroke-width": 4 })
+        : element("rect", { x: -10, y: -10, width: 20, height: 20, fill: "none", stroke: "#196127", "stroke-width": 4 });
+    const label = element("text", { x: 16, y: -16, fill: "#172033", "font-size": 22, "font-weight": 700, transform: "scale(1 -1)" });
+    label.textContent = feedback.snapType;
+    marker.append(shape, label);
+    group.append(marker);
+  }
+  return group;
+}
+
+export function renderCadPresentation(svg, cad = {}) {
+  const current = svg.querySelector("[data-cad-presentation]");
+  const next = cadPresentationLayer(cad);
+  if (current) current.replaceWith(next);
+  else svg.querySelector("[data-world-layer]")?.append(next);
+}
+
 export function renderSnapIndicator(indicator, resolution) {
   const snapType = ["NODE", "INT", "GRID"].includes(resolution?.snapType) ? resolution.snapType : null;
   indicator.textContent = snapType ? `SNAP: ${snapType}` : "SNAP: 无";
@@ -139,6 +183,6 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   defs.append(marker);
   const world = element("g", { "data-world-layer": "true", transform: viewTransform(uiState.viewTransform) });
   if (uiState.cad?.gridVisible !== false) world.append(grid);
-  world.append(...layers);
+  world.append(...layers, cadPresentationLayer(uiState.cad));
   svg.replaceChildren(defs, world, orientationLayer());
 }

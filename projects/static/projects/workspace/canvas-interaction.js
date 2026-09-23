@@ -153,9 +153,9 @@ export function bindCanvasInteractions(svg, initialState, render) {
     panStart = { x: event.clientX, y: event.clientY };
   });
   svg.addEventListener("pointerup", () => { panStart = null; });
-  const replaceState = (nextState, notify = true) => {
+  const replaceState = (nextState, notify = true, redrawState = true) => {
     state = nextState;
-    redraw();
+    if (redrawState) redraw();
     if (notify) notifyStateChange();
   };
   return Object.freeze({ dispatchViewEvent, getState: () => state, replaceState, setCanvasClickHandler: (handler) => { canvasClickHandler = handler; }, setStateChangeHandler: (handler) => { stateChangeHandler = handler; }, setPointerMoveHandler: (handler) => { pointerMoveHandler = handler; } });

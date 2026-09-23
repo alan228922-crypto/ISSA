@@ -189,6 +189,87 @@ def test_member_dynamic_tab_escape_and_blank_pointer_endpoint(context, workspace
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_member_pointer_preview_and_esc_cancel_all_transient_modeling(context, workspace_page):
+    """Removing preview rendering or leaving a tool active after Esc breaks this contract."""
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    canvas = page.locator("#workspace-canvas")
+    canvas_box = canvas.bounding_box()
+    original_nodes = page.locator('[data-object-kind="GeometryNode"]').count()
+    original_members = page.locator('[data-object-kind="PhysicalMember"]').count()
+
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    canvas.hover(position={"x": canvas_box["width"] * 0.55, "y": canvas_box["height"] * 0.3})
+
+    preview = page.locator("[data-cad-member-preview]")
+    assert preview.count() == 1
+    assert preview.evaluate("element => getComputedStyle(element).pointerEvents") == "none"
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == original_members
+
+    page.locator("[data-cad-command-input]").press("Escape")
+    assert preview.count() == 0
+    assert page.locator('[data-workspace-tool="SELECT"]').get_attribute("aria-pressed") == "true"
+    canvas.click(position={"x": canvas_box["width"] * 0.65, "y": canvas_box["height"] * 0.25})
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == original_members
+
+    page.locator('[data-workspace-tool="NODE"]').click()
+    command = page.locator("[data-cad-command-input]")
+    command.fill("1200,700")
+    command.press("Escape")
+    assert page.locator('[data-workspace-tool="SELECT"]').get_attribute("aria-pressed") == "true"
+    canvas.click(position={"x": canvas_box["width"] * 0.7, "y": canvas_box["height"] * 0.4})
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == original_nodes
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_pointer_snap_markers_and_unconnected_intersection_warning_are_visual_only(context, workspace_page):
+    """Removing a marker/warning or accidentally creating topology must fail this journey."""
+    owner, project, material, section = context
+    crossing = valid_payload(material, section)
+    crossing["nodes"] = [
+        {"client_key": "n1", "x_mm": 0, "y_mm": 0, "label": ""},
+        {"client_key": "n2", "x_mm": 1000, "y_mm": 1000, "label": ""},
+        {"client_key": "n3", "x_mm": 0, "y_mm": 1000, "label": ""},
+        {"client_key": "n4", "x_mm": 1000, "y_mm": 0, "label": ""},
+    ]
+    crossing["physical_members"] = [
+        {"client_key": "m1", "start_node_client_key": "n1", "end_node_client_key": "n2", "material_id": material.id, "section_id": section.id, "label": "", "is_active": True},
+        {"client_key": "m2", "start_node_client_key": "n3", "end_node_client_key": "n4", "material_id": material.id, "section_id": section.id, "label": "", "is_active": True},
+    ]
+    crossing["connections"] = []
+    crossing["supports"] = []
+    crossing["node_loads"] = []
+    save_physical_draft(actor=owner, project=project, payload=crossing)
+    page = workspace_page(user=owner, project=project)
+    canvas = page.locator("#workspace-canvas")
+    connection_count = page.locator('[data-object-kind="Connection"]').count()
+    page.locator('[data-workspace-tool="NODE"]').click()
+
+    page.locator('[data-client-key="n1"] circle').hover(force=True)
+    assert page.locator('[data-cad-snap-marker][data-snap-type="NODE"]').text_content() == "NODE"
+
+    canvas_box = canvas.bounding_box()
+    canvas.hover(position={"x": canvas_box["width"] * 0.2, "y": canvas_box["height"] * 0.3}, force=True)
+    assert page.locator('[data-cad-snap-marker][data-snap-type="GRID"]').text_content() == "GRID"
+
+    crossing_screen = page.evaluate("""() => {
+      const world = document.querySelector('[data-world-layer]');
+      const point = new DOMPoint(500, 500).matrixTransform(world.getScreenCTM());
+      return {x: point.x, y: point.y};
+    }""")
+    page.mouse.move(crossing_screen["x"], crossing_screen["y"])
+    marker = page.locator('[data-cad-snap-marker][data-snap-type="INT"]')
+    assert marker.text_content() == "INT"
+    assert marker.evaluate("element => getComputedStyle(element).pointerEvents") == "none"
+    assert "这里有构件交叉，但尚未建立连接。" in page.locator("[data-modeling-instruction]").text_content()
+    assert page.locator('[data-object-kind="Connection"]').count() == connection_count
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_grid_snap_off_preserves_object_candidates(context, workspace_page):
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
