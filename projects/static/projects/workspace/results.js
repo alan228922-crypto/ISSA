@@ -6,12 +6,12 @@ const STATE_LABELS = Object.freeze({ TENSION: "受拉", COMPRESSION: "受压", Z
 const COMPARISON_LABELS = Object.freeze({ MATCH: "和预测一致", MISMATCH: "和预测不同", UNSURE: "之前选择“不确定”", NOT_COMPARABLE: "暂不比较" });
 
 export function showComparison(comparison) {
-  if (!comparison?.comparison_available) return Object.freeze({ reason: "NO_PREDICTION", text: "未进行预测，仍可查看分析说明。" });
+  if (!comparison?.comparison_available) return Object.freeze({ reason: "NO_PREDICTION", text: "这次没有保存预测，因此暂时无法比较。" });
   return (comparison.member_comparisons || []).map((item) => Object.freeze({ clientKey: item.physical_member_client_key, status: item.comparison_status, text: COMPARISON_LABELS[item.comparison_status] || "", actual: item.actual }));
 }
 
 export function showExplanation(explanation) {
-  return (explanation?.blocks || []).map((block) => Object.freeze({ clientKey: block.subject?.physical_member_client_key || null, text: block.message_zh_CN?.level_1 || "", segments: block.facts?.segments || [] }));
+  return (explanation?.blocks || []).map((block) => Object.freeze({ kind: block.type, clientKey: block.subject?.physical_member_client_key || null, text: block.message_zh_CN?.level_1 || "", segments: block.facts?.segments || [] }));
 }
 
 export function focusPhysicalMember(clientKey, focus) {
@@ -46,17 +46,23 @@ function failed(body) {
 
 export function showLevelOne(run, data, currentDraftVersion, draft = null) {
   const labels = createStudentLabelResolver(draft || {});
-  const members = (data?.result_json?.member_results || []).flatMap((item) => {
+  const segments = (data?.result_json?.member_results || []).flatMap((item) => {
     if (!item?.physical_member_id || !STATE_LABELS[item.state]) return [];
     const member = { physicalMemberClientKey: item.physical_member_id, state: item.state };
     if (draft) member.displayLabel = labels.label("PHYSICAL_MEMBER", item.physical_member_id);
     return [member];
   });
   const states = new Map();
-  for (const member of members) states.set(member.physicalMemberClientKey, [...(states.get(member.physicalMemberClientKey) || []), member.state]);
-  const overlay = Object.fromEntries([...states].flatMap(([key, values]) => new Set(values).size === 1 ? [[key, values[0]]] : []));
+  for (const member of segments) states.set(member.physicalMemberClientKey, [...(states.get(member.physicalMemberClientKey) || []), member.state]);
+  const members = [...states].map(([key, values]) => ({
+    physicalMemberClientKey: key,
+    state: new Set(values).size === 1 ? values[0] : "MIXED",
+    ...(draft ? { displayLabel: labels.label("PHYSICAL_MEMBER", key) } : {}),
+  }));
+  const overlay = Object.fromEntries([...states].map(([key, values]) => [key, new Set(values).size === 1 ? values[0] : "MIXED"]));
   return Object.freeze({
     runId: run.analysis_run_id,
+    runNumber: run.runNumber || run.analysis_run_id,
     stale: data.source_draft_version !== currentDraftVersion,
     predictionUsed: run.predictionId !== null,
     maximum: data.level_one?.maximum_displacement ? {
@@ -101,39 +107,44 @@ export function createResultsWorkspace({ urls, post = postJson, get = requestJso
 
 export function renderLevelOne(root, view, focus = () => {}) {
   root.replaceChildren();
-  const title = document.createElement("h2"); title.textContent = `分析结果 · 分析 #${view.runId}`; root.append(title);
-  const status = document.createElement("p"); status.textContent = view.stale ? "这份分析结果对应较早的模型版本，不能代表当前草稿。请重新分析当前模型，才能得到当前结果。" : "分析已完成，对应当前模型版本。"; root.append(status);
-  const prediction = document.createElement("p"); prediction.textContent = view.predictionUsed ? "预测已参与本次分析流程。" : "本次分析未使用预测。"; root.append(prediction);
-  const guidance = document.createElement("p"); guidance.textContent = "观察建议：先看荷载如何进入结构，再看支座如何约束整体运动，最后沿构件观察传力路径；这些提示不替代模型检查。"; root.append(guidance);
+  const conclusion = document.createElement("section"); conclusion.dataset.resultConclusion = ""; root.append(conclusion);
+  const title = document.createElement("h2"); title.textContent = `第 ${view.runNumber} 次分析 · 结论`; conclusion.append(title);
+  const status = document.createElement("p"); status.textContent = view.stale ? "这份分析结果对应较早的模型版本，不能代表当前草稿。请重新分析当前模型，才能得到当前结果。" : "分析已完成，对应当前模型版本。"; conclusion.append(status);
+  const prediction = document.createElement("p"); prediction.textContent = view.predictionUsed ? "预测已参与本次分析流程。" : "本次分析未使用预测。"; conclusion.append(prediction);
+  const guidance = document.createElement("p"); guidance.textContent = "值得再看：从荷载位置出发，观察相连构件和支座。这里不推断唯一的传力路径。"; conclusion.append(guidance);
   const maximum = document.createElement("p");
   if (view.maximum) {
     const rounded = Number(view.maximum.maximum_displacement_mm).toLocaleString("zh-CN", { maximumFractionDigits: 3 });
     maximum.textContent = `最大位移出现在 ${(view.maximum.displayCandidateLabels || view.maximum.candidate_analysis_node_ids).join("、")}，约为 `;
     const value = document.createElement("strong"); value.dataset.studentRoundedValue = ""; value.textContent = `${rounded} mm`; maximum.append(value, "。");
   } else maximum.textContent = "最大位移结论暂不可用。";
-  root.append(maximum);
-  const counts = { TENSION: 0, COMPRESSION: 0, ZERO: 0 };
+  conclusion.append(maximum);
+  const counts = { TENSION: 0, COMPRESSION: 0, ZERO: 0, MIXED: 0 };
   for (const member of view.members) counts[member.state === "ZERO_FORCE" ? "ZERO" : member.state] = (counts[member.state === "ZERO_FORCE" ? "ZERO" : member.state] || 0) + 1;
-  const summary = document.createElement("p"); summary.textContent = `受力状态概览：受拉 ${counts.TENSION}；受压 ${counts.COMPRESSION}；近似零力 ${counts.ZERO}。`; root.append(summary);
-  const legend = document.createElement("p"); legend.textContent = "图例：实线=受拉；虚线=受压；点划线=近似零力。"; root.append(legend);
+  const summary = document.createElement("p"); summary.textContent = `受力状态概览：受拉 ${counts.TENSION}；受压 ${counts.COMPRESSION}；近似零力 ${counts.ZERO}；混合状态 ${counts.MIXED}。`; conclusion.append(summary);
+  const legend = document.createElement("p"); legend.textContent = "图例：红色实线=受拉；蓝色虚线=受压；灰色点划线=近似零力；紫色分段=混合状态。"; conclusion.append(legend);
   for (const member of view.members) {
     const item = document.createElement("button"); item.type = "button";
     item.dataset.teachingMember = member.physicalMemberClientKey;
     item.textContent = `${member.displayLabel || "构件"}：${STATE_LABELS[member.state]}`;
     item.addEventListener("click", () => focusPhysicalMember(member.physicalMemberClientKey, focus));
-    root.append(item);
+    conclusion.append(item);
   }
 }
 
-export function renderResultActions(root, { onCompare, onExplain, onReport }) {
+export function renderResultActions(root, { onCompare, onExplain, onTechnical = () => {}, onReport = () => {} }) {
   const actions = document.createElement("div");
-  actions.className = "workspace-result-actions";
-  for (const [name, text, handler] of [["compare", "查看预测对比", onCompare], ["explain", "查看结果解释", onExplain], ["report", "查看计算书资料", onReport]]) {
+  actions.className = "workspace-result-actions"; actions.setAttribute("role", "tablist"); actions.setAttribute("aria-label", "结果内容");
+  const select = (name) => {
+    root.dataset.uxResultsView = name;
+    for (const button of actions.querySelectorAll("button")) button.setAttribute("aria-selected", String(button.dataset.resultView === name));
+  };
+  for (const [name, text, handler] of [["conclusion", "结论", () => {}], ["compare", "预测对比", onCompare], ["explain", "为什么", onExplain], ["technical", "技术数据", onTechnical]]) {
     const button = document.createElement("button");
-    button.type = "button";
+    button.type = "button"; button.setAttribute("role", "tab"); button.dataset.resultView = name;
     button.dataset[`result${name[0].toUpperCase()}${name.slice(1)}`] = "";
     button.textContent = text;
-    button.addEventListener("click", handler);
+    button.addEventListener("click", () => { select(name); handler(); });
     actions.append(button);
   }
   const comparison = document.createElement("section");
@@ -142,7 +153,9 @@ export function renderResultActions(root, { onCompare, onExplain, onReport }) {
   const explanation = document.createElement("section");
   explanation.dataset.resultExplanation = "";
   explanation.setAttribute("aria-live", "polite");
-  root.append(actions, comparison, explanation);
+  root.prepend(actions);
+  root.append(comparison, explanation);
+  select("conclusion");
 }
 
 function appendMixedEvidence(root, item) {
@@ -186,10 +199,22 @@ export function renderComparison(root, payload, focus = () => {}, labels = creat
 export function renderExplanation(root, payload, focus = () => {}, labels = createStudentLabelResolver()) {
   root.replaceChildren();
   for (const item of showExplanation(payload)) {
+    const section = document.createElement("section");
     const block = document.createElement(item.clientKey ? "button" : "p");
     if (item.clientKey) { block.type = "button"; block.dataset.teachingMember = item.clientKey; block.setAttribute("aria-label", `${labels.label("PHYSICAL_MEMBER", item.clientKey)}：${item.text || "结果说明"}`); block.addEventListener("click", () => focusPhysicalMember(item.clientKey, focus)); }
     block.dataset.explanationBlock = "";
-    block.textContent = item.text || "该结果块暂无进一步说明。";
-    root.append(block);
+    block.textContent = item.kind === "MAXIMUM_DISPLACEMENT" ? "最大位移的位置请查看结论；可观察它与相邻构件的变形关系。" : item.text || "该结果块暂无进一步说明。";
+    section.append(block);
+    if (item.clientKey && item.segments.length) {
+      const list = document.createElement("ul");
+      for (const [index, segment] of item.segments.entries()) {
+        const line = document.createElement("li");
+        const force = Number.isFinite(segment.axial_force_N) ? `，轴力 ${segment.axial_force_N} N` : "";
+        line.textContent = `分析段 ${index + 1}：${STATE_LABELS[segment.teaching_state] || "状态暂不可用"}${force}。`;
+        list.append(line);
+      }
+      section.append(list);
+    }
+    root.append(section);
   }
 }

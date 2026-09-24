@@ -59,6 +59,21 @@
 .ux-advanced-properties { margin:12px 0; padding:9px; border:1px solid var(--ux-line); border-radius:7px; }
 #workspace-check-issues { display:grid; gap:10px; margin-top:12px; }
 #workspace-check-issues button { text-align:left; padding:12px; border:1px solid var(--ux-line); border-radius:8px; background:#fff; }
+#workspace-check-issues article { padding:12px; border:1px solid #f0c68c; background:#fffaf2; border-radius:9px; }
+.workspace-result-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin:0 0 14px; }
+.workspace-result-actions button { min-height:42px; padding:7px; border:1px solid var(--ux-line); border-radius:8px; background:#fff; font-weight:700; }
+.workspace-result-actions button[aria-selected="true"] { border-color:#155eef; background:#eaf2ff; color:#114b9f; }
+#workspace-results [data-result-conclusion] { display:grid; gap:10px; }
+#workspace-results [data-result-conclusion] button { text-align:left; padding:10px; border:1px solid var(--ux-line); border-radius:8px; background:#fff; }
+#workspace-results h2 { margin:2px 0; font-size:20px; }
+#workspace-results p { margin:4px 0; }
+#workspace-results[data-ux-results-view="conclusion"] :is([data-result-comparison],[data-result-explanation]),
+#workspace-results[data-ux-results-view="compare"] :is([data-result-conclusion],[data-result-explanation]),
+#workspace-results[data-ux-results-view="explain"] :is([data-result-conclusion],[data-result-comparison]),
+#workspace-results[data-ux-results-view="technical"] :is([data-result-conclusion],[data-result-comparison],[data-result-explanation]) { display:none; }
+#workspace-root[data-ux-stage="understanding"] #workspace-engineering-details { display:none; }
+#workspace-root[data-ux-stage="understanding"]:has(#workspace-results[data-ux-results-view="technical"]) #workspace-engineering-details { display:block; }
+#workspace-root[data-ux-stage="analyze"] [data-ux-back-to-build] { margin-left:8px; }
 #workspace-workflow-panel [data-ux-panel-guidance] { color:var(--ux-muted); }
 #workspace-root[data-ux-stage="build"] :is(#workspace-model-check,#workspace-check-issues,#workspace-prediction,#workspace-analyze,#workspace-results,#workspace-engineering-details,#workspace-reflection,#workspace-report) { display:none; }
 #workspace-root[data-ux-stage="check"] :is(#workspace-prediction,#workspace-analyze,#workspace-results,#workspace-engineering-details,#workspace-reflection,#workspace-report,#workspace-properties-panel) { display:none; }
@@ -67,6 +82,8 @@
 #workspace-root[data-ux-stage="understanding"] :is(#workspace-model-check,#workspace-check-issues,#workspace-prediction,#workspace-analyze,#workspace-reflection,#workspace-report,#workspace-properties-panel) { display:none; }
 #workspace-root[data-ux-stage="summary"] :is(.workspace-layout,#workspace-model-check,#workspace-check-issues,#workspace-prediction,#workspace-analyze,#workspace-results,#workspace-engineering-details,#workspace-reflection) { display:none; }
 #workspace-root:not([data-ux-stage="build"]) #workspace-modeling-panel { display:none; }
+#workspace-root:not([data-ux-stage="build"]) :is(.workspace-member-properties,.ux-material-link) { display:none; }
+#workspace-root:not([data-ux-stage="analyze"]) :is([data-ux-analyze-context],[data-ux-analyze-status],[data-ux-back-to-build]) { display:none; }
 #workspace-root:not([data-ux-stage="build"]):not([data-ux-stage="summary"]) .workspace-layout { grid-template-columns:minmax(0,2fr) minmax(280px,1fr); }
 #workspace-status-bar { flex-wrap:wrap; font-size:13px; }
 @media(max-width:1100px) { #workspace-root .workspace-layout { grid-template-columns:minmax(135px,15%) minmax(0,58%) minmax(230px,27%); } #workspace-modeling-panel,#workspace-workflow-panel,.workspace-center { padding:10px; } }

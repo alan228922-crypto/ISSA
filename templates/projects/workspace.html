@@ -90,6 +90,7 @@
         </div>
         <section id="workspace-prediction" aria-label="预测">
           <h2>预测</h2>
+          <p>先记录你的判断，也可以直接分析。</p>
           <p data-prediction-status aria-live="polite">预测状态：加载中。</p>
           <div data-prediction-members aria-label="构件受力状态预测"></div>
           <p data-prediction-maximum>最大位移预测位置：请在画布选择连接后设置。</p>
@@ -101,9 +102,12 @@
           <button type="button" data-prediction-complete>完成预测</button>
           <button type="button" data-prediction-skip>跳过预测，直接分析</button>
         </section>
-        <button id="workspace-analyze" type="button"{% if bootstrap.read_only %} disabled{% endif %}>分析</button>
+        <p data-ux-analyze-context>将分析当前已保存模型。</p>
+        <p data-ux-analyze-status role="status" aria-live="polite"></p>
+        <button id="workspace-analyze" type="button"{% if bootstrap.read_only %} disabled{% endif %}>开始分析</button>
+        <button type="button" data-ux-back-to-build>返回建模</button>
         <section id="workspace-results" aria-label="分析结果"></section>
-        <details id="workspace-engineering-details"><summary>工程详情</summary><section data-engineering-content></section></details>
+        <details id="workspace-engineering-details" open><summary>技术数据</summary><section data-engineering-content></section></details>
         <section id="workspace-reflection" aria-label="反思"></section>
       </aside>
     </section>
@@ -186,7 +190,7 @@
       for (const item of resultsRoot.querySelectorAll("[data-teaching-focused]")) item.removeAttribute("data-teaching-focused");
       const selected = currentState.selectedObject;
       if (!["PHYSICAL_MEMBER", "PhysicalMember"].includes(selected?.kind)) return;
-      const matches = [...resultsRoot.querySelectorAll(`[data-teaching-member="${CSS.escape(selected.clientKey)}"]`)];
+      const matches = [...resultsRoot.querySelectorAll(`[data-teaching-member="${CSS.escape(selected.clientKey)}"]`)].filter(item => item.getClientRects().length > 0);
       const target = matches.at(-1);
       if (!target) return;
       target.dataset.teachingFocused = "true";
@@ -203,15 +207,16 @@
       const current = canvasController.getState();
       const snapshot = payload.report?.report?.geometry_connectivity || {};
       const labels = createStudentLabelResolver(snapshot);
-      const view = showLevelOne({ analysis_run_id: runId, predictionId: payload.comparison?.comparison_available ? 0 : null }, payload.data, current.draftVersion, snapshot);
+      const runNumber = runContext.state().runs.findIndex(run => run.analysis_run_id === runId) + 1;
+      const view = showLevelOne({ analysis_run_id: runId, runNumber, predictionId: payload.comparison?.comparison_available ? 0 : null }, payload.data, current.draftVersion, snapshot);
       renderLevelOne(resultsRoot, view, focusMember);
       renderResultActions(resultsRoot, {
         onCompare: () => renderComparison(resultsRoot.querySelector("[data-result-comparison]"), payload.comparison, focusMember, labels),
         onExplain: () => renderExplanation(resultsRoot.querySelector("[data-result-explanation]"), payload.explanation, focusMember, labels),
-        onReport: () => document.getElementById("workspace-report").scrollIntoView({ behavior: "smooth", block: "start" }),
+        onTechnical: () => { document.getElementById("workspace-engineering-details").open = true; },
       });
       renderEngineeringDetails(document.querySelector("[data-engineering-content]"), showEngineeringDetails(payload.data.result_json), view.stale);
-      const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, memberState]) => [key, { state: memberState, label: memberState === "TENSION" ? "受拉" : memberState === "COMPRESSION" ? "受压" : "近似零力", color: memberState === "TENSION" ? "#b91c1c" : memberState === "COMPRESSION" ? "#1d4ed8" : "#374151", dash: memberState === "TENSION" ? "none" : memberState === "COMPRESSION" ? "10 5" : "2 4" }]));
+      const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, memberState]) => [key, { state: memberState, label: memberState === "TENSION" ? "受拉" : memberState === "COMPRESSION" ? "受压" : memberState === "MIXED" ? "混合状态" : "近似零力", color: memberState === "TENSION" ? "#b91c1c" : memberState === "COMPRESSION" ? "#1d4ed8" : memberState === "MIXED" ? "#7c3aed" : "#6b7280", dash: memberState === "TENSION" ? "none" : memberState === "COMPRESSION" ? "10 5" : memberState === "MIXED" ? "14 5 3 5" : "2 4" }]));
       canvasController.replaceState({ ...current, resultOverlay: overlay });
       renderReport(reportView, payload.report);
       reasoningWorkspace?.render(runId, payload.reasoning);
@@ -222,8 +227,19 @@
     const runContext = createRunContext({ urls: { runs: bootstrap.urls.analysis_runs, resultTemplate: bootstrap.urls.result_template, comparisonTemplate: bootstrap.urls.comparison_template, explanationTemplate: bootstrap.urls.explanation_template, reportTemplate: bootstrap.urls.report_template, reasoningTemplate: bootstrap.urls.reasoning_template, reflectionTemplate: bootstrap.urls.reflection_template }, select: reportSelect, editable: !bootstrap.read_only, onSelect: renderSelectedRun, onRunsChange: (runs) => workflowProgress.project({ runs }) });
     reportSelect.addEventListener("change", async () => { try { if (!reportSelect.value) { resultsRoot.replaceChildren(); reportView.replaceChildren(); document.getElementById("workspace-report-reasoning")?.replaceChildren(); reflectionRoot.replaceChildren(); } await runContext.selectRun(reportSelect.value ? Number(reportSelect.value) : null); } catch (error) { showError(error); } });
     reportOpen.addEventListener("click", () => document.getElementById("workspace-report").scrollIntoView({ behavior: "smooth", block: "start" }));
+    document.querySelector("[data-prediction-skip]")?.addEventListener("click", () => studentShell.selectStage("analyze"));
+    document.querySelector("[data-ux-back-to-build]")?.addEventListener("click", () => studentShell.selectStage("build"));
     predictionWorkspace.ready.then(() => runContext.refreshRuns()).then((runs) => { if (!runs.some((run) => run.status === "SUCCESS")) reportView.textContent = "还没有可用的计算书资料。请先完成一次成功分析。"; }).catch(showError);
-    document.getElementById("workspace-analyze").addEventListener("click", async () => { try { const current = canvasController.getState(); const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); await runContext.refreshRuns({ selectRunId: result.run.analysis_run_id }); errorPanel.hidden = true; } catch (error) { showError(error); } });
+    document.getElementById("workspace-analyze").addEventListener("click", async () => {
+      const status = document.querySelector("[data-ux-analyze-status]");
+      const button = document.getElementById("workspace-analyze");
+      const current = canvasController.getState();
+      if (current.dirty) { status.textContent = "请先保存模型，再开始分析。"; return; }
+      status.textContent = `正在分析草稿 v${current.draftVersion}…`; button.disabled = true;
+      try { const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); await runContext.refreshRuns({ selectRunId: result.run.analysis_run_id }); status.textContent = "分析已完成。"; studentShell.selectStage("understanding"); errorPanel.hidden = true; }
+      catch (error) { status.textContent = "模型暂时无法完成分析。请检查连接、支座和荷载，也可以返回建模。"; showError(error); }
+      finally { button.disabled = false; }
+    });
     document.getElementById("workspace-save").addEventListener("click", async () => {
       const button = document.getElementById("workspace-save");
       button.disabled = true; studentShell.setSaveState("保存中");

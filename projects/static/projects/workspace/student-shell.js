@@ -27,6 +27,18 @@ export function bindStudentShell({ root, canvasController }) {
     root.dataset.uxStage = stage;
     current.textContent = `当前：${STAGES[stage][0]}`;
     next.textContent = `下一步：${stage === "build" ? buildTask(canvasController.getState().draft) : STAGES[stage][1]}`;
+    const analyzeContext = root.querySelector("[data-ux-analyze-context]");
+    if (analyzeContext && stage === "analyze") analyzeContext.textContent = `将分析已保存的草稿 v${canvasController.getState().draftVersion}。${canvasController.getState().dirty ? "当前有未保存修改，请先保存模型。" : ""}`;
+    const panel = root.querySelector("[data-ux-panel-title]");
+    const guidance = root.querySelector("[data-ux-panel-guidance]");
+    if (stage !== "build") {
+      const messages = { check: ["模型检查", "检查已保存模型，再根据问题回到建模。"], prediction: ["先做判断", "预测可选；也可以跳过，直接分析。"], analyze: ["开始分析", "先确认保存的模型版本，再查看结果。"], understanding: ["理解结果", "先看结论，再选择预测对比、为什么或技术数据。"], summary: ["总结", "选择一次分析，整理计算依据和自己的设计说明。"] };
+      if (panel) panel.textContent = messages[stage][0];
+      if (guidance) guidance.textContent = messages[stage][1];
+    } else {
+      if (panel) panel.textContent = "当前任务";
+      if (guidance) guidance.textContent = canvasController.getState().draft.nodes.length ? "选择工具后，点击画布或已有对象继续。" : "在画布点一下，放置第一个节点。";
+    }
     for (const button of root.querySelectorAll("[data-ux-stage-target]")) {
       button.setAttribute("aria-current", button.dataset.uxStageTarget === stage ? "step" : "false");
     }

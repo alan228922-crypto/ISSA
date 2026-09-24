@@ -2,6 +2,7 @@ import pytest
 
 from tests.endpoints.test_event_landing import add_membership, make_event
 from tests.application.test_physical_draft import context
+from tests.application.test_analysis_acceptance import save_bt01_draft
 
 
 @pytest.mark.browser
@@ -93,3 +94,47 @@ def test_save_failure_is_visible_and_retry_preserves_draft(context, workspace_pa
     page.wait_for_function("document.querySelector('[data-ux-save-indicator]').textContent === '已保存'")
     page.reload()
     assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_analysis_opens_conclusions_then_evidence_tabs(context, workspace_page):
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-ux-stage-target="prediction"]').click()
+    assert page.get_by_text("先记录你的判断，也可以直接分析。").is_visible()
+    page.locator('[data-prediction-skip]').click()
+    page.locator('[data-ux-stage-target="analyze"]').click()
+    assert page.get_by_text("将分析已保存的草稿 v1。").is_visible()
+    page.locator('#workspace-analyze').click()
+    page.wait_for_function("document.querySelector('#workspace-root').dataset.uxStage === 'understanding'")
+    page.set_viewport_size({"width": 1280, "height": 800})
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert not page.locator('.workspace-member-properties').is_visible()
+    assert page.get_by_role('tab', name='结论').get_attribute('aria-selected') == 'true'
+    assert page.locator('[data-result-conclusion]').get_by_text('最大位移', exact=False).is_visible()
+    page.locator('[data-result-conclusion] [data-teaching-member="m1"]').click()
+    assert page.locator('[data-client-key="m1"]').get_attribute('data-selected') == 'true'
+    page.get_by_role('tab', name='预测对比').click()
+    assert page.get_by_text('这次没有保存预测，因此暂时无法比较。').is_visible()
+    page.get_by_role('tab', name='为什么').click()
+    assert page.locator('[data-result-explanation]').is_visible()
+    assert '轴力' in page.locator('[data-result-explanation]').inner_text()
+    page.locator('[data-client-key="m1"] line').click(force=True)
+    assert page.locator('[data-result-explanation] [data-teaching-member="m1"][data-teaching-focused="true"]').count() >= 1
+    page.get_by_role('tab', name='技术数据').click()
+    assert page.locator('#workspace-engineering-details').is_visible()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_analysis_failure_explains_recovery_without_raw_error(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-ux-stage-target="analyze"]').click()
+    page.locator('#workspace-analyze').click()
+    page.wait_for_function("document.querySelector('[data-ux-analyze-status]').textContent.includes('模型暂时无法完成分析')")
+    assert page.get_by_text('请检查连接、支座和荷载，也可以返回建模。', exact=False).is_visible()
+    page.locator('[data-ux-back-to-build]').click()
+    assert page.locator('#workspace-root').get_attribute('data-ux-stage') == 'build'

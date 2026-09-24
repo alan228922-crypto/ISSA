@@ -167,8 +167,10 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     if (workspace) workspace.dataset.uxSelection = current ? "object" : "none";
     const title = parent?.querySelector("[data-ux-panel-title]");
     const guidance = parent?.querySelector("[data-ux-panel-guidance]");
-    if (title) title.textContent = current ? "当前对象" : "当前任务";
-    if (guidance) guidance.textContent = current ? "选中的对象会在画布中高亮。" : state.draft.nodes.length ? "选择工具后，点击画布或已有对象继续。" : "在画布点一下，放置第一个节点。";
+    if (workspace?.dataset.uxStage === "build") {
+      if (title) title.textContent = current ? "当前对象" : "当前任务";
+      if (guidance) guidance.textContent = current ? "选中的对象会在画布中高亮。" : state.draft.nodes.length ? "选择工具后，点击画布或已有对象继续。" : "在画布点一下，放置第一个节点。";
+    }
     const heading = (text) => { const element = document.createElement("h3"); element.textContent = text; root.append(element); };
     const note = (text) => { const element = document.createElement("p"); element.textContent = text; root.append(element); };
     heading("这是什么");
