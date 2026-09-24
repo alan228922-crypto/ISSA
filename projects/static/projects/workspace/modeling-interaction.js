@@ -6,7 +6,8 @@ import { resolvePointerPoint } from "./geometry.js";
 import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction } from "./state.js";
 
-const TOOL_LABELS = Object.freeze({ SELECT: "选择", NODE: "节点", MEMBER: "构件", CONNECTION: "连接", SUPPORT: "支座", LOAD: "荷载" });
+const TOOL_INSTRUCTIONS = Object.freeze({ SELECT: "点击结构查看或修改", NODE: "在画布点一下放置节点", MEMBER: "选择起点，再选择终点", CONNECTION: "标明哪些构件在这里真正相连", SUPPORT: "选择连接点放置支座", LOAD: "选择连接点施加荷载" });
+const COMPLETED = Object.freeze({ CREATE_NODE: "已放置节点", CREATE_MEMBER: "已添加构件", CREATE_CONNECTION: "已建立连接", CREATE_SUPPORT: "已放置支座", CREATE_NODE_LOAD: "已施加荷载" });
 const OBJECT_KINDS = Object.freeze({ GeometryNode: "GEOMETRY_NODE", Connection: "CONNECTION" });
 
 function selectedTarget(event) {
@@ -33,12 +34,13 @@ function nodeTarget(draft, target) {
 }
 
 function updateUi(root, tool, memberStart) {
+  root.dataset.uxTool = tool;
   for (const button of root.querySelectorAll("[data-workspace-tool]")) {
     const active = button.dataset.workspaceTool === tool;
     button.dataset.active = active ? "true" : "false"; button.setAttribute("aria-pressed", active ? "true" : "false");
   }
   const instruction = root.querySelector("[data-modeling-instruction]");
-  if (instruction) instruction.textContent = memberStart ? "请选择构件的终点节点。" : `${TOOL_LABELS[tool]}工具已启用。`;
+  if (instruction) instruction.textContent = memberStart ? "请选择构件的终点节点。按 Esc 可取消。" : TOOL_INSTRUCTIONS[tool];
   for (const input of root.querySelectorAll("[data-cad-distance], [data-cad-angle]")) input.disabled = !(tool === "MEMBER" && memberStart);
 }
 
@@ -110,6 +112,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       const edited = applyWorkspaceEditorAction(canvasController.getState(), action);
       canvasController.replaceState(cadChanges ? { ...edited, cad: Object.freeze({ ...cadState(edited), ...cadChanges }) } : edited);
       root.querySelector("#workspace-save-status").textContent = "未保存修改：有";
+      if (COMPLETED[action.type]) root.querySelector("[data-modeling-instruction]").textContent = COMPLETED[action.type];
     } catch (error) {
       if (error instanceof EditorActionError) showError({ code: error.code, message: "当前工具目标不满足建模条件。" }); else throw error;
     }
@@ -207,7 +210,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (unconnectedIntersection && active) root.querySelector("[data-modeling-instruction]").textContent = "这里有构件交叉，但尚未建立连接。";
     if (memberStart) updateDynamics(resolution.point);
   });
-  root.addEventListener("keydown", (event) => { if (event.key === "Escape" && tool !== "SELECT") { event.preventDefault(); event.stopPropagation(); cancelCommand(); } });
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape" && tool !== "SELECT") { event.preventDefault(); event.stopPropagation(); cancelCommand(); } });
   svg.addEventListener("pointerleave", () => transientCad({ preview: null, snapFeedback: null }));
   updateUi(root, tool, memberStart); cadStatus(root, cadState(canvasController.getState())); return Object.freeze({ getTool: () => tool });
 }

@@ -1,6 +1,7 @@
 import pytest
 
 from tests.endpoints.test_event_landing import add_membership, make_event
+from tests.application.test_physical_draft import context
 
 
 @pytest.mark.browser
@@ -41,3 +42,54 @@ def test_new_student_sees_purpose_stage_and_can_place_first_node(live_server):
     finally:
         browser.close()
         runtime.stop()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_build_guidance_context_save_and_check(context, workspace_page):
+    owner, project, material, section = context
+    page = workspace_page(user=owner, project=project)
+    assert page.locator(".ux-precision").get_attribute("open") is None
+    tools = page.locator("[data-workspace-tool]")
+    assert tools.count() == 6
+    assert all(button.locator("[data-tool-icon]").count() == 1 for button in tools.all())
+    page.locator('[data-workspace-tool="NODE"]').click()
+    assert page.get_by_text("在画布点一下放置节点").is_visible()
+    page.locator("#workspace-canvas").click(position={"x": 200, "y": 200})
+    assert page.get_by_text("已放置节点").is_visible()
+    assert page.locator("[data-ux-save-indicator]").inner_text() == "有未保存修改"
+    page.locator('[data-client-key="node-1"]').click()
+    page.set_viewport_size({"width": 1024, "height": 768})
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert page.get_by_text("这是什么").is_visible()
+    assert page.get_by_text("可以做什么").is_visible()
+    assert page.get_by_text("下一步", exact=True).is_visible()
+    page.keyboard.press("Escape")
+    assert page.locator('[data-workspace-tool="SELECT"]').get_attribute("aria-pressed") == "true"
+    page.locator("#workspace-save").click()
+    page.wait_for_function("document.querySelector('[data-ux-save-indicator]').textContent === '已保存'")
+    page.locator('[data-ux-stage-target="check"]').click()
+    assert page.locator("#workspace-canvas").is_visible()
+    assert page.get_by_role("button", name="检查模型").is_visible()
+    page.locator("#workspace-model-check").click()
+    page.wait_for_function("document.querySelector('#workspace-check-issues').textContent.trim().length > 0")
+    assert page.locator("#workspace-check-issues").inner_text().strip()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_save_failure_is_visible_and_retry_preserves_draft(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator("#workspace-canvas").click(position={"x": 240, "y": 210})
+    assert page.locator("[data-ux-save-indicator]").inner_text() == "有未保存修改"
+    page.route("**/model/save/", lambda route: route.abort())
+    page.locator("#workspace-save").click()
+    page.wait_for_function("document.querySelector('[data-ux-save-indicator]').textContent === '保存失败'")
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+    page.unroute("**/model/save/")
+    page.locator("#workspace-save").click()
+    page.wait_for_function("document.querySelector('[data-ux-save-indicator]').textContent === '已保存'")
+    page.reload()
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1

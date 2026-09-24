@@ -225,6 +225,20 @@ def analyze_project(*,project,actor,expected_draft_version,prediction_id=None,so
     if run.status!=AnalysisRun.Status.SUCCESS: ValidationLog.objects.create(project=project,model_revision=revision,analysis_run=run,stage='ANALYSIS',code=run.failure_code,severity='ERROR',numeric_context=run.diagnostics_json)
     return run
 
+def _check_issue_physical_object(entity_refs, snapshot, analysis_member_to_physical):
+    """Only expose a canvas target when one solver reference has one exact physical identity."""
+    if len(entity_refs) != 1:
+        return None
+    ref = entity_refs[0]
+    member_id = analysis_member_to_physical.get(ref)
+    if member_id is not None and member_id in {member['id'] for member in snapshot['physical_members']}:
+        return {'kind': 'PHYSICAL_MEMBER', 'client_key': member_id}
+    matches = [connection['id'] for connection in snapshot['connections'] if ref == f"connection:{connection['id']}"]
+    if len(matches) == 1:
+        return {'kind': 'CONNECTION', 'client_key': matches[0]}
+    return None
+
+
 def check_project(*,project,actor,expected_draft_version):
     # ========================================================
     # 函數用途：在不建立正式分析歷史的前提下，先檢查目前草稿能否進入分析。
@@ -237,9 +251,11 @@ def check_project(*,project,actor,expected_draft_version):
     if not can_modify_project(actor,project): raise AnalysisError('PROJECT_CHECK_DENIED',403)
     if expected_draft_version!=project.draft_version: raise AnalysisError('STALE_DRAFT',409)
     from modeling.snapshot import build_physical_snapshot
+    snapshot = build_physical_snapshot(project)
+    mapping = {}
     try:
         # 這裡使用目前草稿的暫時 Snapshot；因為只是檢查，不把它保存成正式版本。
-        model=idealize(build_physical_snapshot(project)).model; issues=validate_truss_model(model)
+        idealization=idealize(snapshot); model=idealization.model; mapping=idealization.analysis_member_to_physical; issues=validate_truss_model(model)
         if not issues:
             # 驗證通過仍要試算，因為某些「沒有明顯格式問題」的模型可能仍沒有唯一解。
             try: Truss2DSolver().solve(model)
@@ -247,4 +263,4 @@ def check_project(*,project,actor,expected_draft_version):
     except IdealizationError as exc: issues=[type('Issue',(),{'code':str(exc),'severity':'ERROR','entity_ids':()})()]
     # 將內部 ValidationIssue 轉成前端可以直接顯示的資料：錯誤代碼、嚴重程度、
     # 關聯的節點或構件，以及不暴露內部例外的中文提示。
-    return {'ok':not bool(issues),'draft_version':project.draft_version,'issues':[{'code':x.code,'severity':getattr(x,'severity','ERROR'),'stage':'MECHANICS','entity_refs':list(getattr(x,'entity_ids',())),'human_message':MESSAGES.get(x.code,'模型需要进一步检查。')} for x in issues]}
+    return {'ok':not bool(issues),'draft_version':project.draft_version,'issues':[{'code':x.code,'severity':getattr(x,'severity','ERROR'),'stage':'MECHANICS','entity_refs':list(getattr(x,'entity_ids',())),'human_message':MESSAGES.get(x.code,'模型需要进一步检查。'), **({'physical_object': target} if (target := _check_issue_physical_object(tuple(getattr(x,'entity_ids',())), snapshot, mapping)) else {})} for x in issues]}

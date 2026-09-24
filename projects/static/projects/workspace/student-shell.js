@@ -52,5 +52,5 @@ export function bindStudentShell({ root, canvasController }) {
   new MutationObserver(syncSave).observe(saveStatus, { childList: true, characterData: true, subtree: true });
   syncSave();
   selectStage("build");
-  return Object.freeze({ selectStage });
+  return Object.freeze({ selectStage, setSaveState: (label) => { saveIndicator.textContent = label; } });
 }

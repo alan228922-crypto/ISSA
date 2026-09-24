@@ -2,6 +2,18 @@ import pytest
 from tests.application.test_physical_draft import context, valid_payload
 
 
+def test_check_issue_localization_requires_exact_unique_mapping():
+    from analysis.orchestration import _check_issue_physical_object
+
+    snapshot = {"physical_members": [{"id": "m1"}, {"id": "m12"}], "connections": [{"id": "c1"}]}
+    mapping = {"m1:1": "m1", "m12:1": "m12"}
+    assert _check_issue_physical_object(("m1:1",), snapshot, mapping) == {"kind": "PHYSICAL_MEMBER", "client_key": "m1"}
+    assert _check_issue_physical_object(("connection:c1",), snapshot, mapping) == {"kind": "CONNECTION", "client_key": "c1"}
+    assert _check_issue_physical_object(("m1",), snapshot, mapping) is None
+    assert _check_issue_physical_object(("m1:1", "m12:1"), snapshot, mapping) is None
+    assert _check_issue_physical_object(("connection:missing",), snapshot, mapping) is None
+
+
 def completed_prediction_for(project, owner, source_draft_version, **overrides):
     """Create immutable learning evidence without involving analysis behavior."""
     from learning.models import Prediction

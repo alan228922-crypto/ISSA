@@ -86,6 +86,17 @@ function appendMemberControls(root, selected, member, canvasController, material
   checkbox.addEventListener("change", () => updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { is_active: checkbox.checked } }));
   label.append(checkbox, " 参与分析");
   root.append(label);
+  const material = materials.find(item => item.id === member.material_id);
+  const section = sections.find(item => item.id === member.section_id);
+  const details = document.createElement("details");
+  details.className = "ux-advanced-properties";
+  const summary = document.createElement("summary"); summary.textContent = "专业参数"; details.append(summary);
+  const values = [
+    ["弹性模量 E", material?.E_MPa, "MPa"], ["密度", material?.density_g_per_mm3, "g/mm³"],
+    ["截面面积 A", section?.A_mm2, "mm²"], ["Ix", section?.Ix_mm4, "mm⁴"], ["Iy", section?.Iy_mm4, "mm⁴"],
+  ];
+  for (const [name, value, unit] of values) { const line = document.createElement("p"); line.textContent = `${name}：${value == null ? "未提供" : `${value} ${unit}`}`; details.append(line); }
+  root.append(details);
 }
 
 function appendConnectionDetails(root, connection, labels) {
@@ -151,16 +162,36 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
   const render = (state) => {
     root.replaceChildren();
     const current = selectedRecord(state);
-    if (!current) { const hint = document.createElement("p"); hint.textContent = "请选择对象查看属性。"; root.append(hint); return; }
+    const parent = root.closest("#workspace-workflow-panel");
+    const workspace = root.closest("#workspace-root");
+    if (workspace) workspace.dataset.uxSelection = current ? "object" : "none";
+    const title = parent?.querySelector("[data-ux-panel-title]");
+    const guidance = parent?.querySelector("[data-ux-panel-guidance]");
+    if (title) title.textContent = current ? "当前对象" : "当前任务";
+    if (guidance) guidance.textContent = current ? "选中的对象会在画布中高亮。" : state.draft.nodes.length ? "选择工具后，点击画布或已有对象继续。" : "在画布点一下，放置第一个节点。";
+    const heading = (text) => { const element = document.createElement("h3"); element.textContent = text; root.append(element); };
+    const note = (text) => { const element = document.createElement("p"); element.textContent = text; root.append(element); };
+    heading("这是什么");
+    if (!current) { note("这里是你的结构草稿。"); heading("可以做什么"); note("选择左侧工具，在画布放置节点、连接构件。"); heading("下一步"); note(state.draft.nodes.length ? "继续建立结构，或选择对象修改。" : "先放置第一个节点。"); return; }
     const labels = createStudentLabelResolver(state.draft);
     const identity = document.createElement("p"); identity.dataset.propertyIdentity = ""; identity.textContent = labels.label(current.selected.kind, current.selected.clientKey); root.append(identity);
+    const kind = current.selected.kind;
+    if (kind === "GEOMETRY_NODE") note(`结构上的一个位置：X ${current.record.x_mm} mm，Y ${current.record.y_mm} mm。`);
+    if (kind === "PHYSICAL_MEMBER") { const from = labels.label("GEOMETRY_NODE", current.record.start_node_client_key); const to = labels.label("GEOMETRY_NODE", current.record.end_node_client_key); note(`从 ${from} 到 ${to}。材料与截面决定它的基本刚度。`); }
+    if (kind === "CONNECTION") note("这里明确连接参与的构件；构件相交不等于连接。");
+    if (kind === "SUPPORT") note(current.record.support_type === "PINNED" ? "铰支座限制水平和竖直位移。" : `滚动支座限制 ${current.record.restrained_axis} 方向位移。`);
+    if (kind === "NODE_LOAD") note(`作用在连接点上的荷载：水平 ${current.record.fx_N} N，竖直 ${current.record.fy_N} N。正负号表示方向。`);
+    heading("可以做什么");
     if (current.selected.kind === "CONNECTION") appendConnectionDetails(root, current.record, labels);
-    if (state.readOnly) return;
-    if (current.selected.kind === "GEOMETRY_NODE") appendNodeControls(root, current.selected, current.record, canvasController);
-    if (current.selected.kind === "PHYSICAL_MEMBER") appendMemberControls(root, current.selected, current.record, canvasController, materials, sections);
-    if (current.selected.kind === "SUPPORT") appendSupportControls(root, current.selected, current.record, canvasController);
-    if (current.selected.kind === "NODE_LOAD") appendLoadControls(root, current.selected, current.record, canvasController);
-    appendDelete(root, current.selected, canvasController, showError);
+    if (!state.readOnly) {
+      if (kind === "GEOMETRY_NODE") appendNodeControls(root, current.selected, current.record, canvasController);
+      if (kind === "PHYSICAL_MEMBER") appendMemberControls(root, current.selected, current.record, canvasController, materials, sections);
+      if (kind === "SUPPORT") appendSupportControls(root, current.selected, current.record, canvasController);
+      if (kind === "NODE_LOAD") appendLoadControls(root, current.selected, current.record, canvasController);
+      appendDelete(root, current.selected, canvasController, showError);
+    }
+    heading("下一步");
+    note(kind === "GEOMETRY_NODE" ? "继续放置节点，再用构件连接。" : kind === "PHYSICAL_MEMBER" ? "检查材料与截面，必要时调整。" : kind === "CONNECTION" ? "需要时添加支座或荷载。" : "保存模型，再运行检查。 ");
   };
   canvasController.subscribeStateChange(render);
   render(canvasController.getState());

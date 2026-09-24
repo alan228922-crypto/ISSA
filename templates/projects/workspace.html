@@ -31,12 +31,12 @@
         <h2>当前工具</h2>
         {% if not bootstrap.read_only %}
           <div class="workspace-tool-list" role="toolbar" aria-label="建模工具">
-            <button type="button" data-workspace-tool="SELECT" aria-pressed="true">选择</button>
-            <button type="button" data-workspace-tool="NODE" aria-pressed="false">节点</button>
-            <button type="button" data-workspace-tool="MEMBER" aria-pressed="false">构件</button>
-            <button type="button" data-workspace-tool="CONNECTION" aria-pressed="false">连接</button>
-            <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false">支座</button>
-            <button type="button" data-workspace-tool="LOAD" aria-pressed="false">荷载</button>
+            <button type="button" data-workspace-tool="SELECT" aria-pressed="true"><span data-tool-icon aria-hidden="true">↖</span>选择</button>
+            <button type="button" data-workspace-tool="NODE" aria-pressed="false"><span data-tool-icon aria-hidden="true">●</span>节点</button>
+            <button type="button" data-workspace-tool="MEMBER" aria-pressed="false"><span data-tool-icon aria-hidden="true">╱</span>构件</button>
+            <button type="button" data-workspace-tool="CONNECTION" aria-pressed="false"><span data-tool-icon aria-hidden="true">⊕</span>连接</button>
+            <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false"><span data-tool-icon aria-hidden="true">△</span>支座</button>
+            <button type="button" data-workspace-tool="LOAD" aria-pressed="false"><span data-tool-icon aria-hidden="true">↓</span>荷载</button>
           </div>
           <details class="ux-precision"><summary>精确绘制</summary><div class="workspace-cad-controls" role="toolbar" aria-label="CAD 辅助">
             <button type="button" data-cad-ortho aria-pressed="false">ORTHO 正交</button>
@@ -51,20 +51,6 @@
           </div>
           <p data-cad-command-help>节点或构件工具中输入绝对、相对或极坐标；构件也可输入距离和角度。Enter 确认，Tab 切换，Esc 取消。</p></details>
           <p data-modeling-instruction role="status" aria-live="polite">选择工具已启用。</p>
-          <fieldset class="workspace-member-properties">
-            <legend>新构件属性</legend>
-            <label>材料
-              <select data-member-material>
-                {% for material in bootstrap.materials %}<option value="{{ material.id }}">{{ material.name }}（E={{ material.E_MPa }} MPa）</option>{% empty %}<option value="">请先创建材料</option>{% endfor %}
-              </select>
-            </label>
-            <label>截面
-              <select data-member-section>
-                {% for section in bootstrap.sections %}<option value="{{ section.id }}">{{ section.name }}（A={{ section.A_mm2 }} mm²）</option>{% empty %}<option value="">请先创建截面</option>{% endfor %}
-              </select>
-            </label>
-            <a href="{{ bootstrap.urls.materials }}">管理材料与截面</a>
-          </fieldset>
         {% endif %}
         <div class="workspace-view-controls" role="toolbar" aria-label="画布视图">
           <button type="button" data-cad-zoom-in aria-label="放大画布">放大 +</button>
@@ -81,6 +67,20 @@
         <h2 data-ux-panel-title>现在做什么</h2>
         <p data-ux-panel-guidance>在画布点一下，放置第一个节点。</p>
         <section id="workspace-properties-panel" aria-label="对象属性"><p>选择对象后可在这里查看属性。</p></section>
+        {% if not bootstrap.read_only %}<fieldset class="workspace-member-properties">
+            <legend>新构件属性</legend>
+            <label>材料
+              <select data-member-material>
+                {% for material in bootstrap.materials %}<option value="{{ material.id }}">{{ material.name }}</option>{% empty %}<option value="">请先创建材料</option>{% endfor %}
+              </select>
+            </label>
+            <label>截面
+              <select data-member-section>
+                {% for section in bootstrap.sections %}<option value="{{ section.id }}">{{ section.name }}</option>{% empty %}<option value="">请先创建截面</option>{% endfor %}
+              </select>
+            </label>
+          </fieldset>{% endif %}
+        <a class="ux-material-link" href="{{ bootstrap.urls.materials }}">管理材料与截面</a>
         <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>检查模型</button>
         <section id="workspace-check-issues" aria-live="polite"></section>
         <div class="ux-legacy-progress" hidden>
@@ -146,7 +146,7 @@
     const state = createWorkspaceState(bootstrap);
     renderWorkspace(canvas, state.draft, state);
     const canvasController = bindCanvasInteractions(canvas, state, renderWorkspace);
-    bindStudentShell({ root: document.getElementById("workspace-root"), canvasController });
+    const studentShell = bindStudentShell({ root: document.getElementById("workspace-root"), canvasController });
     const canvasRect = canvas.getBoundingClientRect();
     canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(state.draft), viewport: { width: canvasRect.width, height: canvasRect.height } });
     document.querySelector("[data-cad-fit]")?.addEventListener("click", () => {
@@ -225,16 +225,32 @@
     predictionWorkspace.ready.then(() => runContext.refreshRuns()).then((runs) => { if (!runs.some((run) => run.status === "SUCCESS")) reportView.textContent = "还没有可用的计算书资料。请先完成一次成功分析。"; }).catch(showError);
     document.getElementById("workspace-analyze").addEventListener("click", async () => { try { const current = canvasController.getState(); const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); await runContext.refreshRuns({ selectRunId: result.run.analysis_run_id }); errorPanel.hidden = true; } catch (error) { showError(error); } });
     document.getElementById("workspace-save").addEventListener("click", async () => {
-      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null }); workflowProgress.project({ draft: next.draft, selectedRun: null, reflection: null }); document.getElementById("workspace-results").replaceChildren(); await predictionWorkspace.refreshDraft(next.draft); await runContext.refreshRuns(); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; errorPanel.hidden = true; }
-      catch (error) { showError(error); }
+      const button = document.getElementById("workspace-save");
+      button.disabled = true; studentShell.setSaveState("保存中");
+      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null }); workflowProgress.project({ draft: next.draft, selectedRun: null, reflection: null }); document.getElementById("workspace-results").replaceChildren(); await predictionWorkspace.refreshDraft(next.draft); await runContext.refreshRuns(); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; studentShell.setSaveState(next.dirty ? "有未保存修改" : "已保存"); errorPanel.hidden = true; }
+      catch (error) { studentShell.setSaveState("保存失败"); showError(error); }
+      finally { button.disabled = false; }
     });
     document.getElementById("workspace-model-check").addEventListener("click", async () => {
       const current = canvasController.getState();
       if (current.dirty) { showError({ code: "UNSAVED_DRAFT", message: "本地修改尚未保存，服务器无法检查这些修改。" }); return; }
       try {
         const result = await workflow.checkModel(current.draftVersion); errorPanel.hidden = true; issuePanel.replaceChildren();
-        if (result.ok) { issuePanel.textContent = "模型检查通过。"; return; }
-        for (const issue of result.issues || []) { const button = document.createElement("button"); button.type = "button"; button.textContent = issue.human_message || "模型检查发现问题。"; button.addEventListener("click", () => canvasController.replaceState(focusWorkspaceIssue(canvasController.getState(), issue))); issuePanel.append(button); }
+        if (result.ok) { issuePanel.textContent = "模型检查通过。下一步可以预测，也可以直接分析。"; return; }
+        for (const issue of result.issues || []) {
+          const card = document.createElement("article"); card.className = "ux-check-issue";
+          const title = document.createElement("h3"); title.textContent = "发现一个需要检查的地方";
+          const message = document.createElement("p"); message.textContent = issue.human_message || "模型需要进一步检查。";
+          const next = document.createElement("p"); next.textContent = "下一步：回到建模，检查连接、支座和荷载，再保存并重新检查。";
+          card.append(title, message, next);
+          const target = focusWorkspaceIssue(canvasController.getState(), issue);
+          if (target !== canvasController.getState() && canvas.querySelector(`[data-client-key="${CSS.escape(target.focusedObject.clientKey)}"]`)) {
+            const locate = document.createElement("button"); locate.type = "button"; locate.textContent = "在画布中查看";
+            locate.addEventListener("click", () => canvasController.replaceState(focusWorkspaceIssue(canvasController.getState(), issue)));
+            card.append(locate);
+          }
+          issuePanel.append(card);
+        }
       } catch (error) { showError(error); }
     });
   </script>
