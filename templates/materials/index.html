@@ -12,6 +12,6 @@
   </section>
   <section>
     <h2>截面</h2><a href="{% url 'materials:section_create' project.id %}">新建矩形截面</a> · <a href="{% url 'materials:composite_section_create' project.id %}">新建组合截面</a>
-    <ul>{% for section in sections %}<li>{{ section.name }} · {{ section.get_section_type_display }} · A={{ section.properties_json.A_mm2 }} mm² · <a href="{% url 'materials:section_edit' project.id section.id %}">编辑</a></li>{% empty %}<li>尚无截面</li>{% endfor %}</ul>
+    <ul>{% for section in sections %}<li>{{ section.name }} · {% if section.section_type == 'COMPOSITE' %}组合截面{% elif section.section_type == 'RECTANGLE' %}矩形截面{% else %}{{ section.section_type }}{% endif %} · A={{ section.properties_json.A_mm2 }} mm² · <a href="{% url 'materials:section_edit' project.id section.id %}">编辑</a></li>{% empty %}<li>尚无截面</li>{% endfor %}</ul>
   </section>
 </main></body></html>

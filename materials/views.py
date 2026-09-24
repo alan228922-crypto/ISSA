@@ -80,6 +80,8 @@ def _composite_editor(request, project, section=None):
             form.add_error(None, "请至少保留一个矩形组件。")
         else:
             definition = {"schema_version": "section-definition-v1", "type": "composite", "components": components}
+            if section and section.definition_json.get("strip_id") is not None:
+                definition["strip_id"] = section.definition_json["strip_id"]
             try:
                 if section:
                     update_section(actor=request.user, section=section, name=form.cleaned_data["name"], definition=definition)

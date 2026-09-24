@@ -16,6 +16,8 @@ def test_rectangle_preview_updates_without_saving(context, live_server, workspac
     page.get_by_label("密度（g/mm³）").fill("0.0007")
     page.wait_for_function("document.querySelector('[data-section-properties]')?.textContent.includes('36')")
     assert page.locator("[data-section-preview-svg] rect").count() == 1
+    assert "2 mm" in page.locator("[data-section-preview-svg]").text_content()
+    assert "6 mm" in page.locator("[data-section-preview-svg]").text_content()
     assert "12" in page.locator("[data-section-properties]").text_content()
     assert "4" in page.locator("[data-section-properties]").text_content()
     page.get_by_label("宽度（mm）").fill("0")

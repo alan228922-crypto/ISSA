@@ -140,6 +140,9 @@ def test_owner_creates_reopens_and_edits_composite_section(context, client):
     assert section.section_type == "COMPOSITE"
     assert len(section.definition_json["components"]) == 2
     assert section.properties_json["A_mm2"] == pytest.approx(1400)
+    listing = client.get(reverse("materials:index", kwargs={"project_id": project.id})).content.decode()
+    assert "组合 H · 组合截面" in listing
+    assert "矩形 · 矩形截面" in listing
     edit = reverse("materials:section_edit", kwargs={"project_id": project.id, "section_id": section.id})
     response = client.get(edit)
     assert response.status_code == 200
@@ -211,3 +214,24 @@ def test_composite_edit_rejects_deleting_all_components_and_preserves_saved_defi
     assert response.status_code == 200
     assert "至少" in response.content.decode()
     assert section.definition_json == original
+
+
+@pytest.mark.django_db
+def test_composite_edit_preserves_existing_strip_association(context, client):
+    from materials.models import Strip
+    from materials.services import create_section
+
+    owner, project, material, _ = context
+    strip = Strip.objects.create(owner_user=owner, material=material, name="竹条", width_mm=2, thickness_mm=1)
+    definition = {
+        "schema_version": "section-definition-v1", "type": "composite", "strip_id": strip.id,
+        "components": [{"width_mm": 2, "height_mm": 1, "center_x_mm": 0, "center_y_mm": 0, "angle_deg": 0, "density_g_per_mm3": 0.0007}],
+    }
+    section = create_section(owner=owner, name="关联条材截面", definition=definition)
+    client.force_login(owner)
+    payload = _composite_payload()
+    payload["name"] = "关联条材截面修订"
+    payload["components-TOTAL_FORMS"] = "1"
+    assert client.post(reverse("materials:section_edit", kwargs={"project_id": project.id, "section_id": section.id}), payload).status_code == 302
+    section.refresh_from_db()
+    assert section.definition_json["strip_id"] == strip.id

@@ -7,7 +7,7 @@ function numeric(form, name) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function draw(svg, rectangles) {
+function draw(svg, rectangles, dimensioned = false) {
   svg.replaceChildren();
   const vertices = rectangles.flatMap(({ width_mm: w, height_mm: h, center_x_mm: x = 0, center_y_mm: y = 0, angle_deg: a = 0 }) => {
     const radians = a * Math.PI / 180;
@@ -22,6 +22,20 @@ function draw(svg, rectangles) {
     for (const [key,value] of Object.entries({ x:x-w/2, y:-y-h/2, width:w, height:h, transform:`rotate(${-a} ${x} ${-y})`, fill:"#86b6d7", stroke:"#17324a" })) rect.setAttribute(key, String(value));
     svg.append(rect);
   });
+  if (dimensioned) {
+    const { width_mm: w, height_mm: h } = rectangles[0];
+    function element(tag, attributes, content = "") {
+      const node = document.createElementNS(NS, tag);
+      for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
+      node.textContent = content;
+      svg.append(node);
+    }
+    const style = { fill: "#17324a", "font-size": pad * .55, "text-anchor": "middle" };
+    element("line", { x1: -w/2, y1: h/2 + pad*.35, x2: w/2, y2: h/2 + pad*.35, stroke: "#17324a", "stroke-width": pad*.04 });
+    element("text", { x: 0, y: h/2 + pad*.85, ...style }, `${w} mm`);
+    element("line", { x1: -w/2-pad*.35, y1: -h/2, x2: -w/2-pad*.35, y2: h/2, stroke: "#17324a", "stroke-width": pad*.04 });
+    element("text", { x: -w/2-pad*.7, y: 0, transform: `rotate(-90 ${-w/2-pad*.7} 0)`, ...style }, `${h} mm`);
+  }
 }
 
 function showProperties(target, values) {
@@ -119,7 +133,7 @@ export function bindSectionDesigner(root) {
     svg.replaceChildren();
     const definition = root.dataset.sectionDesigner === "composite" ? compositeDefinition(root) : rectangleDefinition(form);
     if (!definition) { status.textContent = "请输入有效的正数尺寸和非负密度。"; return; }
-    draw(svg,definition.type === "composite" ? definition.components : [definition]);
+    draw(svg,definition.type === "composite" ? definition.components : [definition],definition.type === "rectangle");
     status.textContent = "正在计算截面属性…";
     try {
       const response = await fetch(root.dataset.previewUrl, { method:"POST", credentials:"same-origin", headers:{ "Content-Type":"application/json", "X-CSRFToken":form.elements.namedItem("csrfmiddlewaretoken").value }, body:JSON.stringify(definition) });
