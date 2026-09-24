@@ -307,3 +307,9 @@ Level 1 现在以“荷载 → 支座 → 传力路径”的谨慎观察顺序�
 状态：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**。本轮确认的前端 P1 与 P2 差距均已归零，并补入 transient CAD feedback、初学者稳定标签、MIXED 分段证据、Canvas→教学项目焦点、持久化事实流程投影、键盘视图控制与多视窗核验。所有变更停留在交互与教学呈现边界，没有修改 mechanics、idealization、postprocess 或结果 schema。
 
 Euler 自动产品行为的成功条件标记为 `SPEC_CONFLICT`，继续由 O-001 阻塞；本轮没有实现或暗示任何 K、控制轴或风险等级政策。
+
+## 21. UX V2 student-first implementation（2026-09-24）
+
+状态：**UX V2 IMPLEMENTED — MANUAL PRODUCT ACCEPTANCE PENDING**。在原有 M5/M6 与 POC V1 权威契约之上，界面改为一个 Project 的六阶段学习流程：建模、检查、预测（可选）、分析、理解、总结。Canvas 保持建模主视觉；工具、对象属性、精确绘制和 Material/Section 按当前任务逐级显示。理解阶段先给结论，再提供预测对比、解释和技术数据；总结阶段的计算依据、学生自行填写的设计说明与可选反思绑定显式选择的同一 AnalysisRun。
+
+安全定位仅在 validation issue 能唯一对应当前 Physical Draft 对象时出现；`entity_refs` 不能可靠映射时只显示文字问题，绝不猜测对象。键盘页签、可读保存状态、非颜色受力语义与 1024×768／1280×800／1440×900 桌面视窗均纳入浏览器回归。此轮未修改力学数值权威、授权、purge、开放决策或 Report/Reasoning 数据契约。Product Owner 人工体验与验收仍待进行。

@@ -10,6 +10,7 @@
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
 - P0 核心分析類型：`TRUSS_2D`
 - First POC V1：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**（2026-09-23）
+- UX V2：**UX V2 IMPLEMENTED — MANUAL PRODUCT ACCEPTANCE PENDING**（2026-09-24）
 
 > 本文件已由 Product Owner 指示執行升格，作為目前專案唯一最高層級 Source of Truth。
 >
@@ -2258,6 +2259,12 @@ POC V1 已以真实浏览器公开控件完成纵向验收：Login → Events �
 状态：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**。
 
 本次闭合补齐 transient 构件预览与 SNAP 标记、未连接交叉警告、统一 Esc 取消、稳定学生标签、MIXED 分段证据、Canvas 到既有 Result / Compare / Explain 项目的焦点联动、由持久化事实投影的学习流程，以及键盘平移、缩放、Fit 与状态语义。公开控件学生旅程与 1024×768、1280×800、1440×900 视窗均完成自动化或人工视觉核验。
+
+# 51. UX V2 Student-first Interface Implementation Record（2026-09-24）
+
+状态：**UX V2 IMPLEMENTED — MANUAL PRODUCT ACCEPTANCE PENDING**。基于已实现 Material/Section/Section Designer 的 `a81fd85`，将学生入口与工作区整理为「建模 → 检查 → 预测（可选）→ 分析 → 理解 → 总结」六阶段；优先显示 Canvas、当前任务、学生结论与下一步，专业数值与 provenance 逐级展开。总结中的计算依据、学生自主设计说明与可选反思绑定显式 AnalysisRun；切换历史分析时同步隔离。
+
+此记录是 presentation、interaction、information architecture 与 workflow projection 的实现状态，不变更 Truss mechanics、Solver、理想化、postprocess、授权、purge、报告数据契约或任何 Open Decision。自动化浏览器验收不能替代 Product Owner 的真实设备产品验收。
 
 - P1 remaining：**0**
 - P2 remaining：**0**

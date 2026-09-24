@@ -23,23 +23,27 @@ export function createReportWorkspace({ urls, get = requestJson }) {
   });
 }
 
-export function renderReport(root, payload) {
-  const report = payload?.report || {}; const completeness = payload?.completeness || {}; const metadata = report.metadata || {}; const provenance = report.provenance || {};
-  root.replaceChildren(); root.append(heading("h2", "计算书资料"));
-  const summary = document.createElement("section"); summary.append(heading("h3", `分析 #${value(metadata, "analysis_run_id")}`));
+export function renderReport(root, payload, { runNumber = null } = {}) {
+  const report = payload?.report || {}; const completeness = payload?.completeness || {}; const provenance = report.provenance || {};
+  root.replaceChildren(); root.append(heading("h2", "计算依据 · 计算书资料"));
+  const summary = document.createElement("section"); summary.append(heading("h3", runNumber ? `第 ${runNumber} 次分析` : "这次分析"));
   const overall = completeness.overall?.status;
   const status = document.createElement("p"); status.textContent = provenance.is_stale ? "这份资料对应较早一次分析；你的模型后来已经修改。" : overall === "READY" ? "基础工程资料已齐全。" : "还有资料需要补齐。"; summary.append(status);
+  const findings = report.results_summary || {};
+  const maximumValue = findings.maximum_displacement?.maximum_displacement?.maximum_displacement_mm;
+  const maximum = document.createElement("p"); maximum.textContent = `主要结论：最大位移 ${Number.isFinite(maximumValue) ? Number(maximumValue.toFixed(3)) : "—"} mm；总质量 ${value(findings, "total_mass_g")} g。`; summary.append(maximum);
+  const assumptionNote = document.createElement("p"); assumptionNote.textContent = "分析假定：二维、线弹性、铰接、构件仅承受轴力。"; summary.append(assumptionNote);
   const issues = Object.values(completeness.blocks || {}).flatMap((block) => block?.status === "MISSING" ? (block.issues || []) : []);
   if (issues.length) { const list = document.createElement("ul"); issues.forEach((issue) => { const item = document.createElement("li"); item.dataset.completenessCode = issue.code; item.textContent = ISSUE_TEXT[issue.code] || "有一项工程资料需要补齐。"; list.append(item); }); summary.append(list); }
-  const euler = document.createElement("p"); euler.textContent = "稳定性 / Euler 自动报告：当前版本暂未提供。"; summary.append(euler); root.append(summary);
-  const main = document.createElement("section"); main.append(heading("h3", "主要工程资料"));
+  const euler = document.createElement("p"); euler.textContent = "限制：当前版本未提供 Euler 稳定性自动报告；不能作为规范符合性审查或正式工程签字。"; summary.append(euler); root.append(summary);
+  const main = document.createElement("details"); main.append(heading("summary", "展开材料、截面、支座、荷载与主要结果"));
   const model = report.geometry_connectivity || {}; main.append(table("模型信息", ["节点", "实体构件", "显式连接"], [[(model.nodes || []).length, (model.physical_members || []).length, (model.connections || []).length]]));
   const materialRows = (report.materials_sections?.materials || []).map((item) => [value(item, "name"), value(item, "E_MPa"), value(item, "density_g_per_mm3")]);
   const sectionRows = (report.materials_sections?.sections || []).map((item) => [value(item, "name"), value(item, "A_mm2"), value(item, "Ix_mm4")]);
   main.append(table("材料", ["材料", "E (MPa)", "密度 (g/mm³)"], materialRows)); main.append(table("截面", ["截面", "A (mm²)", "Ix (mm⁴)"], sectionRows));
   main.append(table("支座与荷载", ["支座", "约束轴", "Fx (N)", "Fy (N)"], [[(report.supports_loads?.supports || []).map((item) => item.support_type).join("、"), (report.supports_loads?.supports || []).map((item) => item.restrained_axis).join("、"), (report.supports_loads?.loads || []).map((item) => value(item, "fx_N")).join("、"), (report.supports_loads?.loads || []).map((item) => value(item, "fy_N")).join("、")]]));
   const assumptions = report.assumptions || {}; main.append(table("分析假定", ["类型", "运动学", "节点", "构件", "单位"], [[value(assumptions, "analysis_type"), value(assumptions, "kinematics"), value(assumptions, "joint_model"), value(assumptions, "member_behavior"), JSON.stringify(assumptions.units || {})]]));
-  const results = report.results_summary || {}; main.append(table("主要结果", ["最大位移 (mm)", "总质量 (g)", "受力状态"], [[value(results.maximum_displacement, "maximum_displacement_mm"), value(results, "total_mass_g"), JSON.stringify(results.state_counts || {})]]));
+  const results = report.results_summary || {}; main.append(table("主要结果", ["最大位移 (mm)", "总质量 (g)", "受力状态"], [[value(results.maximum_displacement?.maximum_displacement, "maximum_displacement_mm"), value(results, "total_mass_g"), JSON.stringify(results.state_counts || {})]]));
   const limitation = document.createElement("p"); limitation.textContent = "限制说明：当前版本未提供 Euler 稳定性自动报告；本资料不是规范符合性审查或正式工程签字。"; main.append(limitation); root.append(main);
   const details = document.createElement("details"); details.append(heading("summary", "技术明细与追溯信息")); details.append(table("追溯信息", ["AnalysisRun", "Revision", "源草稿", "当前草稿", "Solver"], [[value(provenance, "analysis_run_id"), value(provenance, "model_revision_id"), value(provenance, "source_draft_version"), value(provenance, "current_draft_version"), value(provenance, "solver_version")]]));
   details.append(table("哈希", ["模型 hash", "输入 hash"], [[value(provenance, "model_hash"), value(provenance, "input_hash")]]));
@@ -47,5 +51,5 @@ export function renderReport(root, payload) {
   details.append(table("构件结果", ["分析构件", "实体构件", "轴力 (N)", "应力 (MPa)"], (report.member_results?.items || []).map((item) => [value(item, "analysis_member_id"), value(item, "physical_member_id"), value(item, "axial_force_N"), value(item, "axial_stress_MPa")])));
   details.append(table("构件映射", ["实体构件", "分析构件"], Object.entries(model.analysis_member_mapping || {}).map(([physical, analysis]) => [physical, JSON.stringify(analysis)])));
   root.append(details);
-  const student = document.createElement("p"); student.textContent = "设计说明将在后续步骤填写。"; root.append(student);
+  const student = document.createElement("p"); student.textContent = "可在「我的设计说明」记录你的判断。"; root.append(student);
 }

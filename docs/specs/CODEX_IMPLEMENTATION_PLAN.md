@@ -12,7 +12,9 @@
 
 ## Current implementation status
 
-**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING.**
+**UX V2 IMPLEMENTED — MANUAL PRODUCT ACCEPTANCE PENDING.**
+
+UX V2 基于 `feat/section-designer-nonoverlap` 的 `a81fd85`，分四阶段完成 Entry/Workspace Shell、Build/Contextual Interaction、Prediction/Analyze/Results、Summary/Final Integration。六阶段学生流程与显式 AnalysisRun 隔离已实现，Material/Section、Section Designer、mechanics、solver 与数据契约沿用原有权威边界。自动化证据位于 `tests/browser/test_ux_v2_student_journey.py` 和既有公开控件旅程；Product Owner 实机验收仍待进行。
 
 M5 — Student Learning Workspace — **COMPLETE**. M6 — Calculation Report Assistance — **COMPLETE (Gates 0–5)**. Product reconciliation and the 2026-09-23 frontend contract closure provide the owner-scoped Material/Section setup flow, complete visible CAD/property/delete controls, one explicit-Run learning context, transient CAD feedback, stable beginner labels, persisted-state workflow projection, keyboard-operable viewport controls, desktop containment, and an authoritative public-control Playwright journey. P1 remaining is **0** and P2 remaining is **0**. Product Owner manual acceptance remains pending; policy-open exclusions are recorded in `POC_V1_KNOWN_ISSUES.md`.
 

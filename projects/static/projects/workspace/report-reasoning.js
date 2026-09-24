@@ -16,12 +16,17 @@ export function bindReportReasoning({ root, template, get = requestJson, post = 
   const renderEditor = (runId, reasoning = {}) => {
     root.replaceChildren();
     const title = document.createElement("h3");
-    title.textContent = `我的设计说明 · 分析 #${runId}（由你填写）`;
+    title.textContent = "我的设计说明";
     root.append(title);
+    const notice = document.createElement("p"); notice.textContent = "由你自己填写，平台不会替你生成设计理由。"; root.append(notice);
+    const overview = document.createElement("p"); overview.dataset.reasoningOverview = ""; root.append(overview);
     const form = document.createElement("form");
-    for (const [name, label, prompt] of FIELDS) {
+    const refreshOverview = () => { overview.textContent = `已填写 ${FIELDS.filter(([name]) => form.elements[name]?.value.trim()).length} / ${FIELDS.length} 项；可随时保存草稿。`; };
+    for (const [index, [name, label, prompt]] of FIELDS.entries()) {
+      if (index === 0 || index === 3 || index === 6) form.append(Object.assign(document.createElement("h4"), { textContent: index === 0 ? "结构与材料" : index === 3 ? "结果与修改" : "最终结论" }));
       const field = document.createElement("label"); field.textContent = `${label}：${prompt}`;
       const area = document.createElement("textarea"); area.name = name; area.value = reasoning[name] || "";
+      area.addEventListener("input", refreshOverview);
       field.append(area); form.append(field);
     }
     const save = document.createElement("button"); save.type = "submit"; save.textContent = "保存设计说明";
@@ -39,6 +44,7 @@ export function bindReportReasoning({ root, template, get = requestJson, post = 
       finally { save.disabled = false; }
     });
     root.append(form);
+    refreshOverview();
   };
   return Object.freeze({
     render(id, payload) {
@@ -52,7 +58,7 @@ export function bindReportReasoning({ root, template, get = requestJson, post = 
       const requestedRunId = activeRunId;
       const generation = ++loadGeneration;
       if (!requestedRunId) { renderStatus(""); return; }
-      renderStatus(`正在加载分析 #${requestedRunId} 的设计说明…`);
+      renderStatus("正在加载这次分析的设计说明…");
       try {
         const result = await get(url(requestedRunId));
         if (generation !== loadGeneration || requestedRunId !== activeRunId) return;

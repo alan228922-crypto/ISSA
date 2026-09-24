@@ -24,6 +24,7 @@ export function createRunContext({ urls, select, editable = true, get = requestJ
   let current = Object.freeze({ runs: Object.freeze([]), currentRunId: null, selectionToken: 0, payload: null });
   const state = () => current;
   const replaceOptions = (runs) => {
+    const chronological = [...runs].sort((left, right) => left.analysis_run_id - right.analysis_run_id);
     select.replaceChildren();
     const placeholder = document.createElement("option");
     placeholder.value = "";
@@ -32,7 +33,7 @@ export function createRunContext({ urls, select, editable = true, get = requestJ
     for (const run of runs) {
       const option = document.createElement("option");
       option.value = String(run.analysis_run_id);
-      option.textContent = `分析 #${run.analysis_run_id} · ${run.status} · 草稿 v${run.source_draft_version}${run.is_stale ? " · 历史" : ""}`;
+      option.textContent = `第 ${chronological.findIndex(item => item.analysis_run_id === run.analysis_run_id) + 1} 次分析 · ${run.status === "SUCCESS" ? "已完成" : "未完成"}${run.is_stale ? " · 较早模型" : ""}`;
       select.append(option);
     }
   };

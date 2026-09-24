@@ -1,6 +1,7 @@
 import { requestJson, postJson, urlFromTemplate } from "./api.js";
 import { normalizeApiError } from "./errors.js";
 import { createStudentLabelResolver } from "./labels.js";
+import { bindTabKeys } from "./student-shell.js";
 
 const STATE_LABELS = Object.freeze({ TENSION: "受拉", COMPRESSION: "受压", ZERO: "近似零力", ZERO_FORCE: "近似零力", MIXED: "不同分析段的受力状态不同" });
 const COMPARISON_LABELS = Object.freeze({ MATCH: "和预测一致", MISMATCH: "和预测不同", UNSURE: "之前选择“不确定”", NOT_COMPARABLE: "暂不比较" });
@@ -137,7 +138,11 @@ export function renderResultActions(root, { onCompare, onExplain, onTechnical = 
   actions.className = "workspace-result-actions"; actions.setAttribute("role", "tablist"); actions.setAttribute("aria-label", "结果内容");
   const select = (name) => {
     root.dataset.uxResultsView = name;
-    for (const button of actions.querySelectorAll("button")) button.setAttribute("aria-selected", String(button.dataset.resultView === name));
+    for (const button of actions.querySelectorAll("button")) {
+      const selected = button.dataset.resultView === name;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
   };
   for (const [name, text, handler] of [["conclusion", "结论", () => {}], ["compare", "预测对比", onCompare], ["explain", "为什么", onExplain], ["technical", "技术数据", onTechnical]]) {
     const button = document.createElement("button");
@@ -155,6 +160,7 @@ export function renderResultActions(root, { onCompare, onExplain, onTechnical = 
   explanation.setAttribute("aria-live", "polite");
   root.prepend(actions);
   root.append(comparison, explanation);
+  bindTabKeys(actions);
   select("conclusion");
 }
 

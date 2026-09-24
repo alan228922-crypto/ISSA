@@ -1,6 +1,6 @@
 # 校内结构设计学习平台 — POC V1
 
-当前状态：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**。
+当前状态：**UX V2 IMPLEMENTED — MANUAL PRODUCT ACCEPTANCE PENDING**。UX V2 已将 POC V1 的技术原型整理为以学生学习过程为主的界面；这不代表 Product Owner 已完成人工验收。
 
 这是一个 Django + Vanilla JavaScript 的 Truss-first 教学 POC。P0 仅支持二维线弹性、小位移、铰接、轴向受力桁架；单位为 mm / N / MPa / g。浏览器负责交互与呈现，所有授权、版本、分析和力学事实由服务端及纯 Python mechanics 层保持权威。
 
@@ -24,7 +24,7 @@ python3 manage.py makemigrations --check --dry-run
 python3 manage.py migrate --plan
 ```
 
-权威公开控件旅程位于 `tests/browser/test_poc_v1_student_journey.py`。它覆盖 Login → 空白项目建模 → Prediction → Analyze → Compare / Explain → explicit-Run Report / Reasoning / Reflection → 第二次 Run → 历史切换。
+权威公开控件旅程位于 `tests/browser/test_poc_v1_student_journey.py`，UX V2 阶段与总结隔离回归位于 `tests/browser/test_ux_v2_student_journey.py`。学习流程为建模 → 检查 → 预测（可选）→ 分析 → 理解 → 总结；总结中的计算依据、我的设计说明和反思始终针对显式选中的同一次分析。
 
 ## 明确边界
 

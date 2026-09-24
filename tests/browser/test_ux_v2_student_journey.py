@@ -79,6 +79,26 @@ def test_build_guidance_context_save_and_check(context, workspace_page):
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_connection_tool_does_not_reuse_stale_selection_on_blank_canvas(context, workspace_page):
+    owner, project, material, section = context
+    page = workspace_page(user=owner, project=project)
+    canvas = page.locator('#workspace-canvas')
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas.click(position={"x": 200, "y": 200})
+    canvas.click(position={"x": 400, "y": 200})
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="node-1"]').click()
+    page.locator('[data-client-key="node-2"]').click()
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
+    page.locator('[data-workspace-tool="CONNECTION"]').click()
+    page.locator('[data-client-key="node-1"] circle').click()
+    assert page.locator('[data-object-kind="Connection"]').count() == 1
+    canvas.click(position={"x": 500, "y": 350})
+    assert page.locator('[data-object-kind="Connection"]').count() == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_save_failure_is_visible_and_retry_preserves_draft(context, workspace_page):
     owner, project, _, _ = context
     page = workspace_page(user=owner, project=project)
@@ -113,6 +133,11 @@ def test_analysis_opens_conclusions_then_evidence_tabs(context, workspace_page):
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert not page.locator('.workspace-member-properties').is_visible()
     assert page.get_by_role('tab', name='结论').get_attribute('aria-selected') == 'true'
+    page.get_by_role('tab', name='结论').focus()
+    page.keyboard.press('End')
+    assert page.get_by_role('tab', name='技术数据').get_attribute('aria-selected') == 'true'
+    page.keyboard.press('Home')
+    assert page.get_by_role('tab', name='结论').get_attribute('aria-selected') == 'true'
     assert page.locator('[data-result-conclusion]').get_by_text('最大位移', exact=False).is_visible()
     page.locator('[data-result-conclusion] [data-teaching-member="m1"]').click()
     assert page.locator('[data-client-key="m1"]').get_attribute('data-selected') == 'true'
@@ -138,3 +163,49 @@ def test_analysis_failure_explains_recovery_without_raw_error(context, workspace
     assert page.get_by_text('请检查连接、支座和荷载，也可以返回建模。', exact=False).is_visible()
     page.locator('[data-ux-back-to-build]').click()
     assert page.locator('#workspace-root').get_attribute('data-ux-stage') == 'build'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_summary_run_binding_reasoning_and_optional_reflection(context, workspace_page):
+    from analysis.orchestration import analyze_project
+    from competitions.models import CompetitionEvent
+
+    owner, project, material, section = context
+    CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
+    save_bt01_draft(owner, project, material, section, fx_N=100)
+    first = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    save_bt01_draft(owner, project, material, section, fx_N=125)
+    second = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-ux-stage-target="summary"]').click()
+    page.locator('#workspace-run-select').select_option(str(first.id))
+    page.wait_for_function("document.querySelector('#workspace-report-view').textContent.includes('计算依据')")
+    assert '第 1 次分析' in page.locator(f'#workspace-run-select option[value="{first.id}"]').inner_text()
+    assert '8.333' in page.locator('#workspace-report-view').inner_text()
+    for width, height in ((1024, 768), (1280, 800), (1440, 900)):
+        page.set_viewport_size({"width": width, "height": height})
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert page.get_by_role('tab', name='计算依据').get_attribute('aria-selected') == 'true'
+    page.get_by_role('tab', name='计算依据').focus()
+    page.keyboard.press('ArrowRight')
+    assert page.get_by_role('tab', name='我的设计说明').get_attribute('aria-selected') == 'true'
+    assert page.get_by_role('tab', name='我的设计说明').evaluate('(element) => document.activeElement === element')
+    assert page.locator('#workspace-report-view details').count() >= 1
+    page.get_by_role('tab', name='我的设计说明').click()
+    assert page.get_by_text('由你自己填写，平台不会替你生成设计理由。').is_visible()
+    assert page.locator('#workspace-report-reasoning textarea').count() == 7
+    page.locator('#workspace-report-reasoning [name="final_conclusion"]').fill('第一次分析的判断')
+    page.get_by_role('button', name='保存设计说明').click()
+    page.wait_for_function("document.querySelector('#workspace-report-reasoning form p').textContent.includes('已保存')")
+    page.get_by_role('tab', name='反思（可选）').click()
+    page.get_by_role('button', name='开始反思').click()
+    page.locator('#workspace-reflection [name="original_reasoning"]').fill('第一次反思')
+    with page.expect_response("**/reflection/") as saved_reflection:
+        page.get_by_role('button', name='保存草稿').click()
+    assert saved_reflection.value.ok
+    page.locator('#workspace-run-select').select_option(str(second.id))
+    page.wait_for_function("document.querySelector('#workspace-report-reasoning [name=final_conclusion]')?.value === ''")
+    page.locator('#workspace-run-select').select_option(str(first.id))
+    page.wait_for_function("document.querySelector('#workspace-report-reasoning [name=final_conclusion]')?.value.includes('第一次')")
+    assert '第一次反思' in page.locator('#workspace-reflection [name="original_reasoning"]').input_value()

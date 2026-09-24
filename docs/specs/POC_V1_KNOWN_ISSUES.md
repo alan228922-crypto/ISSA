@@ -7,6 +7,7 @@
 - Automated Important defects: **0**
 - Frontend reconciliation gaps: **P1 0 / P2 0**
 - Recommended next mode: **MANUAL PRODUCT ACCEPTANCE**
+- UX V2 follow-on: **UX V2 IMPLEMENTED — MANUAL PRODUCT ACCEPTANCE PENDING**；以学生为中心的六阶段界面尚待 Product Owner 实机确认。
 
 ## Known issues
 
@@ -16,6 +17,7 @@ No reproducible Critical or Important production defect remains in the automated
 
 - The earlier owner “只读查看” observation is closed as non-reproducible after owner and Manager/Developer browser evidence: owners receive editable controls, while authorized non-owners receive an explained read-only state. A future recurrence still requires a reproducible failing test before authorization changes.
 - Product Owner sign-off on a real device remains pending. Automated public-control browser acceptance is complete, so the release is ready for that manual pass but is not described as owner-accepted.
+- UX V2 的 3 秒产品用途识别、5 秒阶段/下一步识别、无需文档开始建模等体验标准，仍须由 Product Owner 在真实设备上主观核验；自动化仅证明入口、流程与控件可用，不替代该验收。
 
 ## Out of scope for POC V1
 

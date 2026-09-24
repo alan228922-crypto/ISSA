@@ -80,7 +80,7 @@
               </select>
             </label>
           </fieldset>{% endif %}
-        <a class="ux-material-link" href="{{ bootstrap.urls.materials }}">管理材料与截面</a>
+        {% if not bootstrap.read_only %}<a class="ux-material-link" href="{{ bootstrap.urls.materials }}">管理材料与截面</a>{% endif %}
         <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>检查模型</button>
         <section id="workspace-check-issues" aria-live="polite"></section>
         <div class="ux-legacy-progress" hidden>
@@ -107,18 +107,24 @@
         <button id="workspace-analyze" type="button"{% if bootstrap.read_only %} disabled{% endif %}>开始分析</button>
         <button type="button" data-ux-back-to-build>返回建模</button>
         <section id="workspace-results" aria-label="分析结果"></section>
-        <details id="workspace-engineering-details" open><summary>技术数据</summary><section data-engineering-content></section></details>
-        <section id="workspace-reflection" aria-label="反思"></section>
+        <details id="workspace-engineering-details"><summary>技术数据</summary><section data-engineering-content></section></details>
       </aside>
     </section>
-    <section id="workspace-report" aria-label="计算书资料">
-      <h2>计算书资料</h2>
-      <p>选择一次明确的分析记录后查看计算书资料。</p>
+    <section id="workspace-report" data-run-selected="false" data-ux-summary-view="report" aria-label="总结">
+      <h2>总结这次分析</h2>
+      <p>选择一次分析，再查看计算依据、填写自己的说明，或稍后反思。</p>
       <label for="workspace-run-select">当前分析</label>
       <select id="workspace-run-select"><option value="">请选择分析记录</option></select>
-      <button id="workspace-report-open" type="button" disabled>查看计算书资料</button>
+      <nav class="ux-summary-nav" role="tablist" aria-label="总结内容">
+        <button type="button" role="tab" data-ux-summary-target="report" aria-selected="true">计算依据</button>
+        {% if not bootstrap.read_only %}<button type="button" role="tab" data-ux-summary-target="reasoning" aria-selected="false">我的设计说明</button>{% endif %}
+        <button type="button" role="tab" data-ux-summary-target="reflection" aria-selected="false">反思（可选）</button>
+      </nav>
+      <p data-ux-summary-empty>请先选择一次分析。</p>
+      <button id="workspace-report-open" type="button" disabled>查看计算依据</button>
       <section id="workspace-report-view" aria-live="polite"></section>
       {% if not bootstrap.read_only %}<section id="workspace-report-reasoning" aria-label="我的设计说明"></section>{% endif %}
+      <section id="workspace-reflection" aria-label="反思（可选）"></section>
     </section>
     <footer id="workspace-status-bar" role="status" aria-label="建模状态" aria-live="polite" aria-atomic="false">
       <span id="workspace-pointer-x">X: —</span><span id="workspace-pointer-y">Y: —</span><span id="workspace-delta-length">ΔL: —</span><span id="workspace-angle">Angle: —</span>
@@ -144,7 +150,7 @@
     import { createRunContext } from "{% static 'projects/workspace/run-context.js' %}";
     import { createWorkflowProgress } from "{% static 'projects/workspace/workflow-progress.js' %}";
     import { createStudentLabelResolver } from "{% static 'projects/workspace/labels.js' %}";
-    import { bindStudentShell } from "{% static 'projects/workspace/student-shell.js' %}";
+    import { bindStudentShell, bindTabKeys } from "{% static 'projects/workspace/student-shell.js' %}";
     const bootstrap = readWorkspaceBootstrap();
     const canvas = document.getElementById("workspace-canvas");
     const state = createWorkspaceState(bootstrap);
@@ -174,6 +180,16 @@
     const reflectionWorkspace = createReflectionWorkspace({ urls: { reflectionTemplate: bootstrap.urls.reflection_template, reflectionCompleteTemplate: bootstrap.urls.reflection_complete_template }, workflow });
     const reportSelect = document.getElementById("workspace-run-select");
     const reportOpen = document.getElementById("workspace-report-open");
+    const reportRoot = document.getElementById("workspace-report");
+    for (const button of reportRoot.querySelectorAll("[data-ux-summary-target]")) button.addEventListener("click", () => {
+      reportRoot.dataset.uxSummaryView = button.dataset.uxSummaryTarget;
+      for (const item of reportRoot.querySelectorAll("[data-ux-summary-target]")) {
+        item.setAttribute("aria-selected", String(item === button));
+        item.tabIndex = item === button ? 0 : -1;
+      }
+    });
+    bindTabKeys(reportRoot.querySelector(".ux-summary-nav"));
+    reportRoot.querySelector('[data-ux-summary-target="report"]').click();
     const reportView = document.getElementById("workspace-report-view");
     const reasoningWorkspace = bootstrap.read_only ? null : bindReportReasoning({ root: document.getElementById("workspace-report-reasoning"), template: bootstrap.urls.reasoning_template, showError });
     const renderReflectionView = (reflection) => { workflowProgress.project({ reflection }); renderReflection(reflectionRoot, reflection, {
@@ -198,7 +214,7 @@
       target.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     const renderSelectedRun = (payload) => {
-      resultsRoot.replaceChildren(); reportView.replaceChildren(); document.querySelector("[data-engineering-content]").replaceChildren(); reasoningWorkspace?.render(null, null); reflectionWorkspace.useReflection(null, null); workflowProgress.project({ selectedRun: payload?.metadata || null, reflection: payload?.reflection || null }); renderReflectionView(null); reportOpen.disabled = !payload;
+      resultsRoot.replaceChildren(); reportView.replaceChildren(); document.querySelector("[data-engineering-content]").replaceChildren(); reasoningWorkspace?.render(null, null); reflectionWorkspace.useReflection(null, null); workflowProgress.project({ selectedRun: payload?.metadata || null, reflection: payload?.reflection || null }); renderReflectionView(null); reportOpen.disabled = !payload; reportRoot.dataset.runSelected = payload?.status === "SUCCESS" ? "true" : "false";
       const previous = canvasController.getState();
       if (previous.resultOverlay) canvasController.replaceState({ ...previous, resultOverlay: null });
       if (!payload) return;
@@ -207,7 +223,7 @@
       const current = canvasController.getState();
       const snapshot = payload.report?.report?.geometry_connectivity || {};
       const labels = createStudentLabelResolver(snapshot);
-      const runNumber = runContext.state().runs.findIndex(run => run.analysis_run_id === runId) + 1;
+      const runNumber = [...runContext.state().runs].sort((left, right) => left.analysis_run_id - right.analysis_run_id).findIndex(run => run.analysis_run_id === runId) + 1;
       const view = showLevelOne({ analysis_run_id: runId, runNumber, predictionId: payload.comparison?.comparison_available ? 0 : null }, payload.data, current.draftVersion, snapshot);
       renderLevelOne(resultsRoot, view, focusMember);
       renderResultActions(resultsRoot, {
@@ -218,7 +234,7 @@
       renderEngineeringDetails(document.querySelector("[data-engineering-content]"), showEngineeringDetails(payload.data.result_json), view.stale);
       const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, memberState]) => [key, { state: memberState, label: memberState === "TENSION" ? "受拉" : memberState === "COMPRESSION" ? "受压" : memberState === "MIXED" ? "混合状态" : "近似零力", color: memberState === "TENSION" ? "#b91c1c" : memberState === "COMPRESSION" ? "#1d4ed8" : memberState === "MIXED" ? "#7c3aed" : "#6b7280", dash: memberState === "TENSION" ? "none" : memberState === "COMPRESSION" ? "10 5" : memberState === "MIXED" ? "14 5 3 5" : "2 4" }]));
       canvasController.replaceState({ ...current, resultOverlay: overlay });
-      renderReport(reportView, payload.report);
+      renderReport(reportView, payload.report, { runNumber });
       reasoningWorkspace?.render(runId, payload.reasoning);
       reflectionWorkspace.useReflection(runId, payload.reflection);
       renderReflectionView(payload.reflection);

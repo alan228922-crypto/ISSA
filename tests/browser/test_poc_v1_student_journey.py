@@ -45,6 +45,7 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
         page.get_by_role("button", name="保存截面").click()
         page.get_by_role("link", name="返回 学生空白桁架 工作区").click()
 
+        page.locator(".ux-precision summary").click()
         page.locator("[data-cad-snap]").click()
         page.locator("[data-cad-ortho]").click()
         page.locator("[data-cad-ortho]").click()
@@ -85,10 +86,14 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
         page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
         page.reload()
         assert page.locator('[data-object-kind="PhysicalMember"]').count() == 3
-        page.locator("#workspace-model-check").click()
+        page.locator('[data-ux-stage-target="check"]').click()
+        with page.expect_response("**/model/check/") as check_response:
+            page.locator("#workspace-model-check").click()
         page.wait_for_function("document.querySelector('#workspace-check-issues').textContent.length > 0")
+        assert check_response.value.json()["ok"] is True
         assert "模型检查通过" in page.locator("#workspace-check-issues").text_content()
 
+        page.locator('[data-ux-stage-target="prediction"]').click()
         page.get_by_role("button", name="开始预测").click()
         page.wait_for_function("document.querySelector('[data-prediction-status]').textContent.includes('草稿')")
         for row in page.locator("[data-prediction-members] p").all():
@@ -103,6 +108,7 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
         page.get_by_role("button", name="完成预测").click()
         page.wait_for_function("document.querySelector('[data-prediction-status]').textContent.includes('已完成')")
 
+        page.locator('[data-ux-stage-target="analyze"]').click()
         page.locator("#workspace-analyze").click()
         page.wait_for_function("document.querySelector('#workspace-run-select').value !== ''")
         first_run = page.locator("#workspace-run-select").input_value()
@@ -118,13 +124,15 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
         page.locator(f'[data-client-key="{first_member_key}"] line').click(force=True)
         page.wait_for_function("key => document.activeElement?.dataset.teachingMember === key", arg=first_member_key)
         assert page.locator(f'[data-result-explanation] [data-teaching-member="{first_member_key}"][data-teaching-focused="true"]').count() == 1
-        page.locator("[data-result-report]").click()
-        assert f"分析 #{first_run}" in page.locator("#workspace-report-view").text_content()
+        page.locator('[data-ux-stage-target="summary"]').click()
+        assert "计算依据" in page.locator("#workspace-report-view").text_content()
 
+        page.get_by_role("tab", name="我的设计说明").click()
         reasoning = page.locator('#workspace-report-reasoning [name="final_conclusion"]')
         reasoning.fill("第一次分析：三角形传力路径完整。")
         page.get_by_role("button", name="保存设计说明").click()
         page.wait_for_function("document.querySelector('#workspace-report-reasoning form p').textContent.includes('已保存')")
+        page.get_by_role("tab", name="反思（可选）").click()
         page.get_by_role("button", name="开始反思").click()
         page.locator('#workspace-reflection [name="original_reasoning"]').fill("我先判断三角形整体受力。")
         page.locator('#workspace-reflection [name="unexpected_results"]').fill("位移位置值得继续观察。")
@@ -132,17 +140,22 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
         page.get_by_role("button", name="保存草稿").click()
         page.wait_for_function("document.querySelector('#workspace-reflection textarea').value.includes('三角形')")
 
+        page.locator('[data-ux-stage-target="analyze"]').click()
         page.locator("#workspace-analyze").click()
         page.wait_for_function("previous => document.querySelector('#workspace-run-select').value !== previous", arg=first_run)
         second_run = page.locator("#workspace-run-select").input_value()
-        page.wait_for_function("runId => document.querySelector('#workspace-results').textContent.includes(`#${runId}`)", arg=int(second_run))
+        page.wait_for_function("document.querySelector('#workspace-root').dataset.uxStage === 'understanding'")
+        page.locator('[data-ux-stage-target="summary"]').click()
+        page.get_by_role("tab", name="我的设计说明").click()
         page.locator('#workspace-report-reasoning [name="final_conclusion"]').fill("第二次分析：保留同一模型作为历史对照。")
         page.get_by_role("button", name="保存设计说明").click()
+        page.get_by_role("tab", name="反思（可选）").click()
         page.get_by_role("button", name="开始反思").click()
         page.locator('#workspace-reflection [name="original_reasoning"]').fill("第二次运行用于验证历史隔离。")
         page.get_by_role("button", name="保存草稿").click()
 
         page.reload()
+        page.locator('[data-ux-stage-target="summary"]').click()
         page.locator("#workspace-run-select").select_option(first_run)
         page.wait_for_function("document.querySelector('#workspace-report-reasoning [name=final_conclusion]')?.value.includes('第一次')")
         assert "第一次" in page.locator('#workspace-report-reasoning [name="final_conclusion"]').input_value()

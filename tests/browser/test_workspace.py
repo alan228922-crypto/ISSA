@@ -135,6 +135,7 @@ def test_cad_keyboard_tab_accessibility(context, workspace_page):
 def test_member_numeric_endpoint_uses_visible_dynamic_fields(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
+    page.locator('.ux-precision summary').click()
     page.locator("[data-member-material]").select_option(str(material.id))
     page.locator("[data-member-section]").select_option(str(section.id))
     page.locator('[data-workspace-tool="NODE"]').click()
@@ -160,6 +161,7 @@ def test_member_numeric_endpoint_uses_visible_dynamic_fields(context, workspace_
 def test_member_dynamic_tab_escape_and_blank_pointer_endpoint(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
+    page.locator('.ux-precision summary').click()
     page.locator("[data-member-material]").select_option(str(material.id))
     page.locator("[data-member-section]").select_option(str(section.id))
     page.locator('[data-workspace-tool="NODE"]').click()
@@ -194,6 +196,7 @@ def test_member_pointer_preview_and_esc_cancel_all_transient_modeling(context, w
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
+    page.locator('.ux-precision summary').click()
     canvas = page.locator("#workspace-canvas")
     canvas_box = canvas.bounding_box()
     original_nodes = page.locator('[data-object-kind="GeometryNode"]').count()
@@ -274,6 +277,7 @@ def test_grid_snap_off_preserves_object_candidates(context, workspace_page):
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
+    page.locator('.ux-precision summary').click()
     result = page.evaluate("""async () => {
       const { resolvePointerPoint } = await import('/static/projects/workspace/geometry.js');
       const candidate = { kind:'NODE', canonicalKey:'NODE:n1', worldPoint:{x:12,y:34} };
@@ -290,6 +294,7 @@ def test_visible_cad_controls_toggle_and_fit_without_module_imports(context, wor
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
+    page.locator('.ux-precision summary').click()
 
     ortho = page.locator("[data-cad-ortho]")
     snap = page.locator("[data-cad-snap]")
@@ -321,6 +326,7 @@ def test_visible_cad_controls_toggle_and_fit_without_module_imports(context, wor
 def test_numeric_modeling_accepts_absolute_relative_and_polar_input(context, workspace_page):
     owner, project, _, _ = context
     page = workspace_page(user=owner, project=project)
+    page.locator('.ux-precision summary').click()
     page.locator('[data-workspace-tool="NODE"]').click()
     command = page.locator("[data-cad-command-input]")
 
@@ -358,6 +364,7 @@ def test_property_and_delete_controls_edit_persist_and_block_dependencies(contex
     })
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
+    page.locator('.ux-precision summary').click()
 
     page.locator('[data-client-key="n2"] circle').click(force=True)
     page.locator("[data-property-x]").fill("1200")
@@ -602,7 +609,7 @@ def test_report_reasoning_ignores_stale_loads_and_disables_failed_load(context, 
       const failed = workspace.load(3); pending.get('/runs/3/reasoning/')({response:{ok:false},body:{ok:false,error:{message:'LOAD FAILED'}}}); await failed;
       return {afterRace, posts, failedForm:!!root.querySelector('form'), failedText:root.textContent, errors};
     }""")
-    assert result['afterRace'] == {'heading': '我的设计说明 · 分析 #2（由你填写）', 'value': 'RUN TWO'}
+    assert result['afterRace'] == {'heading': '我的设计说明', 'value': 'RUN TWO'}
     assert result['posts'][0]['url'] == '/runs/2/reasoning/'
     assert result['posts'][0]['fields']['final_conclusion'] == 'RUN TWO'
     assert result['failedForm'] is False
@@ -620,8 +627,8 @@ def test_report_selection_invalidates_previously_displayed_report(context, works
     project.refresh_from_db()
     run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
     page = workspace_page(user=owner, project=project)
+    page.locator('[data-ux-stage-target="summary"]').click()
     page.locator('#workspace-run-select').select_option(str(run.id))
-    page.locator('#workspace-report-open').click()
     page.wait_for_function("document.querySelector('#workspace-report-view h2')")
     assert '计算书资料' in page.locator('#workspace-report-view').text_content()
 
@@ -653,7 +660,7 @@ def test_workspace_modeling_tools_mutate_draft_and_save(context, workspace_page)
     page.locator('[data-workspace-tool="MEMBER"]').click()
     connection_rect = page.locator('[data-client-key="c1"] rect')
     connection_rect.click(force=True)
-    assert page.locator('[data-modeling-instruction]').text_content() == '请选择构件的终点节点。'
+    assert page.locator('[data-modeling-instruction]').text_content() == '请选择构件的终点节点。按 Esc 可取消。'
     end_node = page.locator('[data-object-kind="GeometryNode"]').last.locator('circle')
     end_node.click(force=True)
     assert page.locator('[data-object-kind="PhysicalMember"]').count() == 2
@@ -944,6 +951,7 @@ def test_beginner_labels_mixed_evidence_and_frozen_copy(context, workspace_page)
     assert "不能代表当前草稿" in result["stale"] and "重新分析当前模型" in result["stale"]
     assert "不能代表当前草稿" in result["engineeringStale"] and "重新分析当前模型" in result["engineeringStale"]
 
+    page.locator('[data-ux-stage-target="prediction"]').click()
     page.get_by_role("button", name="开始预测").click()
     prediction = page.locator("#workspace-prediction")
     assert prediction.get_by_role("button", name="近似零力").count() == 1
@@ -962,6 +970,7 @@ def test_canvas_member_selection_focuses_existing_teaching_item_without_loop(con
     save_bt01_draft(owner, project, material, section)
     page = workspace_page(user=owner, project=project)
     page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
+    page.locator('[data-ux-stage-target="analyze"]').click()
     page.locator("#workspace-analyze").click()
     page.wait_for_function("document.querySelector('[data-teaching-member]')")
     member_key = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft.physical_members[0].client_key")
@@ -984,11 +993,12 @@ def test_compare_explain_reachable_from_real_analysis_controls(context, workspac
     page = workspace_page(user=owner, project=project)
     page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
 
+    page.locator('[data-ux-stage-target="analyze"]').click()
     page.locator("#workspace-analyze").click()
     page.wait_for_function("document.querySelector('[data-result-compare]')")
     page.locator("[data-result-compare]").click()
     page.wait_for_function("document.querySelector('[data-result-comparison]').textContent.length > 0")
-    assert "未进行预测，仍可查看分析说明" in page.locator("[data-result-comparison]").text_content()
+    assert "这次没有保存预测，因此暂时无法比较" in page.locator("[data-result-comparison]").text_content()
     page.locator("[data-result-explain]").click()
     page.wait_for_function("document.querySelector('[data-result-explanation]').textContent.length > 0")
     assert page.locator("[data-result-explanation] [data-explanation-block]").count() > 0
@@ -1007,12 +1017,13 @@ def test_explicit_run_refresh_selects_new_analysis_without_reload(context, works
     page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
 
     assert page.locator("#workspace-run-select").input_value() == ""
+    page.locator('[data-ux-stage-target="analyze"]').click()
     page.locator("#workspace-analyze").click()
     page.wait_for_function("document.querySelector('#workspace-run-select').value !== ''")
     selected = page.locator("#workspace-run-select").input_value()
     assert page.locator(f'#workspace-run-select option[value="{selected}"]').count() == 1
-    page.wait_for_function("runId => document.querySelector('#workspace-results').textContent.includes(`分析 #${runId}`)", arg=int(selected))
-    assert f"分析 #{selected}" in page.locator("#workspace-results").text_content()
+    page.wait_for_function("document.querySelector('#workspace-results').textContent.includes('第 1 次分析')")
+    assert "第 1 次分析" in page.locator("#workspace-results").text_content()
 
 
 @pytest.mark.browser
@@ -1035,21 +1046,22 @@ def test_historical_explicit_run_selection_restores_all_student_artifacts(contex
     Reflection.objects.create(analysis_run=run_one, created_by=owner, original_reasoning="RUN ONE REFLECTION")
     Reflection.objects.create(analysis_run=run_two, created_by=owner, original_reasoning="RUN TWO REFLECTION")
     page = workspace_page(user=owner, project=project)
+    page.locator('[data-ux-stage-target="summary"]').click()
 
-    for run, reasoning, reflection in [
+    for ordinal, (run, reasoning, reflection) in enumerate([
         (run_one, "RUN ONE REASONING", "RUN ONE REFLECTION"),
         (run_two, "RUN TWO REASONING", "RUN TWO REFLECTION"),
-    ]:
+    ], start=1):
         page.locator("#workspace-run-select").select_option(str(run.id))
         page.wait_for_function(
-            "runId => document.querySelector('#workspace-report-view h3')?.textContent.includes(`#${runId}`)",
-            arg=run.id,
+            "number => document.querySelector('#workspace-report-view h3')?.textContent.includes(`第 ${number} 次分析`)",
+            arg=ordinal,
         )
-        assert f"分析 #{run.id}" in page.locator("#workspace-results").text_content()
+        assert f"第 {ordinal} 次分析" in page.locator("#workspace-results").text_content()
         assert "较早的模型版本" in page.locator("#workspace-results").text_content()
         assert page.locator('#workspace-report-reasoning [name="final_conclusion"]').input_value() == reasoning
         assert page.locator('#workspace-reflection [name="original_reasoning"]').input_value() == reflection
-        assert f"分析 #{run.id}" in page.locator("#workspace-report-view").text_content()
+        assert f"第 {ordinal} 次分析" in page.locator("#workspace-report-view").text_content()
 
 
 @pytest.mark.browser
@@ -1103,6 +1115,7 @@ def test_switching_to_failed_run_clears_engineering_details_and_canvas_overlay(c
         created_by=owner,
     )
     page = workspace_page(user=owner, project=project)
+    page.locator('[data-ux-stage-target="summary"]').click()
     page.locator("#workspace-run-select").select_option(str(success.id))
     page.wait_for_function("document.querySelector('[data-engineering-content] table')")
     assert page.locator('#workspace-canvas [data-result-state="TENSION"]').count() > 0
@@ -1241,9 +1254,13 @@ def test_read_only_manager_sees_completed_reflection_without_authoring_controls(
     manager = User.objects.create_user("reflection-manager", role=User.Role.MANAGER)
     EventMembership.objects.create(user=manager, event=project.event, membership_type=EventMembership.Type.MANAGER)
     page = workspace_page(user=manager, project=project)
+    page.locator('[data-ux-stage-target="summary"]').click()
     page.locator("#workspace-run-select").select_option(str(run.id))
     page.wait_for_function("document.querySelector('#workspace-reflection textarea')")
 
+    assert page.get_by_role('tab', name='我的设计说明').count() == 0
+    page.get_by_role('tab', name='反思（可选）').click()
+    assert page.locator('#workspace-reflection').is_visible()
     assert page.locator('#workspace-reflection [name="original_reasoning"]').input_value() == "已完成的原判断"
     assert page.locator("#workspace-reflection textarea:enabled").count() == 0
     assert page.locator("#workspace-reflection button").count() == 0
@@ -1393,12 +1410,13 @@ def test_beginner_results_use_guidance_labels_and_rounded_values(context, worksp
     save_bt01_draft(owner, project, material, section)
     run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
     page = workspace_page(user=owner, project=project)
+    page.locator('[data-ux-stage-target="summary"]').click()
     page.locator("#workspace-run-select").select_option(str(run.id))
     page.wait_for_function("document.querySelector('#workspace-results h2')")
     text = page.locator("#workspace-results").text_content()
 
     assert all(word in text for word in ["荷载", "支座", "传力", "受拉", "受压", "近似零力"])
-    assert "杆件" in text
+    assert "构件" in text
     assert "connection:" not in text
     assert "hash" not in text.lower()
     assert page.locator("#workspace-results [data-student-rounded-value]").count() > 0
@@ -1436,6 +1454,7 @@ def test_desktop_1024_layout_has_no_page_overflow_and_contains_report(context, w
     page = workspace_page(user=owner, project=project)
     page.set_viewport_size({"width": 1024, "height": 900})
     page.reload()
+    page.locator('[data-ux-stage-target="summary"]').click()
     page.locator("#workspace-run-select").select_option(str(run.id))
     page.wait_for_function("document.querySelector('#workspace-report-view table')")
 
@@ -1447,9 +1466,11 @@ def test_desktop_1024_layout_has_no_page_overflow_and_contains_report(context, w
     })""")
     assert layout["pageWidth"] <= layout["viewport"]
     assert layout["reportScroll"] <= layout["reportClient"]
-    assert page.locator("[data-cad-fit]").is_visible()
-    assert page.locator("#workspace-analyze").is_visible()
     assert page.locator("#workspace-run-select").is_visible()
+    page.locator('[data-ux-stage-target="build"]').click()
+    assert page.locator("[data-cad-fit]").is_visible()
+    page.locator('[data-ux-stage-target="analyze"]').click()
+    assert page.locator("#workspace-analyze").is_visible()
 
 
 @pytest.mark.browser
@@ -1502,7 +1523,7 @@ def test_workspace_full_learning_loop(context, workspace_page):
             check: checked.ok,
             prediction: completedPrediction.status,
             analyze: analyzed.status,
-            levelOne: levelOne.maximum !== null && levelOneRoot.textContent.includes('分析结果'),
+            levelOne: levelOne.maximum !== null && levelOneRoot.textContent.includes('结论'),
             compare: showComparison(comparisonResponse.body.comparison).length > 0,
             explain: showExplanation(explanationResponse.body.explanation).length > 0,
             engineering: detailsRoot.textContent.includes('轴力 (N)') && detailsRoot.textContent.includes('总质量'),

@@ -1,5 +1,5 @@
 import { EditorActionError } from "./editor.js";
-import { worldPointFromEvent } from "./canvas-interaction.js";
+import { pickAt, renderedObjectsFromSvg, worldPointFromEvent } from "./canvas-interaction.js";
 import { parseCadInput } from "./cad-input.js";
 import { transition } from "./cad-state.js";
 import { resolvePointerPoint } from "./geometry.js";
@@ -14,6 +14,12 @@ function selectedTarget(event) {
   const group = event.composedPath?.().find((element) => element?.matches?.("[data-object-kind]")) || event.target?.closest?.("[data-object-kind]");
   const kind = OBJECT_KINDS[group?.dataset.objectKind];
   return kind && group?.dataset.clientKey ? { kind, clientKey: group.dataset.clientKey } : null;
+}
+
+function targetAtClick(event, svg, allowedKinds) {
+  const direct = selectedTarget(event);
+  if (direct && allowedKinds.includes(direct.kind)) return direct;
+  return pickAt({ x: event.clientX, y: event.clientY }, renderedObjectsFromSvg(svg).filter(object => allowedKinds.includes(object.kind)));
 }
 
 function nextKey(items, prefix) {
@@ -166,7 +172,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     commandInput.value = ""; cadStatus(root, cadState(canvasController.getState()));
   });
   const handleCanvasClick = (event) => {
-    const current = canvasController.getState(); const target = selectedTarget(event); if (tool === "SELECT") return;
+    const current = canvasController.getState(); const target = targetAtClick(event, svg, tool === "SUPPORT" || tool === "LOAD" ? ["CONNECTION"] : ["GEOMETRY_NODE", "CONNECTION"]); if (tool === "SELECT") return;
     if (tool === "NODE") {
       if (target) return; const world = worldPointFromEvent(svg, event); const cad = cadState(current);
       const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: cad.ortho, gridEnabled: cad.gridSnap, explicitNumeric: false });
@@ -175,8 +181,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       apply({ type: "CREATE_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point, preview: null, snapFeedback: null }); commandState = transition(commandState, { type: "POINTER_POINT", point }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
     }
     if (tool === "MEMBER") {
-      const selectedNode = nodeTarget(current.draft, current.selectedObject);
-      const node = nodeTarget(current.draft, target) || ((!memberStart || selectedNode?.clientKey !== memberStart) ? selectedNode : null);
+      const node = nodeTarget(current.draft, target);
       if (!node && memberStart && ["DRAW_MEMBER_WAIT_END", "DYNAMIC_INPUT"].includes(commandState.state)) {
         const world = worldPointFromEvent(svg, event); const cad = cadState(current); if (!world) return;
         const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: memberOrigin(), ortho: cad.ortho, gridEnabled: cad.gridSnap, explicitNumeric: false });
@@ -186,8 +191,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       if (!memberStart) { memberStart = node.clientKey; const start = current.draft.nodes.find((item) => item.client_key === memberStart); commandState = transition(commandState, { type: "POINTER_POINT", point: { x: start.x_mm, y: start.y_mm } }); updateUi(root, tool, memberStart); return; }
       const endpoint = current.draft.nodes.find((item) => item.client_key === node.clientKey); completeMemberAt({ x: endpoint.x_mm, y: endpoint.y_mm }); return;
     }
-    if (tool === "CONNECTION") { const node = nodeTarget(current.draft, target) || nodeTarget(current.draft, current.selectedObject); if (!node) return; const participants = membersAtNode(current.draft, node.clientKey); if (!participants.length) { showError({ code: "CONNECTION_MEMBER_REQUIRED", message: "请在已有构件端点创建连接。" }); return; } apply({ type: "CREATE_CONNECTION", connection: { client_key: nextKey(current.draft.connections, "connection"), geometry_node_client_key: node.clientKey, participating_member_client_keys: participants } }); return; }
-    const connectionTarget = target?.kind === "CONNECTION" ? target : current.selectedObject?.kind === "CONNECTION" ? current.selectedObject : null; if (!connectionTarget) return;
+    if (tool === "CONNECTION") { const node = nodeTarget(current.draft, target); if (!node) return; const participants = membersAtNode(current.draft, node.clientKey); if (!participants.length) { showError({ code: "CONNECTION_MEMBER_REQUIRED", message: "请在已有构件端点创建连接。" }); return; } apply({ type: "CREATE_CONNECTION", connection: { client_key: nextKey(current.draft.connections, "connection"), geometry_node_client_key: node.clientKey, participating_member_client_keys: participants } }); return; }
+    const connectionTarget = target?.kind === "CONNECTION" ? target : null; if (!connectionTarget) return;
     if (tool === "SUPPORT") apply({ type: "CREATE_SUPPORT", support: { client_key: nextKey(current.draft.supports, "support"), target_connection_client_key: connectionTarget.clientKey, support_type: "PINNED", restrained_axis: null } });
     if (tool === "LOAD") apply({ type: "CREATE_NODE_LOAD", nodeLoad: { client_key: nextKey(current.draft.node_loads, "load"), target_connection_client_key: connectionTarget.clientKey, fx_N: 0, fy_N: -100, label: "" } });
   };

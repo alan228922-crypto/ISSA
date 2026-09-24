@@ -7,6 +7,20 @@ const STAGES = Object.freeze({
   summary: ["总结", "整理这次分析的依据和判断"],
 });
 
+export function bindTabKeys(tablist) {
+  tablist.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+    const currentIndex = tabs.indexOf(event.target);
+    if (currentIndex < 0 || !tabs.length) return;
+    event.preventDefault();
+    const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+      : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[nextIndex].click();
+    tabs[nextIndex].focus();
+  });
+}
+
 function buildTask(draft) {
   if (!draft.nodes.length) return "放置第一个节点";
   if (!draft.physical_members.length) return "添加第二个节点，再用构件连接";

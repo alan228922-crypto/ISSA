@@ -58,13 +58,15 @@ def test_composite_presets_preview_and_free_section_is_selectable(context, live_
     assert option.count() == 1
     page.locator("[data-member-section]").select_option(option.get_attribute("value"))
     page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('.ux-precision summary').click()
     command = page.locator("[data-cad-command-input]")
     for coordinates in ("100,100", "400,100"):
         command.fill(coordinates)
         command.press("Enter")
+    page.locator('[data-cad-fit]').click()
     page.locator('[data-workspace-tool="MEMBER"]').click()
-    page.locator('[data-client-key="node-1"]').click(force=True)
-    page.locator('[data-client-key="node-2"]').click(force=True)
+    page.locator('[data-client-key="node-1"]').click()
+    page.locator('[data-client-key="node-2"]').click()
     assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
     page.locator("#workspace-save").click()
     page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
