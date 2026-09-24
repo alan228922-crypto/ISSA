@@ -162,6 +162,6 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     if (current.selected.kind === "NODE_LOAD") appendLoadControls(root, current.selected, current.record, canvasController);
     appendDelete(root, current.selected, canvasController, showError);
   };
-  canvasController.setStateChangeHandler(render);
+  canvasController.subscribeStateChange(render);
   render(canvasController.getState());
 }

@@ -1,4 +1,5 @@
-<!doctype html><html lang="zh-Hans"><meta charset="utf-8"><title>登录</title><body>
+{% load static %}
+<!doctype html><html lang="zh-Hans"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>登录 · 结构学习平台</title><link rel="stylesheet" href="{% static 'projects/workspace/ux-v2.css' %}"><body class="ux-entry-page">
 {% include "shared/product_header.html" %}
-<main><h1>登录</h1><p>使用赛事分配的账号进入你的项目。</p>
-<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">登录</button></form></main></body></html>
+<main class="ux-entry-layout"><section class="ux-entry-intro"><p class="ux-eyebrow">校内结构设计竞赛 · 学习工作区</p><h1>从想法到工程判断</h1><p class="ux-lead">建立结构 → 预测 → 分析 → 理解 → 总结</p><p>先画出你的结构，再看看它如何受力。你不需要先会使用专业结构软件。</p></section>
+<section class="ux-entry-card" aria-label="登录"><h2>进入你的项目</h2><p>使用赛事分配的账号登录，继续你的设计。</p><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">登录</button></form></section></main></body></html>

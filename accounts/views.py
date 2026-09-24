@@ -36,6 +36,8 @@ def event_landing(request):
         .order_by("event__competition_date", "event__event_code", "name", "id")
     ):
         if can_view_project(request.user, project):
+            project.ux_status = "尚未建模" if project.draft_version == 0 else "已有模型"
+            project.ux_next = "从第一个节点开始" if project.draft_version == 0 else "继续检查和完善模型"
             projects_by_event[project.event_id].append(project)
     event_entries = [
         {"event": event, "projects": projects_by_event[event.id]}

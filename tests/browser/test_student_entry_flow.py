@@ -110,7 +110,7 @@ def test_participant_configures_empty_project_and_saves_first_member(entry_page)
     page.locator('[data-workspace-tool="MEMBER"]').click()
     page.locator('[data-client-key="node-1"]').click()
     page.locator('[data-client-key="node-2"]').click()
-    page.get_by_role("button", name="保存", exact=True).click()
+    page.locator("#workspace-save").click()
     page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
     page.reload()
     assert page.locator('[data-client-key="member-1"]').count() == 1

@@ -1,25 +1,30 @@
+{% load static %}
 <!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <title>赛事与项目</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>我的结构项目</title>
+  <link rel="stylesheet" href="{% static 'projects/workspace/ux-v2.css' %}">
 </head>
-<body>
+<body class="ux-entry-page">
   {% include "shared/product_header.html" %}
-  <main>
+  <main class="ux-project-entry">
+    <p class="ux-eyebrow">建立结构 → 预测 → 分析 → 理解 → 总结</p>
     <h1>赛事与项目</h1>
-    <p>选择一个项目进入结构分析工作区。</p>
+    <p class="ux-lead">选择你的项目，从当前进度继续。</p>
 
     {% if event_entries %}
       {% for entry in event_entries %}
         <section>
           <h2>{{ entry.event.name }}</h2>
           {% if entry.projects %}
-            <ul>
+            <ul class="ux-project-grid">
               {% for project in entry.projects %}
-                <li>
+                <li class="ux-project-card">
                   <h3>{{ project.name }}</h3>
-                  <p>{{ project.get_analysis_type_display }}</p>
+                  <p>当前状态：{{ project.ux_status }}</p>
+                  <p>下一步：{{ project.ux_next }}</p>
                   <a href="{% url 'projects:workspace' project.id %}">进入工作区</a>
                 </li>
               {% endfor %}

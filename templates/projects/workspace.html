@@ -6,19 +6,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>项目工作区</title>
   <link rel="stylesheet" href="{% static 'projects/workspace/workspace.css' %}">
+  <link rel="stylesheet" href="{% static 'projects/workspace/ux-v2.css' %}">
   <style>#workspace-canvas [data-selected="true"] > *, #workspace-canvas [data-focused="true"] > *, #workspace-canvas [data-object-kind]:focus > * { stroke-dasharray: 5 3; stroke-width: 5; }</style>
 </head>
 <body>
   {% include "shared/product_header.html" %}
-  <main id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}">
+  <main id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}" data-ux-stage="build">
     <header id="workspace-project-header">
-      <h1>{{ bootstrap.project.name }}</h1>
-      <p id="workspace-draft-version">当前草稿 v{{ bootstrap.draft.version }}</p>
+      <div><p class="ux-eyebrow">结构学习工作区 · {{ bootstrap.access.event.name }}</p><h1>{{ bootstrap.project.name }}</h1></div>
       <p id="workspace-read-only"{% if not bootstrap.read_only %} hidden{% endif %}>只读查看</p>
+      <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>保存模型</button>
     </header>
+    <nav class="ux-stage-nav" data-ux-stage-nav aria-label="学习阶段">
+      <button type="button" data-ux-stage-target="build" aria-current="step">建模</button>
+      <button type="button" data-ux-stage-target="check">检查</button>
+      <button type="button" data-ux-stage-target="prediction">预测（可选）</button>
+      <button type="button" data-ux-stage-target="analyze">分析</button>
+      <button type="button" data-ux-stage-target="understanding">理解</button>
+      <button type="button" data-ux-stage-target="summary">总结</button>
+    </nav>
+    <div class="ux-stage-heading"><div><p data-ux-current-stage>当前：建模</p><p data-ux-next-task>下一步：放置第一个节点</p></div><span data-ux-save-indicator role="status" aria-live="polite">已保存</span></div>
     <section class="workspace-layout" aria-label="结构学习工作区">
       <aside id="workspace-modeling-panel" aria-label="建模工具">
-        <h2>建模工具</h2>
+        <h2>当前工具</h2>
         {% if not bootstrap.read_only %}
           <div class="workspace-tool-list" role="toolbar" aria-label="建模工具">
             <button type="button" data-workspace-tool="SELECT" aria-pressed="true">选择</button>
@@ -28,7 +38,7 @@
             <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false">支座</button>
             <button type="button" data-workspace-tool="LOAD" aria-pressed="false">荷载</button>
           </div>
-          <div class="workspace-cad-controls" role="toolbar" aria-label="CAD 辅助">
+          <details class="ux-precision"><summary>精确绘制</summary><div class="workspace-cad-controls" role="toolbar" aria-label="CAD 辅助">
             <button type="button" data-cad-ortho aria-pressed="false">ORTHO 正交</button>
             <button type="button" data-cad-snap aria-pressed="true">SNAP 捕捉</button>
           </div>
@@ -39,7 +49,7 @@
             <label>距离 (mm)<input type="number" step="any" min="0" data-cad-distance disabled></label>
             <label>角度 (°)<input type="number" step="any" data-cad-angle disabled></label>
           </div>
-          <p data-cad-command-help>节点或构件工具中输入绝对、相对或极坐标；构件也可输入距离和角度。Enter 确认，Tab 切换，Esc 取消。</p>
+          <p data-cad-command-help>节点或构件工具中输入绝对、相对或极坐标；构件也可输入距离和角度。Enter 确认，Tab 切换，Esc 取消。</p></details>
           <p data-modeling-instruction role="status" aria-live="polite">选择工具已启用。</p>
           <fieldset class="workspace-member-properties">
             <legend>新构件属性</legend>
@@ -61,22 +71,23 @@
           <button type="button" data-cad-zoom-out aria-label="缩小画布">缩小 −</button>
           <button type="button" data-cad-fit aria-label="显示全图">Fit 全图</button>
         </div>
-        <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>保存</button>
-        <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>模型检查</button>
-        <section id="workspace-properties-panel" aria-label="对象属性">
-          <h2>对象属性</h2>
-          <p>选择对象后可在这里查看属性。</p>
-        </section>
       </aside>
       <section class="workspace-center" aria-label="结构画布">
         <svg id="workspace-canvas" role="img" tabindex="0" aria-label="结构画布；使用方向键平移，使用放大、缩小和全图按钮调整视图" aria-describedby="workspace-canvas-keyboard-help" viewBox="0 0 1000 600"></svg>
+        {% if not bootstrap.read_only %}<div data-ux-empty-state class="ux-empty-state"{% if bootstrap.draft.nodes %} hidden{% endif %}><h2>从第一个节点开始</h2><p>先标出结构上的位置，再用构件把它们连接起来。</p><button type="button" data-ux-start-modeling>开始建模</button></div>{% endif %}
         <p id="workspace-canvas-keyboard-help" class="visually-hidden">画布取得焦点后，可使用方向键平移；使用放大、缩小和全图按钮调整视图。</p>
       </section>
-      <aside id="workspace-workflow-panel" aria-label="学习流程">
-        <h2>学习流程</h2>
+      <aside id="workspace-workflow-panel" aria-label="当前阶段与对象">
+        <h2 data-ux-panel-title>现在做什么</h2>
+        <p data-ux-panel-guidance>在画布点一下，放置第一个节点。</p>
+        <section id="workspace-properties-panel" aria-label="对象属性"><p>选择对象后可在这里查看属性。</p></section>
+        <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>检查模型</button>
+        <section id="workspace-check-issues" aria-live="polite"></section>
+        <div class="ux-legacy-progress" hidden>
         <ol id="workspace-workflow-steps">
           <li data-workflow-step="model">① 建模</li><li data-workflow-step="prediction">② 预测（可选）</li><li data-workflow-step="analysis">③ 分析</li><li data-workflow-step="understanding">④ 理解</li><li data-workflow-step="reflection">⑤ 反思（可选）</li>
         </ol>
+        </div>
         <section id="workspace-prediction" aria-label="预测">
           <h2>预测</h2>
           <p data-prediction-status aria-live="polite">预测状态：加载中。</p>
@@ -108,10 +119,9 @@
     <footer id="workspace-status-bar" role="status" aria-label="建模状态" aria-live="polite" aria-atomic="false">
       <span id="workspace-pointer-x">X: —</span><span id="workspace-pointer-y">Y: —</span><span id="workspace-delta-length">ΔL: —</span><span id="workspace-angle">Angle: —</span>
       <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 开 · 捕捉: 无</span>
-      <span id="workspace-save-status">未保存修改：无</span>
+      <span id="workspace-save-status">未保存修改：无</span><span id="workspace-draft-version">当前草稿 v{{ bootstrap.draft.version }}</span>
     </footer>
     <section id="workspace-error" hidden aria-live="polite"></section>
-    <section id="workspace-check-issues" aria-live="polite"></section>
   </main>
   {{ bootstrap|json_script:"workspace-bootstrap" }}
   <script type="module">
@@ -130,11 +140,13 @@
     import { createRunContext } from "{% static 'projects/workspace/run-context.js' %}";
     import { createWorkflowProgress } from "{% static 'projects/workspace/workflow-progress.js' %}";
     import { createStudentLabelResolver } from "{% static 'projects/workspace/labels.js' %}";
+    import { bindStudentShell } from "{% static 'projects/workspace/student-shell.js' %}";
     const bootstrap = readWorkspaceBootstrap();
     const canvas = document.getElementById("workspace-canvas");
     const state = createWorkspaceState(bootstrap);
     renderWorkspace(canvas, state.draft, state);
     const canvasController = bindCanvasInteractions(canvas, state, renderWorkspace);
+    bindStudentShell({ root: document.getElementById("workspace-root"), canvasController });
     const canvasRect = canvas.getBoundingClientRect();
     canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(state.draft), viewport: { width: canvasRect.width, height: canvasRect.height } });
     document.querySelector("[data-cad-fit]")?.addEventListener("click", () => {
