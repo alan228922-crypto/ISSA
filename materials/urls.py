@@ -9,5 +9,6 @@ urlpatterns = [
     path("<int:project_id>/materials/new/", views.material_create, name="material_create"),
     path("<int:project_id>/materials/<int:material_id>/edit/", views.material_edit, name="material_edit"),
     path("<int:project_id>/sections/new/", views.section_create, name="section_create"),
+    path("<int:project_id>/sections/composite/new/", views.composite_section_create, name="composite_section_create"),
     path("<int:project_id>/sections/<int:section_id>/edit/", views.section_edit, name="section_edit"),
 ]
