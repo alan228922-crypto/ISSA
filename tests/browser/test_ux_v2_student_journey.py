@@ -99,6 +99,64 @@ def test_connection_tool_does_not_reuse_stale_selection_on_blank_canvas(context,
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_canvas_does_not_edit_after_leaving_build_stage(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('[data-ux-stage-target="check"]').click()
+    page.locator('#workspace-canvas').click(position={"x": 280, "y": 230})
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+    assert page.locator('[data-workspace-tool="SELECT"]').get_attribute('aria-pressed') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_saving_draft_clears_previous_summary_selection(context, workspace_page):
+    from analysis.orchestration import analyze_project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-ux-stage-target="summary"]').click()
+    page.locator('#workspace-run-select').select_option(str(run.id))
+    page.wait_for_function("document.querySelector('#workspace-report').dataset.runSelected === 'true'")
+    page.locator('[data-ux-stage-target="build"]').click()
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('#workspace-canvas').click(position={"x": 500, "y": 360})
+    page.locator('[data-ux-stage-target="summary"]').click()
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent === '未保存修改：无'")
+    page.wait_for_function("document.querySelector('#workspace-run-select').value === ''")
+    assert page.locator('#workspace-report').get_attribute('data-run-selected') == 'false'
+    assert not page.locator('#workspace-report-view').is_visible()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_repeat_save_without_changes_preserves_analysis(context, workspace_page):
+    from analysis.orchestration import analyze_project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-ux-stage-target="summary"]').click()
+    page.locator('#workspace-run-select').select_option(str(run.id))
+    page.wait_for_function("document.querySelector('#workspace-report').dataset.runSelected === 'true'")
+    save_requests = []
+    page.on('request', lambda request: save_requests.append(request.url) if '/model/save/' in request.url else None)
+    page.locator('#workspace-save').click()
+    assert save_requests == []
+    assert page.locator('#workspace-draft-version').inner_text() == '当前草稿 v1'
+    assert page.locator('#workspace-run-select').input_value() == str(run.id)
+    assert page.locator('#workspace-report').get_attribute('data-run-selected') == 'true'
+    page.reload()
+    assert page.locator('#workspace-draft-version').inner_text() == '当前草稿 v1'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_save_failure_is_visible_and_retry_preserves_draft(context, workspace_page):
     owner, project, _, _ = context
     page = workspace_page(user=owner, project=project)

@@ -172,6 +172,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     commandInput.value = ""; cadStatus(root, cadState(canvasController.getState()));
   });
   const handleCanvasClick = (event) => {
+    if (root.dataset.uxStage !== "build") return;
     const current = canvasController.getState(); const target = targetAtClick(event, svg, tool === "SUPPORT" || tool === "LOAD" ? ["CONNECTION"] : ["GEOMETRY_NODE", "CONNECTION"]); if (tool === "SELECT") return;
     if (tool === "NODE") {
       if (target) return; const world = worldPointFromEvent(svg, event); const cad = cadState(current);

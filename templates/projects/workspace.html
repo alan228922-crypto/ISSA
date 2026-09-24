@@ -257,6 +257,7 @@
       finally { button.disabled = false; }
     });
     document.getElementById("workspace-save").addEventListener("click", async () => {
+      if (!canvasController.getState().dirty) return;
       const button = document.getElementById("workspace-save");
       button.disabled = true; studentShell.setSaveState("保存中");
       try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null }); workflowProgress.project({ draft: next.draft, selectedRun: null, reflection: null }); document.getElementById("workspace-results").replaceChildren(); await predictionWorkspace.refreshDraft(next.draft); await runContext.refreshRuns(); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; studentShell.setSaveState(next.dirty ? "有未保存修改" : "已保存"); errorPanel.hidden = true; }

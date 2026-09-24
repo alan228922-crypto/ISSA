@@ -3,6 +3,7 @@ from datetime import date, datetime
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from tests.application.test_physical_draft import context
 
 
 def make_event(*, name, code):
@@ -48,6 +49,32 @@ def test_participant_sees_only_owned_projects_with_workspace_links(client):
     assert "他人的桁架" not in response.content.decode()
     assert reverse("projects:workspace", kwargs={"project_id": owned.id}) in response.content.decode()
     assert "进入工作区" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_project_card_uses_actual_model_and_analysis_progress(client, context):
+    from analysis.orchestration import analyze_project
+    from tests.application.test_analysis_acceptance import save_bt01_draft
+
+    owner, project, material, section = context
+    client.force_login(owner)
+    project.draft_version = 1
+    project.save(update_fields=["draft_version"])
+    body = client.get("/events/").content.decode()
+    assert "当前状态：尚未建模" in body
+    assert "下一步：从第一个节点开始" in body
+
+    save_bt01_draft(owner, project, material, section)
+    run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    assert run.status == "SUCCESS"
+    body = client.get("/events/").content.decode()
+    assert "当前状态：已完成分析" in body
+    assert "下一步：查看结果并总结" in body
+
+    save_bt01_draft(owner, project, material, section, fx_N=125)
+    body = client.get("/events/").content.decode()
+    assert "当前状态：模型已修改" in body
+    assert "下一步：检查修改后的模型" in body
 
 
 @pytest.mark.django_db

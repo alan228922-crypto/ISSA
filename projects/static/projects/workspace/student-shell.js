@@ -38,6 +38,7 @@ export function bindStudentShell({ root, canvasController }) {
   const saveStatus = root.querySelector("#workspace-save-status");
   function selectStage(stage) {
     if (!STAGES[stage]) return;
+    if (stage !== "build") root.querySelector('[data-workspace-tool="SELECT"]')?.click();
     root.dataset.uxStage = stage;
     current.textContent = `当前：${STAGES[stage][0]}`;
     next.textContent = `下一步：${stage === "build" ? buildTask(canvasController.getState().draft) : STAGES[stage][1]}`;

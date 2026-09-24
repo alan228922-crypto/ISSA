@@ -39,7 +39,7 @@ export function createRunContext({ urls, select, editable = true, get = requestJ
   };
   const selectRun = async (runId) => {
     const id = Number(runId);
-    if (!Number.isInteger(id)) {
+    if (runId === null || runId === "" || !Number.isInteger(id)) {
       const token = current.selectionToken + 1;
       current = Object.freeze({ ...current, currentRunId: null, selectionToken: token, payload: null });
       select.value = "";
@@ -85,7 +85,8 @@ export function createRunContext({ urls, select, editable = true, get = requestJ
     replaceOptions(runs);
     onRunsChange(runs);
     if (Number.isInteger(selectRunId) && runs.some((run) => run.analysis_run_id === selectRunId)) return selectRun(selectRunId);
-    select.value = "";
+    if (current.currentRunId !== null || current.payload !== null) await selectRun(null);
+    else select.value = "";
     return runs;
   };
   return Object.freeze({ refreshRuns, selectRun, state });

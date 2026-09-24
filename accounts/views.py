@@ -1,8 +1,12 @@
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView,LogoutView
+from django.db.models import Exists, OuterRef
 from django.shortcuts import redirect,render
+from analysis.models import AnalysisRun
 from competitions.authorization import can_view_event
+from learning.models import Prediction
+from modeling.models import GeometryNode
 from projects.models import Project
 from projects.services import can_view_project
 
@@ -33,11 +37,31 @@ def event_landing(request):
         Project.objects.select_related("event", "owner_user")
         .filter(event_id__in=projects_by_event)
         .filter(analysis_type=Project.AnalysisType.TRUSS_2D)
+        .annotate(
+            ux_has_nodes=Exists(GeometryNode.objects.filter(project_id=OuterRef("pk"))),
+            ux_has_current_result=Exists(AnalysisRun.objects.filter(
+                project_id=OuterRef("pk"), status=AnalysisRun.Status.SUCCESS,
+                model_revision__source_draft_version=OuterRef("draft_version"),
+            )),
+            ux_has_result=Exists(AnalysisRun.objects.filter(project_id=OuterRef("pk"), status=AnalysisRun.Status.SUCCESS)),
+            ux_has_current_prediction=Exists(Prediction.objects.filter(
+                project_id=OuterRef("pk"), source_draft_version=OuterRef("draft_version"),
+                status=Prediction.Status.COMPLETED,
+            )),
+        )
         .order_by("event__competition_date", "event__event_code", "name", "id")
     ):
         if can_view_project(request.user, project):
-            project.ux_status = "尚未建模" if project.draft_version == 0 else "已有模型"
-            project.ux_next = "从第一个节点开始" if project.draft_version == 0 else "继续检查和完善模型"
+            if not project.ux_has_nodes:
+                project.ux_status, project.ux_next = "尚未建模", "从第一个节点开始"
+            elif project.ux_has_current_result:
+                project.ux_status, project.ux_next = "已完成分析", "查看结果并总结"
+            elif project.ux_has_current_prediction:
+                project.ux_status, project.ux_next = "已完成预测", "开始分析"
+            elif project.ux_has_result:
+                project.ux_status, project.ux_next = "模型已修改", "检查修改后的模型"
+            else:
+                project.ux_status, project.ux_next = "已有模型", "检查模型并进行预测或分析"
             projects_by_event[project.event_id].append(project)
     event_entries = [
         {"event": event, "projects": projects_by_event[event.id]}
