@@ -1,3 +1,6 @@
+import { gridNearest } from "./grid.js";
+export { gridNearest };
+
 const finite = (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y);
 const screen = (p, t) => ({x:t.a*p.x+t.c*p.y+t.e,y:t.b*p.x+t.d*p.y+t.f});
 function validCandidate(candidate) {
@@ -9,10 +12,6 @@ function validCandidate(candidate) {
     return Array.isArray(keys) && keys.length === 2 && keys[0] && keys[1] && keys[0] < keys[1];
   }
   return false;
-}
-export function gridNearest(value) {
-  if (!Number.isFinite(value)) throw new TypeError('INVALID_GRID_VALUE');
-  return Math.floor(value / 100 + .5) * 100;
 }
 function choose(candidates, kinds, pointer, transform) {
   return candidates.filter(c=>validCandidate(c)&&kinds.includes(c.kind)).map(c=>{const p=screen(c.worldPoint,transform);return {...c,d:Math.hypot(p.x-pointer.x,p.y-pointer.y)}}).filter(c=>c.d<=12).sort((a,b)=>a.d-b.d||(a.canonicalKey<b.canonicalKey?-1:a.canonicalKey>b.canonicalKey?1:0))[0];

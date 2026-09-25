@@ -34,7 +34,6 @@
             <button type="button" data-workspace-tool="SELECT" aria-pressed="true"><span data-tool-icon aria-hidden="true">↖</span>选择</button>
             <button type="button" data-workspace-tool="NODE" aria-pressed="false"><span data-tool-icon aria-hidden="true">●</span>节点</button>
             <button type="button" data-workspace-tool="MEMBER" aria-pressed="false"><span data-tool-icon aria-hidden="true">╱</span>构件</button>
-            <button type="button" data-workspace-tool="CONNECTION" aria-pressed="false"><span data-tool-icon aria-hidden="true">⊕</span>连接</button>
             <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false"><span data-tool-icon aria-hidden="true">△</span>支座</button>
             <button type="button" data-workspace-tool="LOAD" aria-pressed="false"><span data-tool-icon aria-hidden="true">↓</span>荷载</button>
           </div>
@@ -201,7 +200,7 @@
     }); };
     renderReflectionView(null);
     const resultsRoot = document.getElementById("workspace-results");
-    const focusMember = (clientKey) => { const now = canvasController.getState(); canvasController.replaceState({ ...now, selectedObject: { kind: "PHYSICAL_MEMBER", clientKey }, focusedObject: { kind: "PHYSICAL_MEMBER", clientKey } }); canvas.querySelector(`[data-client-key="${CSS.escape(clientKey)}"]`)?.focus(); };
+    const focusMember = (clientKey) => { const now = canvasController.getState(); const selected = { kind: "PHYSICAL_MEMBER", clientKey }; canvasController.replaceState({ ...now, selectedObject: selected, selectedObjects: [selected], focusedObject: selected }); canvas.querySelector(`[data-client-key="${CSS.escape(clientKey)}"]`)?.focus(); };
     canvasController.subscribeStateChange((currentState) => {
       for (const item of resultsRoot.querySelectorAll("[data-teaching-focused]")) item.removeAttribute("data-teaching-focused");
       const selected = currentState.selectedObject;

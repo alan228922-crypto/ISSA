@@ -7,6 +7,310 @@ from tests.application.test_physical_draft import context, valid_payload
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_member_endpoints_become_truss_joints_without_connection_tool(context, workspace_page):
+    owner, project, material, section = context
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-member-material]').select_option(str(material.id))
+    page.locator('[data-member-section]').select_option(str(section.id))
+    page.locator('.ux-precision summary').click()
+    page.locator('[data-workspace-tool="NODE"]').click()
+    command = page.locator('[data-cad-command-input]')
+    for point in ('0,0', '1000,0'):
+        command.fill(point)
+        command.press('Enter')
+    page.locator('[data-cad-fit]').click()
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="node-1"] circle').click(force=True)
+    page.locator('[data-client-key="node-2"] circle').click(force=True)
+    assert page.locator('[data-object-kind="Connection"]').count() == 2
+    assert page.locator('[data-workspace-tool="CONNECTION"]').count() == 0
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_placing_node_at_crossing_creates_pin_joint_only_on_request(context, workspace_page):
+    owner, project, material, section = context
+    crossing = valid_payload(material, section)
+    crossing['nodes'] = [
+        {'client_key': 'n1', 'x_mm': 0, 'y_mm': 0, 'label': ''},
+        {'client_key': 'n2', 'x_mm': 1000, 'y_mm': 1000, 'label': ''},
+        {'client_key': 'n3', 'x_mm': 0, 'y_mm': 1000, 'label': ''},
+        {'client_key': 'n4', 'x_mm': 1000, 'y_mm': 0, 'label': ''},
+    ]
+    crossing['physical_members'] = [
+        {'client_key': 'm1', 'start_node_client_key': 'n1', 'end_node_client_key': 'n2', 'material_id': material.id, 'section_id': section.id, 'label': '', 'is_active': True},
+        {'client_key': 'm2', 'start_node_client_key': 'n3', 'end_node_client_key': 'n4', 'material_id': material.id, 'section_id': section.id, 'label': '', 'is_active': True},
+    ]
+    crossing['connections'] = []
+    crossing['supports'] = []
+    crossing['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=crossing)
+    page = workspace_page(user=owner, project=project)
+    assert page.locator('[data-object-kind="Connection"]').count() == 0
+    page.locator('[data-workspace-tool="NODE"]').click()
+    point = page.evaluate("""() => {
+      const svg = document.querySelector('[data-world-layer]');
+      const p = new DOMPoint(500, 500).matrixTransform(svg.getScreenCTM());
+      return {x:p.x,y:p.y};
+    }""")
+    page.mouse.click(point['x'], point['y'])
+    joint = page.evaluate("""() => {
+      const marker = document.querySelector('[data-object-kind="Connection"]');
+      return {count:document.querySelectorAll('[data-object-kind="Connection"]').length,
+        participants:marker?.getAttribute('aria-label')};
+    }""")
+    assert joint['count'] == 1
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    saved = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    assert len(saved['connections']) == 1
+    assert saved['connections'][0]['participating_member_client_keys'] == ['m1', 'm2']
+    node = next(item for item in saved['nodes'] if item['client_key'] == saved['connections'][0]['geometry_node_client_key'])
+    assert (node['x_mm'], node['y_mm']) == (500, 500)
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_node_tool_can_activate_joint_on_legacy_unconnected_endpoint(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['connections'] = []
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    assert page.locator('[data-object-kind="Connection"]').count() == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_support_and_load_can_target_visible_node(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['connections'] = []
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="SUPPORT"]').click()
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    assert page.locator('[data-object-kind="Support"]').count() == 1
+    page.locator('[data-workspace-tool="LOAD"]').click()
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    assert page.locator('[data-object-kind="NodeLoad"]').count() == 1
+    assert page.locator('[data-object-kind="Connection"]').count() == 1
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    saved = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    assert saved['supports'][0]['target_connection_client_key'] == saved['node_loads'][0]['target_connection_client_key'] == saved['connections'][0]['client_key']
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_node_target_rejects_isolated_and_ambiguous_connections(context, workspace_page):
+    owner, project, _, _ = context
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const {applyEditorAction} = await import('/static/projects/workspace/editor.js');
+      const draft={nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:''},{client_key:'n2',x_mm:100,y_mm:0,label:''}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'',is_active:true}],connections:[],supports:[],node_loads:[]};
+      const support={client_key:'s1',support_type:'PINNED',restrained_axis:null};
+      const added=applyEditorAction(draft,{type:'CREATE_SUPPORT_AT_NODE',nodeClientKey:'n1',support});
+      const fail=(source,key)=>{try{applyEditorAction(source,{type:'CREATE_SUPPORT_AT_NODE',nodeClientKey:key,support})}catch(error){return error.code}};
+      const isolated={...draft,physical_members:[]};
+      const ambiguous={...draft,connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']},{client_key:'c2',geometry_node_client_key:'n1',participating_member_client_keys:['m1']}]};
+      return {created:added.connections.length,target:added.supports[0].target_connection_client_key,isolated:fail(isolated,'n1'),ambiguous:fail(ambiguous,'n1'),unchanged:draft.connections.length};
+    }""")
+    assert result == {'created': 1, 'target': 'connection-1', 'isolated': 'NODE_NOT_ON_MEMBER', 'ambiguous': 'MULTIPLE_JOINTS_AT_NODE', 'unchanged': 0}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_window_and_crossing_selection(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {objectsInMarquee} = await import('/static/projects/workspace/selection-geometry.js');
+      const objects=[{kind:'PHYSICAL_MEMBER',clientKey:'m1',hit:{type:'SEGMENT',start:{x:0,y:50},end:{x:100,y:50}}},{kind:'GEOMETRY_NODE',clientKey:'n1',hit:{type:'POINT',point:{x:50,y:50}}}];
+      const rect={left:40,right:60,top:40,bottom:60};
+      return {crossing:objectsInMarquee(rect,objects,'CROSSING'),window:objectsInMarquee(rect,objects,'WINDOW')};
+    }""")
+    assert result == {'crossing':[{'kind':'PHYSICAL_MEMBER','clientKey':'m1'},{'kind':'GEOMETRY_NODE','clientKey':'n1'}], 'window':[{'kind':'GEOMETRY_NODE','clientKey':'n1'}]}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_marquee_drag_selects_without_creating_node(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    canvas = page.locator('#workspace-canvas')
+    box = canvas.bounding_box()
+    page.locator('[data-workspace-tool="NODE"]').click()
+    before = page.locator('[data-object-kind="GeometryNode"]').count()
+    page.mouse.move(box['x']+box['width']*.2, box['y']+box['height']*.2)
+    page.mouse.down()
+    page.mouse.move(box['x']+box['width']*.7, box['y']+box['height']*.7, steps=5)
+    page.mouse.up()
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == before
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_batch_delete_prunes_joints_and_preserves_shared_member(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {applyEditorAction} = await import('/static/projects/workspace/editor.js');
+      const nodes=['n1','n2','n3'].map((client_key,i)=>({client_key,x_mm:i*100,y_mm:0,label:''}));
+      const member=(client_key,start,end)=>({client_key,start_node_client_key:start,end_node_client_key:end,material_id:1,section_id:1,label:'',is_active:true});
+      const draft={nodes,physical_members:[member('m1','n1','n2'),member('m2','n2','n3')],connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']},{client_key:'c2',geometry_node_client_key:'n2',participating_member_client_keys:['m1','m2']},{client_key:'c3',geometry_node_client_key:'n3',participating_member_client_keys:['m2']}],supports:[],node_loads:[]};
+      const next=applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]});
+      const loaded={...draft,supports:[{client_key:'s1',target_connection_client_key:'c1',support_type:'PINNED',restrained_axis:null}]};
+      let conflict=null;try{applyEditorAction(loaded,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]})}catch(error){conflict=error.code}
+      return {members:next.physical_members.map(x=>x.client_key),joints:next.connections.map(x=>[x.client_key,x.participating_member_client_keys]),nodes:next.nodes.length,conflict,original:draft.physical_members.length};
+    }""")
+    assert result == {'members':['m2'],'joints':[['c2',['m2']],['c3',['m2']]],'nodes':3,'conflict':'EDITOR_DEPENDENCY_CONFLICT','original':2}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_delete_key_ignores_editable_input_and_deletes_selected_node(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas = page.locator('#workspace-canvas')
+    canvas.click(position={'x': 200, 'y': 200})
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+    page.locator('.ux-precision summary').click()
+    command = page.locator('[data-cad-command-input]')
+    command.fill('123')
+    command.press('Backspace')
+    assert command.input_value() == '12'
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+    page.locator('[data-workspace-tool="SELECT"]').click()
+    page.locator('[data-object-kind="GeometryNode"]').click(force=True)
+    page.keyboard.press('Delete')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_marquee_direction_selects_crossing_but_not_window(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    line = page.locator('[data-client-key="m1"] line')
+    box = line.bounding_box()
+    center_x = box['x'] + box['width'] / 2
+    center_y = box['y'] + box['height'] / 2
+    page.mouse.move(center_x - 25, center_y - 20)
+    page.mouse.down()
+    page.mouse.move(center_x + 25, center_y + 20, steps=5)
+    page.mouse.up()
+    assert page.locator('[data-client-key="m1"]').get_attribute('data-selected') == 'false'
+    page.mouse.move(center_x + 25, center_y - 20)
+    page.mouse.down()
+    page.mouse.move(center_x - 25, center_y + 20, steps=5)
+    page.mouse.up()
+    assert page.locator('[data-client-key="m1"]').get_attribute('data-selected') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_decimal_node_save_reload_and_connected_node_noop(context, workspace_page):
+    owner, project, material, section = context
+    page = workspace_page(user=owner, project=project)
+    page.locator('.ux-precision summary').click()
+    page.locator('[data-workspace-tool="NODE"]').click()
+    command = page.locator('[data-cad-command-input]')
+    for point in ('12.4,7.6', '112.4,7.6'):
+        command.fill(point)
+        command.press('Enter')
+    page.locator('[data-member-material]').select_option(str(material.id))
+    page.locator('[data-member-section]').select_option(str(section.id))
+    page.locator('[data-cad-fit]').click()
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="node-1"] circle').click(force=True)
+    page.locator('[data-client-key="node-2"] circle').click(force=True)
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('[data-client-key="node-1"] circle').click(force=True)
+    assert '无' in page.locator('#workspace-save-status').inner_text()
+    page.reload()
+    saved = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    assert [(node['x_mm'], node['y_mm']) for node in saved['nodes']] == [(12.4,7.6),(112.4,7.6)]
+    assert len(saved['physical_members']) == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_numeric_node_reentry_does_not_layer_duplicate(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    page.locator('.ux-precision summary').click()
+    page.locator('[data-workspace-tool="NODE"]').click()
+    command = page.locator('[data-cad-command-input]')
+    for _ in range(2):
+        command.fill('12.4,7.6')
+        command.press('Enter')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_direct_joint_click_selects_node_and_shift_click_toggles(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-client-key="c1"] rect').click(force=True)
+    assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
+    page.locator('[data-client-key="c1"] rect').click(force=True, modifiers=['Shift'])
+    assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'false'
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    page.locator('[data-client-key="n2"] circle').click(force=True, modifiers=['Shift'])
+    assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
+    assert page.locator('[data-client-key="n2"]').get_attribute('data-selected') == 'true'
+    assert '已选择 2 个对象' in page.locator('#workspace-properties-panel').inner_text()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_explicit_connection_delete_rejects_surviving_member(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {applyEditorAction} = await import('/static/projects/workspace/editor.js');
+      const draft={nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:''},{client_key:'n2',x_mm:100,y_mm:0,label:''}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'',is_active:true}],connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']}],supports:[],node_loads:[]};
+      try{applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'CONNECTION',clientKey:'c1'}]})}catch(error){return {code:error.code,unchanged:draft.connections.length===1}}
+      return {code:null,unchanged:false};
+    }""")
+    assert result == {'code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_middle_pan_does_not_consume_next_left_click(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    box = page.locator('#workspace-canvas').bounding_box()
+    page.mouse.move(box['x']+box['width']*.5, box['y']+box['height']*.7)
+    page.mouse.down(button='middle')
+    page.mouse.move(box['x']+box['width']*.55, box['y']+box['height']*.7, steps=5)
+    page.mouse.up(button='middle')
+    page.locator('[data-client-key="m1"] line').click(force=True)
+    assert page.locator('[data-client-key="m1"]').get_attribute('data-selected') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_blank_project_creates_first_member_from_explicit_material_and_section(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
@@ -381,10 +685,9 @@ def test_property_and_delete_controls_edit_persist_and_block_dependencies(contex
 
     page.locator('[data-client-key="c1"]').focus()
     page.keyboard.press("Enter")
-    assert page.locator("[data-property-connection-node]").text_content() == "节点 左"
-    assert page.locator("[data-property-connection-members]").text_content() == "参与构件：构件 上弦杆"
+    assert page.locator("[data-property-x]").input_value() == "0"
     page.locator("[data-property-delete]").click()
-    assert "请先删除或调整依赖该对象的构件、连接、支座或荷载。" in page.locator("#workspace-error").text_content()
+    assert "依赖" in page.locator("#workspace-error").text_content()
     assert page.locator('[data-client-key="c1"]').count() == 1
 
     page.locator('[data-workspace-tool="NODE"]').click()
@@ -428,7 +731,53 @@ def test_snap_resolver_priority_grid_and_intersection_boundary(context, workspac
 def test_grid_midpoint_and_ortho_resolution(context, workspace_page):
     owner, project, _, _ = context; page = workspace_page(user=owner, project=project)
     result=page.evaluate("""async()=>{const {gridNearest,resolvePointerPoint}=await import('/static/projects/workspace/geometry.js');const f=(worldPointer,origin)=>resolvePointerPoint({worldPointer,screenPointer:worldPointer,candidates:[],viewTransform:{a:1,b:0,c:0,d:1,e:0,f:0},origin,ortho:true,gridEnabled:true,explicitNumeric:false});return {g:[493,247,50,-50,-150].map(gridNearest),h:f({x:493,y:90},{x:100,y:75}),v:f({x:125,y:487},{x:125,y:100}),tie:f({x:200,y:200},{x:0,y:0})}}""")
-    assert result['g']==[500,200,100,0,-100] and result['h']['point']=={'x':500,'y':75} and result['v']['point']=={'x':125,'y':500} and result['tie']['point']=={'x':200,'y':0}
+    assert result['g']==[493,247,50,-50,-150] and result['h']['point']=={'x':493,'y':75} and result['v']['point']=={'x':125,'y':487} and result['tie']['point']=={'x':200,'y':0}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_one_mm_grid_snap_and_ortho_preserve_locked_decimals(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {GRID_SPACING} = await import('/static/projects/workspace/canvas-interaction.js');
+      const {gridNearest,resolvePointerPoint} = await import('/static/projects/workspace/geometry.js');
+      const run = (point, origin) => resolvePointerPoint({worldPointer:point,
+        screenPointer:point,candidates:[],viewTransform:{a:1,b:0,c:0,d:1,e:0,f:0},
+        origin,ortho:true,gridEnabled:true,explicitNumeric:false}).point;
+      return {spacing:GRID_SPACING,x:gridNearest(12.4),y:gridNearest(28.7),
+        horizontal:run({x:13.2,y:7.8},{x:12.4,y:7.6}),
+        vertical:run({x:12.6,y:29.2},{x:12.4,y:28.7})};
+    }""")
+    assert result == {'spacing': 1, 'x': 12, 'y': 29,
+                      'horizontal': {'x': 13, 'y': 7.6},
+                      'vertical': {'x': 12.4, 'y': 29}}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_grid_pattern_lod_stays_bounded_without_changing_snap(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {renderWorkspace} = await import('/static/projects/workspace/renderer.js');
+      const {resolvePointerPoint} = await import('/static/projects/workspace/geometry.js');
+      const svg=document.querySelector('#workspace-canvas');
+      const draft=JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft;
+      const snap=viewTransform=>resolvePointerPoint({worldPointer:{x:12.4,y:28.7},
+        screenPointer:{x:12.4,y:28.7},candidates:[],viewTransform,
+        origin:{x:0,y:0},ortho:false,gridEnabled:true,explicitNumeric:false}).point;
+      const near={a:20,b:0,c:0,d:-20,e:0,f:0};
+      const far={a:.05,b:0,c:0,d:-.05,e:0,f:0};
+      renderWorkspace(svg,draft,{viewTransform:near});
+      const nearLevels=svg.querySelector('[data-canvas-grid]').getAttribute('data-grid-visible-levels');
+      renderWorkspace(svg,draft,{viewTransform:far});
+      return {patterns:svg.querySelectorAll('[data-canvas-grid] pattern').length,
+        lines:svg.querySelectorAll('[data-canvas-grid] line').length,
+        nearLevels,farLevels:svg.querySelector('[data-canvas-grid]').getAttribute('data-grid-visible-levels'),
+        nearSnap:snap(near),farSnap:snap(far)};
+    }""")
+    assert result == {'patterns': 3, 'lines': 0, 'nearLevels': 'minor medium major',
+                      'farLevels': 'major', 'nearSnap': {'x': 12, 'y': 29},
+                      'farSnap': {'x': 12, 'y': 29}}
 
 
 @pytest.mark.browser
@@ -447,8 +796,8 @@ def test_renderer_displays_snap_indicator_types_as_text(context, workspace_page)
 @pytest.mark.django_db(transaction=True)
 def test_editor_crossing_members_do_not_create_connection(context, workspace_page):
     owner, project, _, _ = context; page = workspace_page(user=owner, project=project)
-    result = page.evaluate("""async () => { const { applyEditorAction } = await import('/static/projects/workspace/editor.js'); const draft={schema_version:'physical-draft-v1',version:4,nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:''},{client_key:'n2',x_mm:100,y_mm:100,label:''},{client_key:'n3',x_mm:0,y_mm:100,label:''},{client_key:'n4',x_mm:100,y_mm:0,label:''}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'',is_active:true}],connections:[],supports:[],node_loads:[]}; const crossing=applyEditorAction(draft,{type:'CREATE_MEMBER',member:{client_key:'m2',start_node_client_key:'n3',end_node_client_key:'n4',material_id:1,section_id:1,label:'',is_active:true}}); const connected=applyEditorAction(crossing,{type:'CREATE_CONNECTION',connection:{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']}}); return {before:draft.connections.length,crossing:crossing.connections.length,explicit:connected.connections.length,unchanged:JSON.stringify(draft)}; }""")
-    assert result['before'] == 0 and result['crossing'] == 0 and result['explicit'] == 1
+    result = page.evaluate("""async () => { const { applyEditorAction } = await import('/static/projects/workspace/editor.js'); const draft={schema_version:'physical-draft-v1',version:4,nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:''},{client_key:'n2',x_mm:100,y_mm:100,label:''},{client_key:'n3',x_mm:0,y_mm:100,label:''},{client_key:'n4',x_mm:100,y_mm:0,label:''}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'',is_active:true}],connections:[],supports:[],node_loads:[]}; const crossing=applyEditorAction(draft,{type:'CREATE_MEMBER',member:{client_key:'m2',start_node_client_key:'n3',end_node_client_key:'n4',material_id:1,section_id:1,label:'',is_active:true}}); return {before:draft.connections.length,joints:crossing.connections.map(item=>item.geometry_node_client_key).sort(),unchanged:JSON.stringify(draft)}; }""")
+    assert result['before'] == 0 and result['joints'] == ['n3', 'n4']
 
 
 @pytest.mark.browser
@@ -464,7 +813,7 @@ def test_editor_mutations_are_immutable(context, workspace_page):
         'malformed': {'name':'EditorActionError','code':'EDITOR_INVALID_ACTION','unchanged':True},
         'missing': {'name':'EditorActionError','code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
         'forbidden': {'name':'EditorActionError','code':'EDITOR_UPDATE_FIELD_NOT_ALLOWED','unchanged':True},
-        'dependency': {'name':'EditorActionError','code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True},
+        'dependency': None,
     }
 
 
@@ -482,7 +831,7 @@ def test_editor_enforces_full_reference_update_and_delete_matrix(context, worksp
       const crossKind=applyEditorAction(support,{type:'CREATE_NODE',node:{client_key:'m1',x_mm:9,y_mm:9,label:'same-other-kind'}});
       const supportRemoved=applyEditorAction(support,{type:'DELETE_OBJECT',target:{kind:'SUPPORT',clientKey:'s1'}});
       const loadRemoved=applyEditorAction(supportRemoved,{type:'DELETE_OBJECT',target:{kind:'NODE_LOAD',clientKey:'l1'}});
-      const connectionRemoved=applyEditorAction(loadRemoved,{type:'DELETE_OBJECT',target:{kind:'CONNECTION',clientKey:'c1'}});
+      const connectionRemoved=applyEditorAction(loadRemoved,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'},{kind:'PHYSICAL_MEMBER',clientKey:'m2'},{kind:'CONNECTION',clientKey:'c1'}]});
       const spare=applyEditorAction(connectionRemoved,{type:'CREATE_NODE',node:{client_key:'n3',x_mm:3,y_mm:3,label:''}});
       const nodeRemoved=applyEditorAction(spare,{type:'DELETE_OBJECT',target:{kind:'GEOMETRY_NODE',clientKey:'n3'}});
       return {updates:[node.nodes[0],member.physical_members[0],support.supports[0]], deletions:[supportRemoved.supports.length,loadRemoved.node_loads.length,connectionRemoved.connections.length,nodeRemoved.nodes.some(x=>x.client_key==='n3')], crossKind:crossKind.nodes.at(-1).client_key, failures:{duplicateParticipants:fail({type:'CREATE_CONNECTION',connection:{client_key:'bad1',geometry_node_client_key:'n1',participating_member_client_keys:['m1','m1']}}),unsortedParticipants:fail({type:'CREATE_CONNECTION',connection:{client_key:'bad2',geometry_node_client_key:'n1',participating_member_client_keys:['m2','m1']}}),missingConnection:fail({type:'CREATE_CONNECTION',connection:{client_key:'bad3',geometry_node_client_key:'missing',participating_member_client_keys:['m1']}}),missingSupport:fail({type:'CREATE_SUPPORT',support:{client_key:'s2',target_connection_client_key:'missing',support_type:'PINNED',restrained_axis:null}}),missingLoad:fail({type:'CREATE_NODE_LOAD',nodeLoad:{client_key:'l2',target_connection_client_key:'missing',fx_N:0,fy_N:0,label:''}}),nodeDependency:fail({type:'DELETE_OBJECT',target:{kind:'GEOMETRY_NODE',clientKey:'n1'}}),connectionDependency:fail({type:'DELETE_OBJECT',target:{kind:'CONNECTION',clientKey:'c1'}}),unknownKind:fail({type:'UPDATE_OBJECT',target:{kind:'BOGUS',clientKey:'x'},changes:{label:'x'}})}};
@@ -517,7 +866,7 @@ def test_canvas_picking_pan_zoom_and_fit(context, workspace_page):
     assert result['max']['a'] == 20 and result['min']['a'] == .05
     assert result['invalid'] == 'ZOOM_FACTOR_INVALID'
     assert result['fit'] == {'a':2.2,'b':0,'c':0,'d':-2.2,'e':90,'f':150} and result['emptyFit'] == {'a':1,'b':0,'c':0,'d':-1,'e':10,'f':20}
-    assert result['grid'] == {'origin':{'x':0,'y':0},'spacing':100} and result['unchanged'] is True
+    assert result['grid'] == {'origin':{'x':0,'y':0},'spacing':1} and result['unchanged'] is True
 
 
 @pytest.mark.browser
@@ -665,9 +1014,6 @@ def test_workspace_modeling_tools_mutate_draft_and_save(context, workspace_page)
     end_node.click(force=True)
     assert page.locator('[data-object-kind="PhysicalMember"]').count() == 2
 
-    page.locator('[data-workspace-tool="CONNECTION"]').click()
-    page.locator('[data-client-key="c1"]').focus()
-    page.keyboard.press('Enter')
     connection = page.locator('[data-object-kind="Connection"]').last
     assert connection.count() == 1
 
@@ -695,14 +1041,17 @@ def test_workspace_modeling_tools_do_not_create_connection_at_crossing(context, 
     save_physical_draft(actor=owner, project=project, payload=payload)
     page = workspace_page(user=owner, project=project)
 
+    page.locator('.ux-precision summary').click()
     page.locator('[data-workspace-tool="NODE"]').click()
-    canvas = page.locator('#workspace-canvas')
-    canvas.click(position={'x': 250, 'y': 160})
-    canvas.click(position={'x': 350, 'y': 260})
+    command = page.locator('[data-cad-command-input]')
+    for point in ('400,-400', '400,400'):
+        command.fill(point)
+        command.press('Enter')
+    page.locator('[data-cad-fit]').click()
     page.locator('[data-workspace-tool="MEMBER"]').click()
-    page.locator('[data-object-kind="GeometryNode"]').nth(2).click()
-    page.locator('[data-object-kind="GeometryNode"]').nth(3).click()
-    assert page.locator('[data-object-kind="Connection"]').count() == 1
+    page.locator('[data-client-key="node-1"] circle').click(force=True)
+    page.locator('[data-client-key="node-2"] circle').click(force=True)
+    assert page.locator('[data-object-kind="Connection"]').count() == 3
 
 
 @pytest.mark.browser
@@ -745,7 +1094,7 @@ def test_workspace_properties_edit_support_and_load_and_persist(context, workspa
     assert page.locator('[data-property-identity]').text_content() == '构件 杆件'
     page.locator('[data-client-key="c1"]').focus()
     page.keyboard.press('Enter')
-    assert page.locator('[data-property-identity]').text_content() == '连接 C1'
+    assert page.locator('[data-property-identity]').text_content() == '节点 左'
 
     page.locator('[data-client-key="s1"] path').click(force=True)
     assert page.locator('[data-property-identity]').text_content() == '支座 S1'

@@ -13,6 +13,7 @@ export function createWorkspaceState(bootstrap) {
     draftVersion: bootstrap.draft.version,
     readOnly: bootstrap.read_only,
     selectedObject: null,
+    selectedObjects: [],
     focusedObject: null,
     viewTransform: Object.freeze({ a: 1, b: 0, c: 0, d: -1, e: 0, f: 0 }),
     cad: Object.freeze({ ortho: false, gridSnap: true, gridVisible: true, activeCommand: "SELECT", origin: null, preview: null, snapFeedback: null }),
@@ -37,11 +38,15 @@ export function focusWorkspaceIssue(state, issue) {
   const validKinds = ["GEOMETRY_NODE", "PHYSICAL_MEMBER", "CONNECTION", "SUPPORT", "NODE_LOAD"];
   if (!target || !validKinds.includes(target.kind) || typeof target.client_key !== "string" || !target.client_key) return state;
   const object = Object.freeze({ kind: target.kind, clientKey: target.client_key });
-  return Object.freeze({ ...state, selectedObject: object, focusedObject: object });
+  return Object.freeze({ ...state, selectedObject: object, selectedObjects: [object], focusedObject: object });
 }
 
 export function predictionCanvasSelection(state) {
   const selected = state?.selectedObject;
+  if (selected?.kind === "GEOMETRY_NODE") {
+    const matches = state.draft.connections.filter((item) => item.geometry_node_client_key === selected.clientKey);
+    return matches.length === 1 ? Object.freeze({ kind: "CONNECTION", clientKey: matches[0].client_key }) : null;
+  }
   if (!selected || !["CONNECTION", "PHYSICAL_MEMBER"].includes(selected.kind) || typeof selected.clientKey !== "string") return null;
   return Object.freeze({ kind: selected.kind, clientKey: selected.clientKey });
 }

@@ -1,5 +1,5 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
-import { GRID_SPACING } from "./canvas-interaction.js";
+import { GRID_SPACING, visibleGridLevels } from "./grid.js";
 import { createStudentLabelResolver } from "./labels.js";
 
 function element(name, attributes = {}) {
@@ -10,7 +10,7 @@ function element(name, attributes = {}) {
 
 function selectable(kind, key, label, uiState) {
   const stateKind = { GeometryNode: "GEOMETRY_NODE", PhysicalMember: "PHYSICAL_MEMBER", Connection: "CONNECTION", Support: "SUPPORT", NodeLoad: "NODE_LOAD" }[kind];
-  const selected = [kind, stateKind].includes(uiState.selectedObject?.kind) && uiState.selectedObject?.clientKey === key;
+  const selected = (uiState.selectedObjects || (uiState.selectedObject ? [uiState.selectedObject] : [])).some((item) => [kind, stateKind].includes(item.kind) && item.clientKey === key);
   const focused = [kind, stateKind].includes(uiState.focusedObject?.kind) && uiState.focusedObject?.clientKey === key;
   return element("g", {
     "data-object-kind": kind,
@@ -52,12 +52,20 @@ export function workspaceWorldBounds(draft) {
   return { minX: Math.min(...points.map((node) => node.x_mm)), minY: Math.min(...points.map((node) => node.y_mm)), maxX: Math.max(...points.map((node) => node.x_mm)), maxY: Math.max(...points.map((node) => node.y_mm)) };
 }
 
-function gridLayer() {
-  const grid = element("g", { "data-canvas-grid": "true", "pointer-events": "none", stroke: "#d9e3f0", "stroke-width": 1 });
-  for (let coordinate = -10000; coordinate <= 10000; coordinate += GRID_SPACING) {
-    grid.append(element("line", { x1: coordinate, y1: -10000, x2: coordinate, y2: 10000 }));
-    grid.append(element("line", { x1: -10000, y1: coordinate, x2: 10000, y2: coordinate }));
-  }
+function gridLayer(unit) {
+  const levels = visibleGridLevels(1 / unit);
+  const grid = element("g", { "data-canvas-grid": "true", "data-grid-visible-levels": [levels.minor && "minor", levels.medium && "medium", "major"].filter(Boolean).join(" "), "pointer-events": "none" });
+  const defs = element("defs");
+  const pattern = (name, spacing, color, inner = null) => {
+    const tile = element("pattern", { id: `workspace-grid-${name}`, "data-grid-level": name, patternUnits: "userSpaceOnUse", x: 0, y: 0, width: spacing, height: spacing });
+    if (inner) tile.append(element("rect", { x: 0, y: 0, width: spacing, height: spacing, fill: `url(#workspace-grid-${inner})` }));
+    tile.append(element("path", { d: `M 0 0 H ${spacing} M 0 0 V ${spacing}`, fill: "none", stroke: color, "stroke-width": unit }));
+    return tile;
+  };
+  defs.append(pattern("minor", GRID_SPACING, "#f1f5fa"));
+  defs.append(pattern("medium", 10 * GRID_SPACING, "#e4ebf4", levels.minor ? "minor" : null));
+  defs.append(pattern("major", 100 * GRID_SPACING, "#cbd8e9", levels.medium ? "medium" : null));
+  grid.append(defs, element("rect", { x: -10000, y: -10000, width: 20000, height: 20000, fill: "url(#workspace-grid-major)" }));
   grid.append(element("path", { d: "M -30 0 L 30 0 M 0 -30 L 0 30", stroke: "#7c8ba1", "stroke-width": 2 }));
   const origin = element("text", { x: 12, y: -12, fill: "#536274", "font-size": 24 }); origin.textContent = "(0,0)"; grid.append(origin);
   return grid;
@@ -135,7 +143,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   const nodePositions = pointMap(nodes);
   const connectionByKey = new Map(connections.map((connection) => [connection.client_key, connection]));
   const labels = createStudentLabelResolver(draft);
-  const grid = gridLayer();
+  const grid = gridLayer(unit);
   const layers = [element("g", { "data-render-layer": "members" }), element("g", { "data-render-layer": "supports-loads" }), element("g", { "data-render-layer": "nodes-connections" })];
 
   for (const member of members) {

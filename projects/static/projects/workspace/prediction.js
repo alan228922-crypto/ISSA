@@ -1,6 +1,7 @@
 import { requestJson, postJson, urlFromTemplate } from "./api.js";
 import { normalizeApiError } from "./errors.js";
 import { createStudentLabelResolver } from "./labels.js";
+import { predictionCanvasSelection } from "./state.js";
 
 export const MEMBER_PREDICTION_CHOICES = Object.freeze(["TENSION", "COMPRESSION", "ZERO_FORCE", "UNSURE"]);
 
@@ -118,7 +119,7 @@ export function bindPredictionWorkspace({ root, urls, draft, canvasController, s
   const start = root.querySelector("[data-prediction-start]");
   const complete = root.querySelector("[data-prediction-complete]");
   const skip = root.querySelector("[data-prediction-skip]");
-  const selection = () => canvasController.getState().selectedObject;
+  const selection = () => predictionCanvasSelection(canvasController.getState());
   let workspace;
   const render = (view) => {
     const labels = createStudentLabelResolver(canvasController.getState().draft);

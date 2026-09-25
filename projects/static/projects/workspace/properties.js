@@ -139,26 +139,42 @@ function appendLoadControls(root, selected, load, canvasController) {
   appendLabelControl(root, selected, load, canvasController);
 }
 
+function deleteSelection(canvasController, showError) {
+  const state = canvasController.getState();
+  const targets = state.selectedObjects?.length ? state.selectedObjects : state.selectedObject ? [state.selectedObject] : [];
+  if (!targets.length) return;
+  try {
+    const next = applyWorkspaceEditorAction(state, { type: "DELETE_OBJECTS", targets });
+    canvasController.replaceState({ ...next, selectedObject: null, selectedObjects: [], focusedObject: null }, true);
+    document.getElementById("workspace-save-status").textContent = "未保存修改：有";
+  } catch (error) {
+    if (error instanceof EditorActionError) {
+      showError({ code: error.code, message: error.code === "EDITOR_DEPENDENCY_CONFLICT" ? "无法删除：仍有构件、支座或荷载依赖所选对象。请同时选中依赖对象再删除。" : "所选对象无法删除，请重新选择。" });
+      return;
+    }
+    throw error;
+  }
+}
+
 function appendDelete(root, selected, canvasController, showError) {
   const button = document.createElement("button");
   button.type = "button";
   button.dataset.propertyDelete = "";
-  button.textContent = "删除对象";
-  button.addEventListener("click", () => {
-    try {
-      updateState(canvasController, { type: "DELETE_OBJECT", target: selected }, true);
-    } catch (error) {
-      if (error instanceof EditorActionError && error.code === "EDITOR_DEPENDENCY_CONFLICT") {
-        showError({ code: error.code, message: "请先删除或调整依赖该对象的构件、连接、支座或荷载。" });
-        return;
-      }
-      throw error;
-    }
-  });
+  button.textContent = "删除所选对象";
+  button.addEventListener("click", () => deleteSelection(canvasController, showError));
   root.append(button);
 }
 
 export function bindPropertyPanel({ root, canvasController, materials = [], sections = [], showError = () => {} }) {
+  document.addEventListener("keydown", (event) => {
+    if (!["Delete", "Backspace"].includes(event.key) || event.defaultPrevented) return;
+    const target = event.target;
+    if (target?.closest?.("input, textarea, select, [contenteditable], [role='textbox']")) return;
+    const state = canvasController.getState();
+    if (state.readOnly || root.closest("#workspace-root")?.dataset.uxStage !== "build" || !(state.selectedObjects?.length || state.selectedObject)) return;
+    event.preventDefault();
+    deleteSelection(canvasController, showError);
+  });
   const render = (state) => {
     root.replaceChildren();
     const current = selectedRecord(state);
@@ -175,6 +191,7 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     const note = (text) => { const element = document.createElement("p"); element.textContent = text; root.append(element); };
     heading("这是什么");
     if (!current) { note("这里是你的结构草稿。"); heading("可以做什么"); note("选择左侧工具，在画布放置节点、连接构件。"); heading("下一步"); note(state.draft.nodes.length ? "继续建立结构，或选择对象修改。" : "先放置第一个节点。"); return; }
+    if ((state.selectedObjects?.length || 0) > 1) note(`已选择 ${state.selectedObjects.length} 个对象；下方显示最后选中的对象。删除会作用于全部所选对象。`);
     const labels = createStudentLabelResolver(state.draft);
     const identity = document.createElement("p"); identity.dataset.propertyIdentity = ""; identity.textContent = labels.label(current.selected.kind, current.selected.clientKey); root.append(identity);
     const kind = current.selected.kind;

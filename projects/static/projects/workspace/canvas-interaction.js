@@ -1,5 +1,6 @@
 export const GRID_ORIGIN = Object.freeze({ x: 0, y: 0 });
-export const GRID_SPACING = 100;
+export { GRID_SPACING } from "./grid.js";
+import { objectsInMarquee } from "./selection-geometry.js";
 
 const POINT_TOLERANCE = 10;
 const SEGMENT_TOLERANCE = 8;
@@ -111,16 +112,30 @@ export function renderedObjectsFromSvg(svg) {
 
 export function bindCanvasInteractions(svg, initialState, render) {
   let state = initialState;
-  let panStart = null;
+  let gesture = null;
+  let spaceHeld = false;
+  let suppressClick = false;
   let pointerSelection = null;
   let canvasClickHandler = null;
   const stateChangeHandlers = new Set();
   let pointerMoveHandler = null;
+  const visibleIdentity = (item) => {
+    if (item?.kind !== "CONNECTION") return item;
+    const connection = state.draft.connections.find((record) => record.client_key === item.clientKey);
+    return connection ? { kind: "GEOMETRY_NODE", clientKey: connection.geometry_node_client_key } : item;
+  };
   const notifyStateChange = () => { for (const handler of stateChangeHandlers) handler(state); };
   const redraw = () => render(svg, state.draft, state);
-  const select = (selection, redrawSelection = true) => {
-    if (!selection) return;
-    state = Object.freeze({ ...state, selectedObject: selection });
+  const select = (selection, redrawSelection = true, additive = false) => {
+    const prior = additive ? state.selectedObjects || (state.selectedObject ? [state.selectedObject] : []) : [];
+    const incoming = (Array.isArray(selection) ? selection : selection ? [selection] : []).map(visibleIdentity);
+    const identities = [...prior];
+    for (const item of incoming) {
+      const index = identities.findIndex((other) => other.kind === item.kind && other.clientKey === item.clientKey);
+      if (additive && index >= 0) identities.splice(index, 1);
+      else if (index < 0) identities.push(item);
+    }
+    state = Object.freeze({ ...state, selectedObjects: identities, selectedObject: identities.at(-1) || null });
     if (redrawSelection) redraw();
     notifyStateChange();
   };
@@ -130,14 +145,15 @@ export function bindCanvasInteractions(svg, initialState, render) {
     notifyStateChange();
   };
   svg.addEventListener("click", (event) => {
+    if (suppressClick) { suppressClick = false; event.preventDefault(); event.stopImmediatePropagation(); return; }
     const createdSelection = canvasClickHandler?.(event);
     const direct = createdSelection || pointerSelection || selectionFromElement(event.target?.closest?.("[data-object-kind]"));
     pointerSelection = null;
-    select(direct || pickAt({ x: event.clientX, y: event.clientY }, renderedObjectsFromSvg(svg)));
+    select(direct || pickAt({ x: event.clientX, y: event.clientY }, renderedObjectsFromSvg(svg)), true, event.shiftKey);
   });
   // Mouse focus is part of an active pointer gesture. Replacing SVG children here
   // would detach the pointer target before pointerup/click is dispatched.
-  svg.addEventListener("focusin", (event) => select(selectionFromElement(event.target), false));
+  svg.addEventListener("focusin", (event) => { if (!gesture) select(selectionFromElement(event.target), false); });
   svg.addEventListener("keydown", (event) => {
     if (event.key === "Enter") select(selectionFromElement(event.target));
     const delta = { ArrowLeft: { x: -24, y: 0 }, ArrowRight: { x: 24, y: 0 }, ArrowUp: { x: 0, y: -24 }, ArrowDown: { x: 0, y: 24 } }[event.key];
@@ -147,14 +163,50 @@ export function bindCanvasInteractions(svg, initialState, render) {
     event.preventDefault();
     dispatchViewEvent({ type: "ZOOM", factor: event.deltaY < 0 ? 1.1 : 1 / 1.1, anchorScreen: { x: event.clientX, y: event.clientY } });
   }, { passive: false });
-  svg.addEventListener("pointerdown", (event) => { panStart = { x: event.clientX, y: event.clientY }; pointerSelection = selectionFromElement(event.target?.closest?.("[data-object-kind]")); });
+  const removeMarquee = () => svg.querySelector("[data-selection-marquee]")?.remove();
+  const drawMarquee = (start, end) => {
+    removeMarquee();
+    const matrix = svg.getScreenCTM()?.inverse();
+    if (!matrix) return;
+    const a = new DOMPoint(start.x, start.y).matrixTransform(matrix);
+    const b = new DOMPoint(end.x, end.y).matrixTransform(matrix);
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    for (const [key, value] of Object.entries({ x: Math.min(a.x,b.x), y: Math.min(a.y,b.y), width: Math.abs(b.x-a.x), height: Math.abs(b.y-a.y), fill: "#3273dc22", stroke: "#3273dc", "stroke-dasharray": "5 3", "pointer-events": "none", "data-selection-marquee": "true" })) rect.setAttribute(key, String(value));
+    svg.append(rect);
+  };
+  document.addEventListener("keydown", (event) => { if (event.code === "Space" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) spaceHeld = true; if (event.key === "Escape" && state.selectedObject) select(null); });
+  document.addEventListener("keyup", (event) => { if (event.code === "Space") spaceHeld = false; });
+  svg.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 && event.button !== 1) return;
+    gesture = { start: { x: event.clientX, y: event.clientY }, last: { x: event.clientX, y: event.clientY }, moved: false, pan: event.button === 1 || spaceHeld, select: event.button === 0 && state.cad?.activeCommand === "SELECT", additive: event.shiftKey };
+    pointerSelection = selectionFromElement(event.target?.closest?.("[data-object-kind]"));
+    svg.setPointerCapture?.(event.pointerId);
+  });
   svg.addEventListener("pointermove", (event) => {
     pointerMoveHandler?.(worldPointFromEvent(svg, event), state, { x: event.clientX, y: event.clientY });
-    if (!panStart) return;
-    dispatchViewEvent({ type: "PAN", deltaScreen: { x: event.clientX - panStart.x, y: event.clientY - panStart.y } });
-    panStart = { x: event.clientX, y: event.clientY };
+    if (!gesture) return;
+    const point = { x: event.clientX, y: event.clientY };
+    if (distance(point, gesture.start) >= 4) gesture.moved = true;
+    if (gesture.moved && gesture.pan) dispatchViewEvent({ type: "PAN", deltaScreen: { x: point.x - gesture.last.x, y: point.y - gesture.last.y } });
+    if (gesture.moved && gesture.select) drawMarquee(gesture.start, point);
+    gesture.last = point;
   });
-  svg.addEventListener("pointerup", () => { panStart = null; });
+  svg.addEventListener("pointerup", (event) => {
+    if (!gesture) return;
+    if (gesture.moved) {
+      if (event.button === 0) suppressClick = true;
+      if (gesture.select) {
+        const start = gesture.start; const end = { x: event.clientX, y: event.clientY };
+        const rect = { left: Math.min(start.x,end.x), right: Math.max(start.x,end.x), top: Math.min(start.y,end.y), bottom: Math.max(start.y,end.y) };
+        const mode = end.x < start.x ? "CROSSING" : "WINDOW";
+        const found = objectsInMarquee(rect, renderedObjectsFromSvg(svg), mode);
+        select(found, true, gesture.additive);
+      }
+    }
+    gesture = null; removeMarquee();
+    if (svg.hasPointerCapture?.(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+  });
+  svg.addEventListener("pointercancel", () => { gesture = null; removeMarquee(); });
   const replaceState = (nextState, notify = true, redrawState = true) => {
     state = nextState;
     if (redrawState) redraw();

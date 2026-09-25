@@ -6,8 +6,8 @@ import { resolvePointerPoint } from "./geometry.js";
 import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction } from "./state.js";
 
-const TOOL_INSTRUCTIONS = Object.freeze({ SELECT: "点击结构查看或修改", NODE: "在画布点一下放置节点", MEMBER: "选择起点，再选择终点", CONNECTION: "标明哪些构件在这里真正相连", SUPPORT: "选择连接点放置支座", LOAD: "选择连接点施加荷载" });
-const COMPLETED = Object.freeze({ CREATE_NODE: "已放置节点", CREATE_MEMBER: "已添加构件", CREATE_CONNECTION: "已建立连接", CREATE_SUPPORT: "已放置支座", CREATE_NODE_LOAD: "已施加荷载" });
+const TOOL_INSTRUCTIONS = Object.freeze({ SELECT: "点击结构查看或修改", NODE: "在画布放置节点；交叉处放置节点即形成桁架铰接", MEMBER: "选择起点，再选择终点", SUPPORT: "选择构件节点放置支座", LOAD: "选择构件节点施加荷载" });
+const COMPLETED = Object.freeze({ CREATE_NODE: "已放置节点", PLACE_JOINT_NODE: "已放置节点", CREATE_MEMBER: "已添加构件", CREATE_SUPPORT_AT_NODE: "已放置支座", CREATE_NODE_LOAD_AT_NODE: "已施加荷载" });
 const OBJECT_KINDS = Object.freeze({ GeometryNode: "GEOMETRY_NODE", Connection: "CONNECTION" });
 
 function selectedTarget(event) {
@@ -26,10 +26,6 @@ function nextKey(items, prefix) {
   let index = 1; const keys = new Set(items.map((item) => item.client_key));
   while (keys.has(`${prefix}-${index}`)) index += 1;
   return `${prefix}-${index}`;
-}
-
-function membersAtNode(draft, nodeKey) {
-  return draft.physical_members.filter((member) => member.start_node_client_key === nodeKey || member.end_node_client_key === nodeKey).map((member) => member.client_key).sort();
 }
 
 function nodeTarget(draft, target) {
@@ -116,14 +112,22 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const apply = (action, cadChanges = null) => {
     try {
-      const edited = applyWorkspaceEditorAction(canvasController.getState(), action);
+      const previous = canvasController.getState();
+      const edited = applyWorkspaceEditorAction(previous, action);
+      if (edited.draft === previous.draft) {
+        root.querySelector("[data-modeling-instruction]").textContent = "此处节点已连接构件，无需重复放置。";
+        return true;
+      }
       canvasController.replaceState(cadChanges ? { ...edited, cad: Object.freeze({ ...cadState(edited), ...cadChanges }) } : edited);
       contextualInstruction = null;
       root.querySelector("#workspace-save-status").textContent = "未保存修改：有";
       if (COMPLETED[action.type]) root.querySelector("[data-modeling-instruction]").textContent = COMPLETED[action.type];
       return true;
     } catch (error) {
-      if (error instanceof EditorActionError) { showError({ code: error.code, message: "当前工具目标不满足建模条件。" }); return false; }
+      if (error instanceof EditorActionError) {
+        const messages = { NODE_NOT_ON_MEMBER: "此节点未连接构件；请先绘制构件。", MULTIPLE_JOINTS_AT_NODE: "此节点有多个旧连接，无法确定支座或荷载目标；请先整理模型。" };
+        showError({ code: error.code, message: messages[error.code] || "当前工具目标不满足建模条件。" }); return false;
+      }
       throw error;
     }
   };
@@ -142,7 +146,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   const completeMemberAt = (point) => {
     const profile = memberProfile(); if (!memberStart || !profile) return false;
     let current = canvasController.getState(); let endpoint = current.draft.nodes.find((node) => Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
-    if (!endpoint) { endpoint = { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" }; apply({ type: "CREATE_NODE", node: endpoint }, { origin: point }); current = canvasController.getState(); }
+    if (!endpoint) { endpoint = { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" }; apply({ type: "PLACE_JOINT_NODE", node: endpoint }, { origin: point }); current = canvasController.getState(); }
     if (endpoint.client_key === memberStart) return false;
     apply({ type: "CREATE_MEMBER", member: { client_key: nextKey(current.draft.physical_members, "member"), start_node_client_key: memberStart, end_node_client_key: endpoint.client_key, material_id: profile.materialId, section_id: profile.sectionId, label: "", is_active: true } }, { origin: point, preview: null, snapFeedback: null });
     updateDynamics(point); memberStart = null; commandState = transition(commandState, { type: "ENTER", valid: true, point }); distanceInput.value = ""; angleInput.value = ""; updateUi(root, tool, memberStart); return true;
@@ -172,18 +176,26 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const current = canvasController.getState(); const parsed = parseCadInput(commandInput.value, tool === "MEMBER" ? memberOrigin() : cadState(current).origin);
     if (!parsed.ok) { showError({ code: `CAD_INPUT_${parsed.code}`, message: "坐标格式无效，请输入 x,y、@dx,dy 或 长度<角度。" }); return; }
     const point = resolvePointerPoint({ worldPointer: parsed.point, screenPointer: parsed.point, candidates: [], viewTransform: current.viewTransform, origin: (tool === "MEMBER" ? memberOrigin() : cadState(current).origin) || parsed.point, ortho: false, gridEnabled: false, explicitNumeric: true }).point;
-    if (tool === "MEMBER") completeMemberAt(point); else { apply({ type: "CREATE_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point }); commandState = transition(commandState, { type: "ENTER", valid: true, point }); }
+    if (tool === "MEMBER") completeMemberAt(point); else { apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point }); commandState = transition(commandState, { type: "ENTER", valid: true, point }); }
     commandInput.value = ""; cadStatus(root, cadState(canvasController.getState()));
   });
   const handleCanvasClick = (event) => {
     if (root.dataset.uxStage !== "build") return;
-    const current = canvasController.getState(); const target = targetAtClick(event, svg, tool === "SUPPORT" || tool === "LOAD" ? ["CONNECTION"] : ["GEOMETRY_NODE", "CONNECTION"]); if (tool === "SELECT") return;
+    const current = canvasController.getState(); const target = targetAtClick(event, svg, ["GEOMETRY_NODE", "CONNECTION"]); if (tool === "SELECT") return;
     if (tool === "NODE") {
-      if (target) return; const world = worldPointFromEvent(svg, event); const cad = cadState(current);
+      if (target) {
+        const node = nodeTarget(current.draft, target);
+        if (node) apply({ type: "CONNECT_NODE", nodeClientKey: node.clientKey });
+        return;
+      }
+      const world = worldPointFromEvent(svg, event); const cad = cadState(current);
       const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: cad.ortho, gridEnabled: cad.gridSnap, explicitNumeric: false });
       const point = resolved?.point && { x: Math.round(resolved.point.x * 1e9) / 1e9, y: Math.round(resolved.point.y * 1e9) / 1e9 }; if (!point) return;
-      if (resolved.candidateKey?.startsWith("NODE:")) { cadStatus(root, cad, resolved); return; }
-      apply({ type: "CREATE_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point, preview: null, snapFeedback: null }); commandState = transition(commandState, { type: "POINTER_POINT", point }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
+      if (resolved.candidateKey?.startsWith("NODE:")) {
+        apply({ type: "CONNECT_NODE", nodeClientKey: resolved.candidateKey.slice(5) });
+        cadStatus(root, cad, resolved); return;
+      }
+      apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point, preview: null, snapFeedback: null }); commandState = transition(commandState, { type: "POINTER_POINT", point }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
     }
     if (tool === "MEMBER") {
       const node = nodeTarget(current.draft, target);
@@ -196,22 +208,19 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       if (!memberStart) { memberStart = node.clientKey; const start = current.draft.nodes.find((item) => item.client_key === memberStart); commandState = transition(commandState, { type: "POINTER_POINT", point: { x: start.x_mm, y: start.y_mm } }); updateUi(root, tool, memberStart); return; }
       const endpoint = current.draft.nodes.find((item) => item.client_key === node.clientKey); completeMemberAt({ x: endpoint.x_mm, y: endpoint.y_mm }); return;
     }
-    if (tool === "CONNECTION") { const node = nodeTarget(current.draft, target); if (!node) return; const participants = membersAtNode(current.draft, node.clientKey); if (!participants.length) { showError({ code: "CONNECTION_MEMBER_REQUIRED", message: "请在已有构件端点创建连接。" }); return; } apply({ type: "CREATE_CONNECTION", connection: { client_key: nextKey(current.draft.connections, "connection"), geometry_node_client_key: node.clientKey, participating_member_client_keys: participants } }); return; }
-    const connectionTarget = target?.kind === "CONNECTION" ? target : null;
-    if (!connectionTarget) {
-      contextualInstruction = current.draft.connections.length
-        ? "请点击方形连接标记放置支座或荷载。"
-        : "请先使用「连接」工具，点击已有构件的端点建立连接点。";
+    const node = nodeTarget(current.draft, target);
+    if (!node) {
+      contextualInstruction = "请点击构件节点放置支座或荷载；若尚无构件，请先绘制构件。";
       updateUi(root, tool, memberStart, contextualInstruction);
       return;
     }
     if (tool === "SUPPORT") {
       const clientKey = nextKey(current.draft.supports, "support");
-      if (apply({ type: "CREATE_SUPPORT", support: { client_key: clientKey, target_connection_client_key: connectionTarget.clientKey, support_type: "PINNED", restrained_axis: null } })) return { kind: "SUPPORT", clientKey };
+      if (apply({ type: "CREATE_SUPPORT_AT_NODE", nodeClientKey: node.clientKey, support: { client_key: clientKey, support_type: "PINNED", restrained_axis: null } })) return { kind: "SUPPORT", clientKey };
     }
     if (tool === "LOAD") {
       const clientKey = nextKey(current.draft.node_loads, "load");
-      if (apply({ type: "CREATE_NODE_LOAD", nodeLoad: { client_key: clientKey, target_connection_client_key: connectionTarget.clientKey, fx_N: 0, fy_N: -100, label: "" } })) return { kind: "NODE_LOAD", clientKey };
+      if (apply({ type: "CREATE_NODE_LOAD_AT_NODE", nodeClientKey: node.clientKey, nodeLoad: { client_key: clientKey, fx_N: 0, fy_N: -100, label: "" } })) return { kind: "NODE_LOAD", clientKey };
     }
   };
   canvasController.setCanvasClickHandler(handleCanvasClick);
