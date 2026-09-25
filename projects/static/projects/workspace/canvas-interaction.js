@@ -130,8 +130,8 @@ export function bindCanvasInteractions(svg, initialState, render) {
     notifyStateChange();
   };
   svg.addEventListener("click", (event) => {
-    canvasClickHandler?.(event);
-    const direct = pointerSelection || selectionFromElement(event.target?.closest?.("[data-object-kind]"));
+    const createdSelection = canvasClickHandler?.(event);
+    const direct = createdSelection || pointerSelection || selectionFromElement(event.target?.closest?.("[data-object-kind]"));
     pointerSelection = null;
     select(direct || pickAt({ x: event.clientX, y: event.clientY }, renderedObjectsFromSvg(svg)));
   });

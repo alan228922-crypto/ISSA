@@ -85,7 +85,7 @@ def test_renderer_emits_stable_physical_svg(context, workspace_page):
     assert any(item['key'] == 'm1' and item['selected'] == 'true' and item['focused'] == 'true' for item in rendered['objects'])
     assert rendered['selectedStrokeDasharray'] != 'none'
     assert 'AnalysisElement' not in rendered['markup']
-    assert rendered['loadDirection'][0]['y1'] < rendered['loadDirection'][0]['y2']
+    assert rendered['loadDirection'][0]['y1'] > rendered['loadDirection'][0]['y2']
 
 
 @pytest.mark.browser

@@ -39,14 +39,14 @@ function nodeTarget(draft, target) {
   return connection ? { kind: "GEOMETRY_NODE", clientKey: connection.geometry_node_client_key } : null;
 }
 
-function updateUi(root, tool, memberStart) {
+function updateUi(root, tool, memberStart, contextualInstruction = null) {
   root.dataset.uxTool = tool;
   for (const button of root.querySelectorAll("[data-workspace-tool]")) {
     const active = button.dataset.workspaceTool === tool;
     button.dataset.active = active ? "true" : "false"; button.setAttribute("aria-pressed", active ? "true" : "false");
   }
   const instruction = root.querySelector("[data-modeling-instruction]");
-  if (instruction) instruction.textContent = memberStart ? "请选择构件的终点节点。按 Esc 可取消。" : TOOL_INSTRUCTIONS[tool];
+  if (instruction) instruction.textContent = memberStart ? "请选择构件的终点节点。按 Esc 可取消。" : contextualInstruction || TOOL_INSTRUCTIONS[tool];
   for (const input of root.querySelectorAll("[data-cad-distance], [data-cad-angle]")) input.disabled = !(tool === "MEMBER" && memberStart);
 }
 
@@ -90,7 +90,7 @@ function cadStatus(root, cad, resolution = null) {
 
 export function bindModelingInteractions({ root, svg, canvasController, showError, readOnly }) {
   if (readOnly) return Object.freeze({ getTool: () => "SELECT" });
-  let tool = "SELECT"; let memberStart = null; let commandState = { state: "SELECTING", fieldIndex: null };
+  let tool = "SELECT"; let memberStart = null; let contextualInstruction = null; let commandState = { state: "SELECTING", fieldIndex: null };
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
   const commandInput = root.querySelector("[data-cad-command-input]");
   const transientCad = (changes, notify = false) => {
@@ -106,21 +106,25 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const cancelCommand = () => {
     memberStart = null;
+    contextualInstruction = null;
     commandState = transition(commandState, { type: "ESC" });
     tool = "SELECT";
     clearInputs();
     transientCad({ activeCommand: "SELECT", origin: null, preview: null, snapFeedback: null });
-    updateUi(root, tool, memberStart);
+    updateUi(root, tool, memberStart, contextualInstruction);
     cadStatus(root, cadState(canvasController.getState()));
   };
   const apply = (action, cadChanges = null) => {
     try {
       const edited = applyWorkspaceEditorAction(canvasController.getState(), action);
       canvasController.replaceState(cadChanges ? { ...edited, cad: Object.freeze({ ...cadState(edited), ...cadChanges }) } : edited);
+      contextualInstruction = null;
       root.querySelector("#workspace-save-status").textContent = "未保存修改：有";
       if (COMPLETED[action.type]) root.querySelector("[data-modeling-instruction]").textContent = COMPLETED[action.type];
+      return true;
     } catch (error) {
-      if (error instanceof EditorActionError) showError({ code: error.code, message: "当前工具目标不满足建模条件。" }); else throw error;
+      if (error instanceof EditorActionError) { showError({ code: error.code, message: "当前工具目标不满足建模条件。" }); return false; }
+      throw error;
     }
   };
   const memberOrigin = () => { const node = canvasController.getState().draft.nodes.find((item) => item.client_key === memberStart); return node && { x: node.x_mm, y: node.y_mm }; };
@@ -144,8 +148,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     updateDynamics(point); memberStart = null; commandState = transition(commandState, { type: "ENTER", valid: true, point }); distanceInput.value = ""; angleInput.value = ""; updateUi(root, tool, memberStart); return true;
   };
   const chooseTool = (nextTool) => {
-    tool = nextTool; memberStart = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
-    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, snapFeedback: null }) }); updateUi(root, tool, memberStart);
+    tool = nextTool; memberStart = null; contextualInstruction = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
+    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, snapFeedback: null }) }); updateUi(root, tool, memberStart, contextualInstruction);
   };
   for (const button of root.querySelectorAll("[data-workspace-tool]")) button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
   const orthoButton = root.querySelector("[data-cad-ortho]"); const snapButton = root.querySelector("[data-cad-snap]");
@@ -193,9 +197,22 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       const endpoint = current.draft.nodes.find((item) => item.client_key === node.clientKey); completeMemberAt({ x: endpoint.x_mm, y: endpoint.y_mm }); return;
     }
     if (tool === "CONNECTION") { const node = nodeTarget(current.draft, target); if (!node) return; const participants = membersAtNode(current.draft, node.clientKey); if (!participants.length) { showError({ code: "CONNECTION_MEMBER_REQUIRED", message: "请在已有构件端点创建连接。" }); return; } apply({ type: "CREATE_CONNECTION", connection: { client_key: nextKey(current.draft.connections, "connection"), geometry_node_client_key: node.clientKey, participating_member_client_keys: participants } }); return; }
-    const connectionTarget = target?.kind === "CONNECTION" ? target : null; if (!connectionTarget) return;
-    if (tool === "SUPPORT") apply({ type: "CREATE_SUPPORT", support: { client_key: nextKey(current.draft.supports, "support"), target_connection_client_key: connectionTarget.clientKey, support_type: "PINNED", restrained_axis: null } });
-    if (tool === "LOAD") apply({ type: "CREATE_NODE_LOAD", nodeLoad: { client_key: nextKey(current.draft.node_loads, "load"), target_connection_client_key: connectionTarget.clientKey, fx_N: 0, fy_N: -100, label: "" } });
+    const connectionTarget = target?.kind === "CONNECTION" ? target : null;
+    if (!connectionTarget) {
+      contextualInstruction = current.draft.connections.length
+        ? "请点击方形连接标记放置支座或荷载。"
+        : "请先使用「连接」工具，点击已有构件的端点建立连接点。";
+      updateUi(root, tool, memberStart, contextualInstruction);
+      return;
+    }
+    if (tool === "SUPPORT") {
+      const clientKey = nextKey(current.draft.supports, "support");
+      if (apply({ type: "CREATE_SUPPORT", support: { client_key: clientKey, target_connection_client_key: connectionTarget.clientKey, support_type: "PINNED", restrained_axis: null } })) return { kind: "SUPPORT", clientKey };
+    }
+    if (tool === "LOAD") {
+      const clientKey = nextKey(current.draft.node_loads, "load");
+      if (apply({ type: "CREATE_NODE_LOAD", nodeLoad: { client_key: clientKey, target_connection_client_key: connectionTarget.clientKey, fx_N: 0, fy_N: -100, label: "" } })) return { kind: "NODE_LOAD", clientKey };
+    }
   };
   canvasController.setCanvasClickHandler(handleCanvasClick);
   const hasConnectionAt = (draft, point) => {
@@ -212,11 +229,11 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       snapFeedback: active && resolution.snapType ? { ...resolution, unconnectedIntersection } : null,
     });
     cadStatus(root, cadState(canvasController.getState()), resolution);
-    updateUi(root, tool, memberStart);
-    if (unconnectedIntersection && active) root.querySelector("[data-modeling-instruction]").textContent = "这里有构件交叉，但尚未建立连接。";
+    updateUi(root, tool, memberStart, contextualInstruction);
+    if (unconnectedIntersection && active && !contextualInstruction) root.querySelector("[data-modeling-instruction]").textContent = "这里有构件交叉，但尚未建立连接。";
     if (memberStart) updateDynamics(resolution.point);
   });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && tool !== "SELECT") { event.preventDefault(); event.stopPropagation(); cancelCommand(); } });
   svg.addEventListener("pointerleave", () => transientCad({ preview: null, snapFeedback: null }));
-  updateUi(root, tool, memberStart); cadStatus(root, cadState(canvasController.getState())); return Object.freeze({ getTool: () => tool });
+  updateUi(root, tool, memberStart, contextualInstruction); cadStatus(root, cadState(canvasController.getState())); return Object.freeze({ getTool: () => tool });
 }

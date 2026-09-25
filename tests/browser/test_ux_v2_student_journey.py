@@ -1,7 +1,8 @@
 import pytest
 
+from modeling.services import save_physical_draft
 from tests.endpoints.test_event_landing import add_membership, make_event
-from tests.application.test_physical_draft import context
+from tests.application.test_physical_draft import context, valid_payload
 from tests.application.test_analysis_acceptance import save_bt01_draft
 
 
@@ -95,6 +96,138 @@ def test_connection_tool_does_not_reuse_stale_selection_on_blank_canvas(context,
     assert page.locator('[data-object-kind="Connection"]').count() == 1
     canvas.click(position={"x": 500, "y": 350})
     assert page.locator('[data-object-kind="Connection"]').count() == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_support_and_load_tools_explain_missing_explicit_connection(context, workspace_page):
+    owner, project, material, section = context
+    page = workspace_page(user=owner, project=project)
+    canvas = page.locator('#workspace-canvas')
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas.click(position={"x": 200, "y": 200})
+    canvas.click(position={"x": 400, "y": 200})
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="node-1"]').click()
+    page.locator('[data-client-key="node-2"]').click()
+    assert page.locator('[data-object-kind="Connection"]').count() == 0
+
+    page.locator('[data-workspace-tool="SUPPORT"]').click()
+    page.locator('[data-client-key="node-1"] circle').click(force=True)
+    assert page.locator('[data-object-kind="Support"]').count() == 0
+    assert '先使用「连接」工具' in page.locator('[data-modeling-instruction]').inner_text()
+    canvas.hover(position={"x": 500, "y": 300})
+    assert '先使用「连接」工具' in page.locator('[data-modeling-instruction]').inner_text()
+
+    page.locator('[data-workspace-tool="LOAD"]').click()
+    page.locator('[data-client-key="node-2"] circle').click(force=True)
+    assert page.locator('[data-object-kind="NodeLoad"]').count() == 0
+    assert '先使用「连接」工具' in page.locator('[data-modeling-instruction]').inner_text()
+    canvas.hover(position={"x": 500, "y": 300})
+    assert '先使用「连接」工具' in page.locator('[data-modeling-instruction]').inner_text()
+
+    page.locator('[data-workspace-tool="CONNECTION"]').click()
+    page.locator('[data-client-key="node-1"] circle').click(force=True)
+    assert page.locator('[data-object-kind="Connection"]').count() == 1
+    page.locator('[data-workspace-tool="SUPPORT"]').click()
+    page.locator('[data-object-kind="Connection"] rect').click(force=True)
+    assert page.locator('[data-object-kind="Support"]').get_attribute('data-selected') == 'true'
+    assert page.locator('[data-property-support-type]').is_visible()
+    page.locator('[data-workspace-tool="LOAD"]').click()
+    page.locator('[data-object-kind="Connection"] rect').click(force=True)
+    assert page.locator('[data-object-kind="NodeLoad"]').get_attribute('data-selected') == 'true'
+    assert page.locator('[data-property-fy]').is_visible()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_created_support_and_load_show_controls_and_persist(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.set_viewport_size({"width": 1024, "height": 768})
+    connection = page.locator('[data-client-key="c1"] rect')
+
+    page.locator('[data-workspace-tool="SUPPORT"]').click()
+    connection.click(force=True)
+    support = page.locator('[data-object-kind="Support"]')
+    assert support.count() == 1 and support.get_attribute('data-selected') == 'true'
+    assert support.locator('path').is_visible()
+    assert support.locator('path').bounding_box()['width'] >= 20
+    assert page.locator('[data-property-support-type]').is_visible()
+    page.locator('[data-property-support-type]').select_option('ROLLER_Y')
+
+    page.locator('[data-workspace-tool="LOAD"]').click()
+    connection.click(force=True)
+    load = page.locator('[data-object-kind="NodeLoad"]')
+    assert load.count() == 1 and load.get_attribute('data-selected') == 'true'
+    assert load.locator('line').count() == 1
+    assert load.locator('line').bounding_box()['height'] >= 20
+    assert page.locator('[data-property-fx]').is_visible()
+    page.locator('[data-property-fx]').fill('75')
+    page.locator('[data-property-fy]').fill('0')
+    page.locator('[data-property-fy]').press('Tab')
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent === '未保存修改：无'")
+    page.reload()
+
+    page.locator('[data-object-kind="Support"] path').click(force=True)
+    assert page.locator('[data-property-support-type]').input_value() == 'ROLLER_Y'
+    page.locator('[data-object-kind="NodeLoad"] line').click(force=True)
+    assert page.locator('[data-property-fx]').input_value() == '75'
+    assert page.locator('[data-property-fy]').input_value() == '0'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_connection_marker_is_visible_for_support_and_load_tools_at_1024(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.set_viewport_size({"width": 1024, "height": 768})
+    page.locator('[data-workspace-tool="SUPPORT"]').click()
+    marker = page.locator('[data-client-key="c1"] rect')
+    assert marker.bounding_box()['width'] >= 12
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_support_and_negative_vertical_load_symbols_have_correct_screen_direction(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    positions = page.evaluate("""() => {
+      const connection = document.querySelector('[data-client-key="c1"] rect').getBoundingClientRect();
+      const support = document.querySelector('[data-client-key="s1"] path').getBoundingClientRect();
+      const line = document.querySelector('[data-client-key="l1"] line');
+      const matrix = line.getScreenCTM();
+      const start = new DOMPoint(Number(line.getAttribute('x1')), Number(line.getAttribute('y1'))).matrixTransform(matrix);
+      const end = new DOMPoint(Number(line.getAttribute('x2')), Number(line.getAttribute('y2'))).matrixTransform(matrix);
+      return { connectionBottom: connection.bottom, supportTop: support.top, loadStartY: start.y, loadEndY: end.y };
+    }""")
+    assert positions['supportTop'] > positions['connectionBottom']
+    assert positions['loadStartY'] < positions['loadEndY']
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_zero_vector_load_symbol_remains_visible_beyond_connection_marker(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['node_loads'][0]['fx_N'] = 0
+    draft['node_loads'][0]['fy_N'] = 0
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.set_viewport_size({"width": 1024, "height": 768})
+    circle = page.locator('[data-client-key="l1"] circle').bounding_box()
+    marker = page.locator('[data-client-key="c1"] rect').bounding_box()
+    assert circle['width'] >= marker['width'] + 16
 
 
 @pytest.mark.browser
