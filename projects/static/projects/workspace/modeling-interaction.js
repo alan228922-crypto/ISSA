@@ -72,6 +72,7 @@ function drawingCandidates(draft) {
 }
 
 function cadState(state) { return state.cad || { ortho: false, gridSnap: true, gridVisible: true, activeCommand: "SELECT", origin: null }; }
+const effectiveOrtho = (cad) => Boolean(cad.ortho) !== Boolean(cad.temporaryOrtho);
 function localScreenPoint(svg, point) {
   const matrix = svg.getScreenCTM?.();
   if (!matrix) return point;
@@ -80,13 +81,13 @@ function localScreenPoint(svg, point) {
 }
 function cadStatus(root, cad, resolution = null) {
   const indicator = root.querySelector("#workspace-snap-indicator"); if (!indicator) return;
-  indicator.textContent = `ORTHO: ${cad.ortho ? "开" : "关"} · SNAP: ${cad.gridSnap ? "开" : "关"} (Grid) · 对象捕捉: 开 · 当前: ${resolution?.snapType || "无"}`;
+  indicator.textContent = `ORTHO: ${effectiveOrtho(cad) ? "开" : "关"} · SNAP: ${cad.gridSnap ? "开" : "关"} (Grid) · 对象捕捉: 开 · 当前: ${resolution?.snapType || "无"}`;
   indicator.dataset.snapType = resolution?.snapType || "";
 }
 
 export function bindModelingInteractions({ root, svg, canvasController, showError, readOnly }) {
   if (readOnly) return Object.freeze({ getTool: () => "SELECT" });
-  let tool = "SELECT"; let memberStart = null; let contextualInstruction = null; let commandState = { state: "SELECTING", fieldIndex: null };
+  let tool = "SELECT"; let memberStart = null; let contextualInstruction = null; let lastCompletedTool = null; let commandState = { state: "SELECTING", fieldIndex: null };
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
   const commandInput = root.querySelector("[data-cad-command-input]");
   const transientCad = (changes, notify = false) => {
@@ -106,7 +107,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     commandState = transition(commandState, { type: "ESC" });
     tool = "SELECT";
     clearInputs();
-    transientCad({ activeCommand: "SELECT", origin: null, preview: null, snapFeedback: null });
+    transientCad({ activeCommand: "SELECT", origin: null, preview: null, snapFeedback: null, temporaryOrtho: false });
     updateUi(root, tool, memberStart, contextualInstruction);
     cadStatus(root, cadState(canvasController.getState()));
   };
@@ -119,6 +120,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
         return true;
       }
       canvasController.replaceState(cadChanges ? { ...edited, cad: Object.freeze({ ...cadState(edited), ...cadChanges }) } : edited);
+      if (COMPLETED[action.type]) lastCompletedTool = tool;
       contextualInstruction = null;
       root.querySelector("#workspace-save-status").textContent = "未保存修改：有";
       if (COMPLETED[action.type]) root.querySelector("[data-modeling-instruction]").textContent = COMPLETED[action.type];
@@ -153,7 +155,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const chooseTool = (nextTool) => {
     tool = nextTool; memberStart = null; contextualInstruction = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
-    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, snapFeedback: null }) }); updateUi(root, tool, memberStart, contextualInstruction);
+    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, snapFeedback: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
   };
   for (const button of root.querySelectorAll("[data-workspace-tool]")) button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
   const orthoButton = root.querySelector("[data-cad-ortho]"); const snapButton = root.querySelector("[data-cad-snap]");
@@ -189,7 +191,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
         return;
       }
       const world = worldPointFromEvent(svg, event); const cad = cadState(current);
-      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: cad.ortho, gridEnabled: cad.gridSnap, explicitNumeric: false });
+      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
       const point = resolved?.point && { x: Math.round(resolved.point.x * 1e9) / 1e9, y: Math.round(resolved.point.y * 1e9) / 1e9 }; if (!point) return;
       if (resolved.candidateKey?.startsWith("NODE:")) {
         apply({ type: "CONNECT_NODE", nodeClientKey: resolved.candidateKey.slice(5) });
@@ -201,7 +203,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       const node = nodeTarget(current.draft, target);
       if (!node && memberStart && ["DRAW_MEMBER_WAIT_END", "DYNAMIC_INPUT"].includes(commandState.state)) {
         const world = worldPointFromEvent(svg, event); const cad = cadState(current); if (!world) return;
-        const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: memberOrigin(), ortho: cad.ortho, gridEnabled: cad.gridSnap, explicitNumeric: false });
+        const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: memberOrigin(), ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
         completeMemberAt({ x: Math.round(resolved.point.x * 1e9) / 1e9, y: Math.round(resolved.point.y * 1e9) / 1e9 }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
       }
       if (!node) return;
@@ -230,7 +232,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   canvasController.setPointerMoveHandler((world, state, screen) => {
     if (!world) return; root.querySelector("#workspace-pointer-x").textContent = `X: ${Math.round(world.x)} mm`; root.querySelector("#workspace-pointer-y").textContent = `Y: ${Math.round(world.y)} mm`;
-    const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: drawingCandidates(state.draft), viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin || world, ortho: cad.ortho, gridEnabled: cad.gridSnap, explicitNumeric: false });
+    const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: drawingCandidates(state.draft), viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
     const active = tool !== "SELECT";
     const unconnectedIntersection = resolution.snapType === "INT" && !hasConnectionAt(state.draft, resolution.point);
     transientCad({
@@ -243,6 +245,14 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (memberStart) updateDynamics(resolution.point);
   });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && tool !== "SELECT") { event.preventDefault(); event.stopPropagation(); cancelCommand(); } });
+  const editableFocus = (target) => Boolean(target?.closest?.("input, textarea, select, [contenteditable], [role='textbox']"));
+  const repeatLastTool = () => { if (tool === "SELECT" && lastCompletedTool && root.dataset.uxStage === "build") chooseTool(lastCompletedTool); };
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Shift" && tool !== "SELECT" && !editableFocus(event.target) && !event.repeat) { transientCad({ temporaryOrtho: true }); cadStatus(root, cadState(canvasController.getState())); }
+    if (event.key === "Enter" && !event.repeat && (event.target === svg || event.target === document.body) && !event.altKey && !event.ctrlKey && !event.metaKey && tool === "SELECT" && lastCompletedTool) { event.preventDefault(); repeatLastTool(); }
+  });
+  document.addEventListener("keyup", (event) => { if (event.key === "Shift" && cadState(canvasController.getState()).temporaryOrtho) { transientCad({ temporaryOrtho: false }); cadStatus(root, cadState(canvasController.getState())); } });
+  document.addEventListener("cad-space-tap", repeatLastTool);
   svg.addEventListener("pointerleave", () => transientCad({ preview: null, snapFeedback: null }));
   updateUi(root, tool, memberStart, contextualInstruction); cadStatus(root, cadState(canvasController.getState())); return Object.freeze({ getTool: () => tool });
 }

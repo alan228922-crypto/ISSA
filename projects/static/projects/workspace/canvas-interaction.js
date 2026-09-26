@@ -114,11 +114,15 @@ export function bindCanvasInteractions(svg, initialState, render) {
   let state = initialState;
   let gesture = null;
   let spaceHeld = false;
+  let spaceTapEligible = false;
   let suppressClick = false;
   let pointerSelection = null;
+  let marqueeAnchor = null;
   let canvasClickHandler = null;
   const stateChangeHandlers = new Set();
   let pointerMoveHandler = null;
+  let fitHandler = null;
+  let lastMiddleClick = null;
   const visibleIdentity = (item) => {
     if (item?.kind !== "CONNECTION") return item;
     const connection = state.draft.connections.find((record) => record.client_key === item.clientKey);
@@ -149,7 +153,20 @@ export function bindCanvasInteractions(svg, initialState, render) {
     const createdSelection = canvasClickHandler?.(event);
     const direct = createdSelection || pointerSelection || selectionFromElement(event.target?.closest?.("[data-object-kind]"));
     pointerSelection = null;
-    select(direct || pickAt({ x: event.clientX, y: event.clientY }, renderedObjectsFromSvg(svg)), true, event.shiftKey);
+    const point = { x: event.clientX, y: event.clientY };
+    if (state.cad?.activeCommand === "SELECT") {
+      if (marqueeAnchor) {
+        commitMarquee(marqueeAnchor.point, point, marqueeAnchor.additive || event.shiftKey);
+        marqueeAnchor = null;
+        removeMarquee();
+        return;
+      }
+      const hit = direct || pickAt(point, renderedObjectsFromSvg(svg));
+      if (!hit) { marqueeAnchor = { point, additive: event.shiftKey }; drawMarquee(point, point); return; }
+      select(hit, true, event.shiftKey);
+      return;
+    }
+    select(direct || pickAt(point, renderedObjectsFromSvg(svg)), true, event.shiftKey);
   });
   // Mouse focus is part of an active pointer gesture. Replacing SVG children here
   // would detach the pointer target before pointerup/click is dispatched.
@@ -174,16 +191,33 @@ export function bindCanvasInteractions(svg, initialState, render) {
     for (const [key, value] of Object.entries({ x: Math.min(a.x,b.x), y: Math.min(a.y,b.y), width: Math.abs(b.x-a.x), height: Math.abs(b.y-a.y), fill: "#3273dc22", stroke: "#3273dc", "stroke-dasharray": "5 3", "pointer-events": "none", "data-selection-marquee": "true" })) rect.setAttribute(key, String(value));
     svg.append(rect);
   };
-  document.addEventListener("keydown", (event) => { if (event.code === "Space" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) spaceHeld = true; if (event.key === "Escape" && state.selectedObject) select(null); });
-  document.addEventListener("keyup", (event) => { if (event.code === "Space") spaceHeld = false; });
+  const commitMarquee = (start, end, additive) => {
+    const rect = { left: Math.min(start.x,end.x), right: Math.max(start.x,end.x), top: Math.min(start.y,end.y), bottom: Math.max(start.y,end.y) };
+    const mode = end.x < start.x ? "CROSSING" : "WINDOW";
+    select(objectsInMarquee(rect, renderedObjectsFromSvg(svg), mode), true, additive);
+  };
+  document.addEventListener("keydown", (event) => {
+    if (event.code === "Space" && !event.repeat && !document.activeElement?.closest?.("input, textarea, select, [contenteditable], [role='textbox']")) { spaceHeld = true; spaceTapEligible = document.activeElement === svg || document.activeElement === document.body; }
+    if (event.key === "Escape" && marqueeAnchor) { marqueeAnchor = null; removeMarquee(); }
+    else if (event.key === "Escape" && state.cad?.activeCommand === "SELECT" && state.selectedObject) select(null);
+  });
+  document.addEventListener("keyup", (event) => {
+    if (event.code !== "Space") return;
+    spaceHeld = false;
+    if (spaceTapEligible) document.dispatchEvent(new Event("cad-space-tap"));
+    spaceTapEligible = false;
+  });
   svg.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 && event.button !== 1) return;
+    if (event.button === 1) event.preventDefault();
+    if (spaceHeld) spaceTapEligible = false;
     gesture = { start: { x: event.clientX, y: event.clientY }, last: { x: event.clientX, y: event.clientY }, moved: false, pan: event.button === 1 || spaceHeld, select: event.button === 0 && state.cad?.activeCommand === "SELECT", additive: event.shiftKey };
     pointerSelection = selectionFromElement(event.target?.closest?.("[data-object-kind]"));
     svg.setPointerCapture?.(event.pointerId);
   });
   svg.addEventListener("pointermove", (event) => {
     pointerMoveHandler?.(worldPointFromEvent(svg, event), state, { x: event.clientX, y: event.clientY });
+    if (!gesture && marqueeAnchor) drawMarquee(marqueeAnchor.point, { x: event.clientX, y: event.clientY });
     if (!gesture) return;
     const point = { x: event.clientX, y: event.clientY };
     if (distance(point, gesture.start) >= 4) gesture.moved = true;
@@ -193,21 +227,26 @@ export function bindCanvasInteractions(svg, initialState, render) {
   });
   svg.addEventListener("pointerup", (event) => {
     if (!gesture) return;
+    if (event.button === 1 && !gesture.moved) {
+      const point = { x: event.clientX, y: event.clientY };
+      const now = Date.now();
+      if (lastMiddleClick && now - lastMiddleClick.time < 450 && distance(point, lastMiddleClick.point) < 6) { fitHandler?.(); lastMiddleClick = null; }
+      else lastMiddleClick = { time: now, point };
+    } else if (event.button === 1) lastMiddleClick = null;
     if (gesture.moved) {
       if (event.button === 0) suppressClick = true;
       if (gesture.select) {
         const start = gesture.start; const end = { x: event.clientX, y: event.clientY };
-        const rect = { left: Math.min(start.x,end.x), right: Math.max(start.x,end.x), top: Math.min(start.y,end.y), bottom: Math.max(start.y,end.y) };
-        const mode = end.x < start.x ? "CROSSING" : "WINDOW";
-        const found = objectsInMarquee(rect, renderedObjectsFromSvg(svg), mode);
-        select(found, true, gesture.additive);
+        commitMarquee(start, end, gesture.additive);
       }
+      marqueeAnchor = null;
     }
     gesture = null; removeMarquee();
     if (svg.hasPointerCapture?.(event.pointerId)) svg.releasePointerCapture(event.pointerId);
   });
   svg.addEventListener("pointercancel", () => { gesture = null; removeMarquee(); });
   const replaceState = (nextState, notify = true, redrawState = true) => {
+    if (nextState.cad?.activeCommand !== "SELECT") { marqueeAnchor = null; removeMarquee(); }
     state = nextState;
     if (redrawState) redraw();
     if (notify) notifyStateChange();
@@ -220,5 +259,6 @@ export function bindCanvasInteractions(svg, initialState, render) {
     setStateChangeHandler: (handler) => { stateChangeHandlers.clear(); if (handler) stateChangeHandlers.add(handler); },
     subscribeStateChange: (handler) => { stateChangeHandlers.add(handler); return () => stateChangeHandlers.delete(handler); },
     setPointerMoveHandler: (handler) => { pointerMoveHandler = handler; },
+    setFitHandler: (handler) => { fitHandler = handler; },
   });
 }

@@ -219,6 +219,134 @@ def test_marquee_direction_selects_crossing_but_not_window(context, workspace_pa
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_two_click_marquee_previews_without_holding_and_keeps_direction(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    canvas = page.locator('#workspace-canvas')
+    box = page.locator('[data-client-key="m1"] line').bounding_box()
+    center_x = box['x'] + box['width'] / 2
+    center_y = box['y'] + box['height'] / 2
+    original_view = canvas.locator('[data-world-layer]').get_attribute('transform')
+
+    page.mouse.click(center_x - 25, center_y - 20)
+    page.mouse.move(center_x + 25, center_y + 20, steps=5)
+    assert canvas.locator('[data-selection-marquee]').count() == 1
+    assert canvas.locator('[data-world-layer]').get_attribute('transform') == original_view
+    page.mouse.click(center_x + 25, center_y + 20)
+    assert canvas.locator('[data-selection-marquee]').count() == 0
+    assert page.locator('[data-client-key="m1"]').get_attribute('data-selected') == 'false'
+
+    page.mouse.click(center_x + 25, center_y - 20)
+    page.mouse.move(center_x - 25, center_y + 20, steps=5)
+    assert canvas.locator('[data-selection-marquee]').count() == 1
+    page.mouse.click(center_x - 25, center_y + 20)
+    assert canvas.locator('[data-selection-marquee]').count() == 0
+    assert page.locator('[data-client-key="m1"]').get_attribute('data-selected') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_two_click_marquee_escape_cancels_and_direct_click_still_selects(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    box = page.locator('[data-client-key="m1"] line').bounding_box()
+    center_x = box['x'] + box['width'] / 2
+    center_y = box['y'] + box['height'] / 2
+    page.mouse.click(center_x - 25, center_y - 20)
+    page.mouse.move(center_x + 25, center_y + 20)
+    assert page.locator('[data-selection-marquee]').count() == 1
+    page.keyboard.press('Escape')
+    assert page.locator('[data-selection-marquee]').count() == 0
+    page.locator('[data-client-key="m1"] line').click(force=True)
+    assert page.locator('[data-client-key="m1"]').get_attribute('data-selected') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_middle_navigation_is_transparent_and_double_middle_fits(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    canvas = page.locator('#workspace-canvas')
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    assert '终点' in page.locator('[data-modeling-instruction]').inner_text()
+    box = canvas.bounding_box()
+    x, y = box['x'] + box['width'] * .65, box['y'] + box['height'] * .55
+    before = canvas.locator('[data-world-layer]').get_attribute('transform')
+    page.mouse.move(x, y)
+    page.mouse.down(button='middle')
+    page.mouse.move(x + 60, y + 30, steps=5)
+    page.mouse.up(button='middle')
+    assert canvas.locator('[data-world-layer]').get_attribute('transform') != before
+    assert page.locator('[data-workspace-tool="MEMBER"]').get_attribute('aria-pressed') == 'true'
+    assert '终点' in page.locator('[data-modeling-instruction]').inner_text()
+    page.mouse.click(x, y, button='middle', click_count=2)
+    fitted = canvas.locator('[data-world-layer]').get_attribute('transform')
+    page.locator('[data-cad-fit]').click()
+    assert canvas.locator('[data-world-layer]').get_attribute('transform') == fitted
+    assert '终点' in page.locator('[data-modeling-instruction]').inner_text()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_escape_and_repeat_last_tool_respect_input_focus(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('#workspace-canvas').click(position={'x': 200, 'y': 200})
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+    page.locator('#workspace-canvas').focus()
+    page.keyboard.press('Escape')
+    assert page.locator('[data-workspace-tool="SELECT"]').get_attribute('aria-pressed') == 'true'
+    page.keyboard.press('Enter')
+    assert page.locator('[data-workspace-tool="NODE"]').get_attribute('aria-pressed') == 'true'
+    page.keyboard.press('Escape')
+    page.locator('.ux-precision summary').click()
+    command = page.locator('[data-cad-command-input]')
+    command.fill('12.4,7.6')
+    command.press('Space')
+    assert page.locator('[data-workspace-tool="SELECT"]').get_attribute('aria-pressed') == 'true'
+    assert command.input_value().endswith(' ')
+    page.locator('#workspace-canvas').focus()
+    page.keyboard.press('Space')
+    assert page.locator('[data-workspace-tool="NODE"]').get_attribute('aria-pressed') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_shift_temporarily_inverts_ortho_without_changing_button(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    page.locator('.ux-precision summary').click()
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('#workspace-canvas').focus()
+    ortho = page.locator('[data-cad-ortho]')
+    indicator = page.locator('#workspace-snap-indicator')
+    assert ortho.get_attribute('aria-pressed') == 'false'
+    page.keyboard.down('Shift')
+    assert 'ORTHO: 开' in indicator.inner_text()
+    assert ortho.get_attribute('aria-pressed') == 'false'
+    page.keyboard.up('Shift')
+    assert 'ORTHO: 关' in indicator.inner_text()
+    ortho.click()
+    page.locator('#workspace-canvas').focus()
+    page.keyboard.down('Shift')
+    assert 'ORTHO: 关' in indicator.inner_text()
+    assert ortho.get_attribute('aria-pressed') == 'true'
+    page.keyboard.up('Shift')
+    assert 'ORTHO: 开' in indicator.inner_text()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_decimal_node_save_reload_and_connected_node_noop(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
@@ -1095,6 +1223,7 @@ def test_workspace_properties_edit_support_and_load_and_persist(context, workspa
     page.locator('[data-client-key="c1"]').focus()
     page.keyboard.press('Enter')
     assert page.locator('[data-property-identity]').text_content() == '节点 左'
+    assert page.locator('[data-workspace-tool="SELECT"]').get_attribute('aria-pressed') == 'true'
 
     page.locator('[data-client-key="s1"] path').click(force=True)
     assert page.locator('[data-property-identity]').text_content() == '支座 S1'

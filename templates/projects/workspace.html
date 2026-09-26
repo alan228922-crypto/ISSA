@@ -158,11 +158,13 @@
     const studentShell = bindStudentShell({ root: document.getElementById("workspace-root"), canvasController });
     const canvasRect = canvas.getBoundingClientRect();
     canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(state.draft), viewport: { width: canvasRect.width, height: canvasRect.height } });
-    document.querySelector("[data-cad-fit]")?.addEventListener("click", () => {
+    const fitCanvas = () => {
       const current = canvasController.getState();
       const rect = canvas.getBoundingClientRect();
       canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(current.draft), viewport: { width: rect.width, height: rect.height } });
-    });
+    };
+    canvasController.setFitHandler(fitCanvas);
+    document.querySelector("[data-cad-fit]")?.addEventListener("click", fitCanvas);
     const zoomCanvas = (factor) => canvasController.dispatchViewEvent({ type: "ZOOM", factor, anchorScreen: { x: 500, y: 300 } });
     document.querySelector("[data-cad-zoom-in]")?.addEventListener("click", () => zoomCanvas(1.25));
     document.querySelector("[data-cad-zoom-out]")?.addEventListener("click", () => zoomCanvas(0.8));
