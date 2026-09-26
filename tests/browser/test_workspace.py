@@ -347,6 +347,107 @@ def test_cad_shift_temporarily_inverts_ortho_without_changing_button(context, wo
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_cad_grid_display_and_snap_controls_are_independent(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    grid = page.locator('[data-cad-grid-visible]')
+    snap = page.locator('[data-cad-snap]')
+    objects = page.locator('[data-cad-object-snap]')
+    assert grid.count() == 1 and objects.count() == 1
+    assert page.locator('[data-canvas-grid]').count() == 1
+    assert (grid.get_attribute('aria-pressed'), snap.get_attribute('aria-pressed'), objects.get_attribute('aria-pressed')) == ('true', 'true', 'true')
+    grid.click()
+    assert page.locator('[data-canvas-grid]').count() == 0
+    assert snap.get_attribute('aria-pressed') == 'true'
+    grid.click()
+    snap.click()
+    assert page.locator('[data-canvas-grid]').count() == 1
+    assert objects.get_attribute('aria-pressed') == 'true'
+    assert snap.get_attribute('aria-pressed') == 'false'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_drafting_status_remains_at_viewport_bottom(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    page.evaluate('window.scrollTo(0, 0)')
+    status = page.locator('#workspace-status-bar').bounding_box()
+    viewport_height = page.evaluate('window.innerHeight')
+    assert status is not None
+    assert abs(status['y'] + status['height'] - viewport_height) <= 2
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_node_snap_marker_and_tracking_are_visual_only(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    box = page.locator('[data-client-key="n1"] circle').bounding_box()
+    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    before = page.locator('[data-object-kind="GeometryNode"]').count()
+    page.mouse.move(x, y)
+    marker = page.locator('[data-cad-snap-marker][data-snap-type="NODE"]')
+    assert marker.count() == 1
+    assert '节点' in marker.text_content()
+    page.mouse.move(x + 90, y)
+    assert page.locator('[data-cad-tracking-guide]').count() == 1
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == before
+    page.locator('[data-cad-tracking]').click()
+    assert page.locator('[data-cad-tracking-guide]').count() == 0
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_object_snap_toggle_does_not_turn_off_grid_snap(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    node = page.locator('[data-client-key="n1"] circle').bounding_box()
+    x, y = node['x'] + node['width'] / 2, node['y'] + node['height'] / 2
+    page.mouse.move(x, y)
+    assert page.locator('[data-cad-snap-marker][data-snap-type="NODE"]').count() == 1
+    page.locator('[data-cad-object-snap]').click()
+    page.mouse.move(x + 1, y + 1)
+    assert page.locator('[data-cad-snap-marker][data-snap-type="GRID"]').count() == 1
+    assert page.locator('[data-cad-snap]').get_attribute('aria-pressed') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_pointer_dynamic_xy_and_explicit_relative_input(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas = page.locator('#workspace-canvas')
+    box = canvas.bounding_box()
+    page.mouse.move(box['x'] + 220, box['y'] + 220)
+    overlay = page.locator('[data-cad-dynamic-overlay]')
+    assert overlay.count() == 1
+    assert overlay.is_visible()
+    x_input = overlay.locator('[data-cad-x]')
+    y_input = overlay.locator('[data-cad-y]')
+    x_input.fill('12.4')
+    x_input.press('Tab')
+    assert page.evaluate("document.activeElement?.hasAttribute('data-cad-y')") is True
+    y_input.fill('7.6')
+    y_input.press('Enter')
+    points = page.locator('[data-object-kind="GeometryNode"] circle')
+    assert points.count() == 1
+    assert (points.first.get_attribute('cx'), points.first.get_attribute('cy')) == ('12.4', '7.6')
+    page.locator('.ux-precision summary').click()
+    page.locator('[data-cad-relative-x]').fill('100')
+    page.locator('[data-cad-relative-y]').fill('0')
+    page.locator('[data-cad-relative-place]').click()
+    assert points.count() == 2
+    assert (points.last.get_attribute('cx'), points.last.get_attribute('cy')) == ('112.4', '7.6')
+    page.locator('[data-cad-dynamic-input]').click()
+    page.mouse.move(box['x'] + 240, box['y'] + 240)
+    assert overlay.is_hidden()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_decimal_node_save_reload_and_connected_node_noop(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
@@ -684,11 +785,11 @@ def test_pointer_snap_markers_and_unconnected_intersection_warning_are_visual_on
     page.locator('[data-workspace-tool="NODE"]').click()
 
     page.locator('[data-client-key="n1"] circle').hover(force=True)
-    assert page.locator('[data-cad-snap-marker][data-snap-type="NODE"]').text_content() == "NODE"
+    assert '节点' in page.locator('[data-cad-snap-marker][data-snap-type="NODE"]').text_content()
 
     canvas_box = canvas.bounding_box()
     canvas.hover(position={"x": canvas_box["width"] * 0.2, "y": canvas_box["height"] * 0.3}, force=True)
-    assert page.locator('[data-cad-snap-marker][data-snap-type="GRID"]').text_content() == "GRID"
+    assert '网格' in page.locator('[data-cad-snap-marker][data-snap-type="GRID"]').text_content()
 
     crossing_screen = page.evaluate("""() => {
       const world = document.querySelector('[data-world-layer]');
@@ -697,7 +798,7 @@ def test_pointer_snap_markers_and_unconnected_intersection_warning_are_visual_on
     }""")
     page.mouse.move(crossing_screen["x"], crossing_screen["y"])
     marker = page.locator('[data-cad-snap-marker][data-snap-type="INT"]')
-    assert marker.text_content() == "INT"
+    assert '交点' in marker.text_content()
     assert marker.evaluate("element => getComputedStyle(element).pointerEvents") == "none"
     assert "这里有构件交叉，但尚未建立连接。" in page.locator("[data-modeling-instruction]").text_content()
     assert page.locator('[data-object-kind="Connection"]').count() == connection_count

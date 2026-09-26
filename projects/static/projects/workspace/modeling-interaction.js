@@ -5,6 +5,7 @@ import { transition } from "./cad-state.js";
 import { resolvePointerPoint } from "./geometry.js";
 import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction } from "./state.js";
+import { createStudentLabelResolver } from "./labels.js";
 
 const TOOL_INSTRUCTIONS = Object.freeze({ SELECT: "点击结构查看或修改", NODE: "在画布放置节点；交叉处放置节点即形成桁架铰接", MEMBER: "选择起点，再选择终点", SUPPORT: "选择构件节点放置支座", LOAD: "选择构件节点施加荷载" });
 const COMPLETED = Object.freeze({ CREATE_NODE: "已放置节点", PLACE_JOINT_NODE: "已放置节点", CREATE_MEMBER: "已添加构件", CREATE_SUPPORT_AT_NODE: "已放置支座", CREATE_NODE_LOAD_AT_NODE: "已施加荷载" });
@@ -56,7 +57,9 @@ function segmentIntersection(left, right) {
   return { x: left.start.x + t * (left.end.x - left.start.x), y: left.start.y + t * (left.end.y - left.start.y) };
 }
 
+const candidateCache = new WeakMap();
 function drawingCandidates(draft) {
+  if (candidateCache.has(draft)) return candidateCache.get(draft);
   const nodes = new Map(draft.nodes.map((node) => [node.client_key, node]));
   const candidates = draft.nodes.map((node) => ({ kind: "NODE", canonicalKey: `NODE:${node.client_key}`, worldPoint: { x: node.x_mm, y: node.y_mm } }));
   const segments = draft.physical_members.flatMap((member) => {
@@ -68,11 +71,13 @@ function drawingCandidates(draft) {
     const keys = [segments[left].key, segments[right].key].sort();
     candidates.push({ kind: "INTERSECTION", canonicalKey: `INTERSECTION:${keys[0]}|${keys[1]}`, worldPoint: point });
   }
+  candidateCache.set(draft, candidates);
   return candidates;
 }
 
 function cadState(state) { return state.cad || { ortho: false, gridSnap: true, gridVisible: true, activeCommand: "SELECT", origin: null }; }
 const effectiveOrtho = (cad) => Boolean(cad.ortho) !== Boolean(cad.temporaryOrtho);
+const snapCandidates = (draft, cad) => cad.objectSnap === false ? [] : drawingCandidates(draft);
 function localScreenPoint(svg, point) {
   const matrix = svg.getScreenCTM?.();
   if (!matrix) return point;
@@ -81,7 +86,7 @@ function localScreenPoint(svg, point) {
 }
 function cadStatus(root, cad, resolution = null) {
   const indicator = root.querySelector("#workspace-snap-indicator"); if (!indicator) return;
-  indicator.textContent = `ORTHO: ${effectiveOrtho(cad) ? "开" : "关"} · SNAP: ${cad.gridSnap ? "开" : "关"} (Grid) · 对象捕捉: 开 · 当前: ${resolution?.snapType || "无"}`;
+  indicator.textContent = `ORTHO: ${effectiveOrtho(cad) ? "开" : "关"} · SNAP: ${cad.gridSnap ? "开" : "关"} (Grid) · 对象捕捉: ${cad.objectSnap === false ? "关" : "开"} · 当前: ${resolution?.snapType || "无"}`;
   indicator.dataset.snapType = resolution?.snapType || "";
 }
 
@@ -90,6 +95,9 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   let tool = "SELECT"; let memberStart = null; let contextualInstruction = null; let lastCompletedTool = null; let commandState = { state: "SELECTING", fieldIndex: null };
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
   const commandInput = root.querySelector("[data-cad-command-input]");
+  const dynamicOverlay = root.querySelector("[data-cad-dynamic-overlay]");
+  const xInput = dynamicOverlay?.querySelector("[data-cad-x]"); const yInput = dynamicOverlay?.querySelector("[data-cad-y]");
+  let acquiredSnap = null;
   const transientCad = (changes, notify = false) => {
     const current = canvasController.getState();
     const next = { ...current, cad: Object.freeze({ ...cadState(current), ...changes }) };
@@ -103,11 +111,13 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const cancelCommand = () => {
     memberStart = null;
+    acquiredSnap = null;
     contextualInstruction = null;
     commandState = transition(commandState, { type: "ESC" });
     tool = "SELECT";
     clearInputs();
-    transientCad({ activeCommand: "SELECT", origin: null, preview: null, snapFeedback: null, temporaryOrtho: false });
+    transientCad({ activeCommand: "SELECT", origin: null, preview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false });
+    if (dynamicOverlay) dynamicOverlay.hidden = true;
     updateUi(root, tool, memberStart, contextualInstruction);
     cadStatus(root, cadState(canvasController.getState()));
   };
@@ -154,13 +164,18 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     updateDynamics(point); memberStart = null; commandState = transition(commandState, { type: "ENTER", valid: true, point }); distanceInput.value = ""; angleInput.value = ""; updateUi(root, tool, memberStart); return true;
   };
   const chooseTool = (nextTool) => {
-    tool = nextTool; memberStart = null; contextualInstruction = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
-    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, snapFeedback: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
+    tool = nextTool; memberStart = null; acquiredSnap = null; contextualInstruction = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
+    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
+    if (dynamicOverlay) dynamicOverlay.hidden = nextTool === "SELECT" || cadState(current).dynamicInput === false;
   };
   for (const button of root.querySelectorAll("[data-workspace-tool]")) button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
   const orthoButton = root.querySelector("[data-cad-ortho]"); const snapButton = root.querySelector("[data-cad-snap]");
-  const toggleCad = (field, button) => { const current = canvasController.getState(); const nextCad = Object.freeze({ ...cadState(current), [field]: !cadState(current)[field] }); canvasController.replaceState({ ...current, cad: nextCad }); button.setAttribute("aria-pressed", nextCad[field] ? "true" : "false"); cadStatus(root, nextCad); };
+  const toggleCad = (field, button) => { const current = canvasController.getState(); const nextCad = Object.freeze({ ...cadState(current), [field]: !cadState(current)[field], trackingGuide: field === "tracking" ? null : cadState(current).trackingGuide }); canvasController.replaceState({ ...current, cad: nextCad }); button.setAttribute("aria-pressed", nextCad[field] ? "true" : "false"); if (field === "dynamicInput" && dynamicOverlay) dynamicOverlay.hidden = !nextCad.dynamicInput || tool === "SELECT"; cadStatus(root, nextCad); };
   orthoButton?.addEventListener("click", () => toggleCad("ortho", orthoButton)); snapButton?.addEventListener("click", () => toggleCad("gridSnap", snapButton));
+  for (const [field, selector] of [["gridVisible", "[data-cad-grid-visible]"], ["objectSnap", "[data-cad-object-snap]"], ["tracking", "[data-cad-tracking]"], ["dynamicInput", "[data-cad-dynamic-input]"]]) {
+    const button = root.querySelector(selector);
+    button?.addEventListener("click", () => toggleCad(field, button));
+  }
   const dynamicPoint = () => { const origin = memberOrigin(); const distance = Number(distanceInput?.value); const angle = Number(angleInput?.value); if (!origin || !Number.isFinite(distance) || distance <= 0 || !Number.isFinite(angle)) return null; const radians = angle * Math.PI / 180; return { x: origin.x + distance * Math.cos(radians), y: origin.y + distance * Math.sin(radians) }; };
   for (const [input, field] of [[distanceInput, "DISTANCE"], [angleInput, "ANGLE"]]) input?.addEventListener("input", () => { commandState = transition(commandState, { type: "INPUT_CHANGE", mode: "DYNAMIC", field, value: input.value }); updateDynamics(dynamicPoint()); });
   for (const [input, field] of [[distanceInput, "DISTANCE"], [angleInput, "ANGLE"]]) input?.addEventListener("keydown", (event) => {
@@ -181,6 +196,26 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (tool === "MEMBER") completeMemberAt(point); else { apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point }); commandState = transition(commandState, { type: "ENTER", valid: true, point }); }
     commandInput.value = ""; cadStatus(root, cadState(canvasController.getState()));
   });
+  const exactPoint = (point) => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+    if (tool === "MEMBER" && memberStart) return completeMemberAt(point);
+    if (tool !== "NODE") return false;
+    const current = canvasController.getState();
+    const placed = apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point });
+    if (placed) commandState = transition(commandState, { type: "ENTER", valid: true, point });
+    return placed;
+  };
+  for (const input of [xInput, yInput]) input?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (!exactPoint({ x: Number(xInput.value), y: Number(yInput.value) })) showError({ code: "CAD_INPUT_MALFORMED", message: "请输入有效的 X、Y 坐标。" });
+  });
+  root.querySelector("[data-cad-relative-place]")?.addEventListener("click", () => {
+    const origin = tool === "MEMBER" ? memberOrigin() : cadState(canvasController.getState()).origin;
+    const dxText = root.querySelector("[data-cad-relative-x]")?.value; const dyText = root.querySelector("[data-cad-relative-y]")?.value;
+    const dx = Number(dxText); const dy = Number(dyText);
+    if (!origin || dxText === "" || dyText === "" || !Number.isFinite(dx) || !Number.isFinite(dy) || !exactPoint({ x: origin.x + dx, y: origin.y + dy })) showError({ code: "CAD_INPUT_MALFORMED", message: "请先确定基准点，并输入有效的 ΔX、ΔY。" });
+  });
   const handleCanvasClick = (event) => {
     if (root.dataset.uxStage !== "build") return;
     const current = canvasController.getState(); const target = targetAtClick(event, svg, ["GEOMETRY_NODE", "CONNECTION"]); if (tool === "SELECT") return;
@@ -191,7 +226,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
         return;
       }
       const world = worldPointFromEvent(svg, event); const cad = cadState(current);
-      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
       const point = resolved?.point && { x: Math.round(resolved.point.x * 1e9) / 1e9, y: Math.round(resolved.point.y * 1e9) / 1e9 }; if (!point) return;
       if (resolved.candidateKey?.startsWith("NODE:")) {
         apply({ type: "CONNECT_NODE", nodeClientKey: resolved.candidateKey.slice(5) });
@@ -203,7 +238,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       const node = nodeTarget(current.draft, target);
       if (!node && memberStart && ["DRAW_MEMBER_WAIT_END", "DYNAMIC_INPUT"].includes(commandState.state)) {
         const world = worldPointFromEvent(svg, event); const cad = cadState(current); if (!world) return;
-        const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: drawingCandidates(current.draft), viewTransform: current.viewTransform, origin: memberOrigin(), ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+        const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: memberOrigin(), ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
         completeMemberAt({ x: Math.round(resolved.point.x * 1e9) / 1e9, y: Math.round(resolved.point.y * 1e9) / 1e9 }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
       }
       if (!node) return;
@@ -232,13 +267,37 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   canvasController.setPointerMoveHandler((world, state, screen) => {
     if (!world) return; root.querySelector("#workspace-pointer-x").textContent = `X: ${Math.round(world.x)} mm`; root.querySelector("#workspace-pointer-y").textContent = `Y: ${Math.round(world.y)} mm`;
-    const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: drawingCandidates(state.draft), viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+    const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: snapCandidates(state.draft, cad), viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
     const active = tool !== "SELECT";
     const unconnectedIntersection = resolution.snapType === "INT" && !hasConnectionAt(state.draft, resolution.point);
+    let trackingGuide = null;
+    if (active && cad.tracking !== false && acquiredSnap && !["NODE", "INT"].includes(resolution.snapType)) {
+      const tolerance = 8 / Math.max(.05, Math.abs(state.viewTransform.a));
+      if (Math.abs(world.y - acquiredSnap.y) <= tolerance) trackingGuide = { start: acquiredSnap, end: { x: resolution.point.x, y: acquiredSnap.y } };
+      else if (Math.abs(world.x - acquiredSnap.x) <= tolerance) trackingGuide = { start: acquiredSnap, end: { x: acquiredSnap.x, y: resolution.point.y } };
+    }
+    if (active && ["NODE", "INT"].includes(resolution.snapType)) acquiredSnap = resolution.point;
+    const labels = createStudentLabelResolver(state.draft);
+    const studentLabel = resolution.snapType === "NODE" ? labels.label("GEOMETRY_NODE", resolution.candidateKey?.split(":")[1]) : null;
     transientCad({
       preview: memberStart ? { start: memberOrigin(), end: resolution.point } : null,
-      snapFeedback: active && resolution.snapType ? { ...resolution, unconnectedIntersection } : null,
+      snapFeedback: active && resolution.snapType ? { ...resolution, studentLabel, unconnectedIntersection } : null,
+      trackingGuide,
     });
+    if (dynamicOverlay) {
+      dynamicOverlay.hidden = !active || cad.dynamicInput === false;
+      if (!dynamicOverlay.hidden) {
+        const center = svg.closest(".workspace-center").getBoundingClientRect();
+        dynamicOverlay.style.left = `${Math.min(center.width - 160, Math.max(0, screen.x - center.left + 20))}px`;
+        dynamicOverlay.style.top = `${Math.min(center.height - 80, Math.max(0, screen.y - center.top + 20))}px`;
+        if (document.activeElement !== xInput) xInput.value = String(Math.round(resolution.point.x * 1000) / 1000);
+        if (document.activeElement !== yInput) yInput.value = String(Math.round(resolution.point.y * 1000) / 1000);
+        const origin = memberOrigin();
+        dynamicOverlay.querySelector("[data-cad-xy-fields]").hidden = tool !== "NODE";
+        dynamicOverlay.querySelector("[data-cad-preview-distance]").textContent = origin ? `长度 ${Math.round(Math.hypot(resolution.point.x - origin.x, resolution.point.y - origin.y) * 1000) / 1000} mm` : "";
+        dynamicOverlay.querySelector("[data-cad-preview-angle]").textContent = origin ? `角度 ${Math.round(Math.atan2(resolution.point.y - origin.y, resolution.point.x - origin.x) * 180 / Math.PI * 10) / 10}°` : "";
+      }
+    }
     cadStatus(root, cadState(canvasController.getState()), resolution);
     updateUi(root, tool, memberStart, contextualInstruction);
     if (unconnectedIntersection && active && !contextualInstruction) root.querySelector("[data-modeling-instruction]").textContent = "这里有构件交叉，但尚未建立连接。";
@@ -253,6 +312,6 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   });
   document.addEventListener("keyup", (event) => { if (event.key === "Shift" && cadState(canvasController.getState()).temporaryOrtho) { transientCad({ temporaryOrtho: false }); cadStatus(root, cadState(canvasController.getState())); } });
   document.addEventListener("cad-space-tap", repeatLastTool);
-  svg.addEventListener("pointerleave", () => transientCad({ preview: null, snapFeedback: null }));
+  svg.addEventListener("pointerleave", () => transientCad({ preview: null, snapFeedback: null, trackingGuide: null }));
   updateUi(root, tool, memberStart, contextualInstruction); cadStatus(root, cadState(canvasController.getState())); return Object.freeze({ getTool: () => tool });
 }

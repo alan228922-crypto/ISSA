@@ -37,16 +37,18 @@
             <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false"><span data-tool-icon aria-hidden="true">△</span>支座</button>
             <button type="button" data-workspace-tool="LOAD" aria-pressed="false"><span data-tool-icon aria-hidden="true">↓</span>荷载</button>
           </div>
-          <details class="ux-precision"><summary>精确绘制</summary><div class="workspace-cad-controls" role="toolbar" aria-label="CAD 辅助">
-            <button type="button" data-cad-ortho aria-pressed="false">ORTHO 正交</button>
-            <button type="button" data-cad-snap aria-pressed="true">SNAP 捕捉</button>
-          </div>
+          <details class="ux-precision"><summary>精确绘制</summary>
           <label class="workspace-command">坐标命令
             <input type="text" data-cad-command-input inputmode="decimal" autocomplete="off" placeholder="1000,500 / @1000,0 / 1000&lt;30">
           </label>
           <div class="workspace-dynamic-input" aria-label="构件动态输入">
             <label>距离 (mm)<input type="number" step="any" min="0" data-cad-distance disabled></label>
             <label>角度 (°)<input type="number" step="any" data-cad-angle disabled></label>
+          </div>
+          <div class="workspace-relative-input" aria-label="相对坐标">
+            <label>ΔX (mm)<input type="number" step="any" data-cad-relative-x></label>
+            <label>ΔY (mm)<input type="number" step="any" data-cad-relative-y></label>
+            <button type="button" data-cad-relative-place>放置相对点</button>
           </div>
           <p data-cad-command-help>节点或构件工具中输入绝对、相对或极坐标；构件也可输入距离和角度。Enter 确认，Tab 切换，Esc 取消。</p></details>
           <p data-modeling-instruction role="status" aria-live="polite">选择工具已启用。</p>
@@ -59,6 +61,10 @@
       </aside>
       <section class="workspace-center" aria-label="结构画布">
         <svg id="workspace-canvas" role="img" tabindex="0" aria-label="结构画布；使用方向键平移，使用放大、缩小和全图按钮调整视图" aria-describedby="workspace-canvas-keyboard-help" viewBox="0 0 1000 600"></svg>
+        {% if not bootstrap.read_only %}<div data-cad-dynamic-overlay hidden aria-label="游标动态输入">
+          <div data-cad-xy-fields><label>X (mm)<input type="number" step="any" data-cad-x></label><label>Y (mm)<input type="number" step="any" data-cad-y></label></div>
+          <span data-cad-preview-distance></span><span data-cad-preview-angle></span>
+        </div>{% endif %}
         {% if not bootstrap.read_only %}<div data-ux-empty-state class="ux-empty-state"{% if bootstrap.draft.nodes %} hidden{% endif %}><h2>从第一个节点开始</h2><p>先标出结构上的位置，再用构件把它们连接起来。</p><button type="button" data-ux-start-modeling>开始建模</button></div>{% endif %}
         <p id="workspace-canvas-keyboard-help" class="visually-hidden">画布取得焦点后，可使用方向键平移；使用放大、缩小和全图按钮调整视图。</p>
       </section>
@@ -126,6 +132,14 @@
       <section id="workspace-reflection" aria-label="反思（可选）"></section>
     </section>
     <footer id="workspace-status-bar" role="status" aria-label="建模状态" aria-live="polite" aria-atomic="false">
+      {% if not bootstrap.read_only %}<div class="workspace-drafting-status" role="toolbar" aria-label="绘图辅助">
+        <button type="button" data-cad-grid-visible aria-pressed="true">网格</button>
+        <button type="button" data-cad-snap aria-pressed="true">网格捕捉</button>
+        <button type="button" data-cad-object-snap aria-pressed="true">对象捕捉</button>
+        <button type="button" data-cad-ortho aria-pressed="false">正交</button>
+        <button type="button" data-cad-tracking aria-pressed="true">追踪</button>
+        <button type="button" data-cad-dynamic-input aria-pressed="true">动态输入</button>
+      </div>{% endif %}
       <span id="workspace-pointer-x">X: —</span><span id="workspace-pointer-y">Y: —</span><span id="workspace-delta-length">ΔL: —</span><span id="workspace-angle">Angle: —</span>
       <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 开 · 捕捉: 无</span>
       <span id="workspace-save-status">未保存修改：无</span><span id="workspace-draft-version">当前草稿 v{{ bootstrap.draft.version }}</span>

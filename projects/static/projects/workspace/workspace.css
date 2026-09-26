@@ -19,6 +19,10 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 .workspace-dynamic-input { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
 .workspace-dynamic-input label { display: grid; gap: 3px; font-size: .78rem; }
 .workspace-dynamic-input input { min-width: 0; padding: 6px; }
+.workspace-relative-input { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-top:10px; }
+.workspace-relative-input label { display:grid; gap:3px; font-size:.78rem; }
+.workspace-relative-input input { min-width:0; width:100%; padding:6px; }
+.workspace-relative-input button { grid-column:1/-1; min-height:34px; }
 [data-cad-command-help] { margin: 5px 0 10px; color: #536274; font-size: .82rem; }
 #workspace-workflow-steps { display: grid; gap: 5px; padding-left: 24px; }
 #workspace-workflow-steps [data-state="active"], #workspace-workflow-steps [data-state="active-optional"] { color: #0759c7; font-weight: 700; }
@@ -29,7 +33,18 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 [data-result-comparison], [data-result-explanation] { display: grid; gap: 6px; margin-top: 8px; }
 [data-teaching-focused="true"] { outline: 3px solid #7c3aed; outline-offset: 3px; background: #f3e8ff; }
 #workspace-canvas { width: 100%; height: 100%; min-height: 560px; background: #fbfdff; outline: 2px solid transparent; }
-#workspace-status-bar { display: flex; gap: 16px; padding: 10px 14px; background: #172033; color: #fff; font-variant-numeric: tabular-nums; }
+#workspace-canvas [data-object-kind], #workspace-canvas [data-object-kind] > * { scroll-margin-bottom: 120px; }
+#workspace-status-bar { display: flex; flex-wrap:wrap; gap: 10px; position:fixed; bottom:0; left:50%; transform:translateX(-50%); z-index:20; width:min(100vw,1440px); padding: 8px 14px; background: #172033; color: #fff; font-variant-numeric: tabular-nums; box-shadow:0 -4px 16px #17203333; }
+.workspace-drafting-status { display:flex; flex-wrap:wrap; gap:4px; width:100%; }
+.workspace-drafting-status button { border:1px solid #8193ad; border-radius:5px; padding:5px 8px; background:#26364e; color:#fff; cursor:pointer; }
+.workspace-drafting-status button[aria-pressed="true"] { background:#dceaff; color:#113f82; border-color:#9bbdf2; }
+[data-cad-dynamic-overlay] { position:absolute; z-index:5; min-width:140px; padding:8px; border:1px solid #9bbdf2; border-radius:7px; background:#fffffff2; box-shadow:0 4px 12px #17203326; font-size:12px; pointer-events:none; }
+[data-cad-dynamic-overlay][hidden] { display:none; }
+[data-cad-dynamic-overlay] [data-cad-xy-fields] { display:flex; gap:5px; }
+[data-cad-dynamic-overlay] [data-cad-xy-fields][hidden] { display:none; }
+[data-cad-dynamic-overlay] label { display:grid; gap:2px; width:64px; }
+[data-cad-dynamic-overlay] input { width:100%; min-width:0; padding:3px; pointer-events:auto; }
+[data-cad-dynamic-overlay] span { display:block; }
 #workspace-report { margin-top: 16px; padding: 20px; border: 1px solid #bdc8d8; background: #fff; }
 #workspace-report-view > section, #workspace-report-view > details { margin-top: 16px; padding-top: 8px; border-top: 1px solid #d8e0eb; }
 #workspace-report table { width: 100%; border-collapse: collapse; margin: 8px 0; }

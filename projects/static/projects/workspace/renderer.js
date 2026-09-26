@@ -80,6 +80,12 @@ function orientationLayer() {
 
 function cadPresentationLayer(cad = {}) {
   const group = element("g", { "data-cad-presentation": "true", "pointer-events": "none" });
+  if (cad.trackingGuide?.start && cad.trackingGuide?.end) group.append(element("line", {
+    "data-cad-tracking-guide": "true",
+    x1: cad.trackingGuide.start.x, y1: cad.trackingGuide.start.y,
+    x2: cad.trackingGuide.end.x, y2: cad.trackingGuide.end.y,
+    stroke: "#0f766e", "stroke-width": 2, "stroke-dasharray": "8 5", "pointer-events": "none",
+  }));
   if (cad.preview?.start && cad.preview?.end) {
     group.append(element("line", {
       "data-cad-member-preview": "true",
@@ -108,8 +114,10 @@ function cadPresentationLayer(cad = {}) {
         ? element("path", { d: "M -12 -12 L 12 12 M -12 12 L 12 -12", stroke: "#b54708", "stroke-width": 4 })
         : element("rect", { x: -10, y: -10, width: 20, height: 20, fill: "none", stroke: "#196127", "stroke-width": 4 });
     const label = element("text", { x: 16, y: -16, fill: "#172033", "font-size": 22, "font-weight": 700, transform: "scale(1 -1)" });
-    label.textContent = feedback.snapType;
-    marker.append(shape, label);
+    label.textContent = feedback.snapType === "NODE" ? `○ ${feedback.studentLabel || "节点"}` : feedback.snapType === "INT" ? "× 交点" : "□ 网格";
+    const tooltip = element("title");
+    tooltip.textContent = feedback.unconnectedIntersection ? "这里有构件交叉，但尚未建立连接。" : label.textContent;
+    marker.append(shape, label, tooltip);
     group.append(marker);
   }
   return group;

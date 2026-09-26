@@ -21,7 +21,7 @@
 .ux-project-grid { list-style:none; display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; padding:0; }
 .ux-project-card h3 { margin-top:0; font-size:20px; }
 .ux-project-card p { color:var(--ux-muted); }
-#workspace-root { max-width:1440px; padding:12px 18px 24px; }
+#workspace-root { max-width:1440px; padding:12px 18px 130px; }
 #workspace-project-header { display:flex; justify-content:space-between; align-items:center; gap:18px; padding:8px 0 16px; }
 #workspace-project-header h1 { font-size:28px; line-height:1.2; margin:0; }
 #workspace-save { min-height:44px; padding:8px 18px; background:var(--ux-blue); color:#fff; border:0; border-radius:9px; font-weight:700; }
@@ -104,5 +104,6 @@
 #workspace-root:not([data-ux-stage="build"]):not([data-ux-stage="summary"]) .workspace-layout { grid-template-columns:minmax(0,2fr) minmax(280px,1fr); }
 #workspace-status-bar { flex-wrap:wrap; font-size:13px; }
 #workspace-root:not([data-ux-stage="build"]) #workspace-status-bar :is(#workspace-pointer-x,#workspace-pointer-y,#workspace-delta-length,#workspace-angle,#workspace-snap-indicator) { display:none; }
+#workspace-root:not([data-ux-stage="build"]) .workspace-drafting-status { display:none; }
 @media(max-width:1100px) { #workspace-root .workspace-layout { grid-template-columns:minmax(135px,15%) minmax(0,58%) minmax(230px,27%); } #workspace-modeling-panel,#workspace-workflow-panel,.workspace-center { padding:10px; } }
 @media(max-width:760px) { .ux-entry-layout { grid-template-columns:1fr; } #workspace-root .workspace-layout,#workspace-root:not([data-ux-stage="build"]):not([data-ux-stage="summary"]) .workspace-layout { display:block; } #workspace-modeling-panel,#workspace-workflow-panel { border:0; } .workspace-center { min-height:460px; } }
