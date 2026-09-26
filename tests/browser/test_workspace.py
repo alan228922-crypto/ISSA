@@ -570,6 +570,37 @@ def test_cad_undo_after_save_keeps_current_server_version(context, workspace_pag
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_cad_undo_after_save_does_not_rewrite_historical_analysis_run(context, workspace_page, monkeypatch):
+    from copy import deepcopy
+    from analysis.models import AnalysisRun
+    from analysis.orchestration import analyze_project
+
+    owner, project, material, section = context
+    save_bt01_draft(owner, project, material, section)
+    historical = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)
+    original = (historical.model_revision.source_draft_version,
+                deepcopy(historical.model_revision.physical_snapshot_json),
+                deepcopy(historical.result_json))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('#workspace-canvas').click(position={'x': 200, 'y': 200})
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.locator('#workspace-canvas').focus()
+    page.keyboard.press('ControlOrMeta+z')
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    monkeypatch.setenv('DJANGO_ALLOW_ASYNC_UNSAFE', 'true')
+    historical = AnalysisRun.objects.select_related('model_revision').get(pk=historical.pk)
+    assert (historical.model_revision.source_draft_version,
+            historical.model_revision.physical_snapshot_json,
+            historical.result_json) == original
+    project.refresh_from_db()
+    assert project.draft_version > original[0]
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_cad_member_creation_with_new_endpoint_is_one_undo_step(context, workspace_page):
     owner, project, material, section = context
     draft = valid_payload(material, section)

@@ -7,6 +7,21 @@
 - Scope: the student-facing browser workspace for the existing Physical Draft, Model Check, Prediction, Analysis, Compare, Explain, and Reflection capabilities.
 - Language: all student-visible copy is Simplified Chinese (`zh-CN`).
 
+The CAD Interaction Model V1 addendum below supersedes earlier interaction-only details where they conflict (notably the historical 100 mm Grid policy, single-click-only selection description, and initial tool list). The server Physical Draft and mechanics contracts remain unchanged.
+
+## CAD Interaction Model V1 addendum (2026-09-26)
+
+The Workspace provides **CAD-like precision interaction for beginner structural modeling**, not an AutoCAD clone. Structural objects and the guided learning stages remain primary; there is no ribbon, layer system, UCS, generic FEM cockpit, or alternative geometry authority.
+
+- **Command state:** Node and Member stay active after a completed placement. Esc cancels the incomplete command; Enter or Space over the canvas repeats the last completed drawing tool. Editable inputs keep their native keys. A Member start point survives wheel zoom and middle-button pan. The drawing preview remains transient until confirmation.
+- **Grid and snap:** The global-origin logical Grid and GRID Snap are 1 mm. Visual 1/10/100 mm hierarchy uses bounded SVG patterns with zoom-dependent visibility; hiding a line never changes the 1 mm snap. Grid display, Grid Snap, and Object Snap are independent switches. The existing single resolver prioritizes NODE/endpoint, then INT, then GRID; a geometric crossing never becomes a structural Connection merely by snapping or tracking. Snap markers have distinct text/shape and INT includes a non-connection warning.
+- **Tracking and ORTHO:** Acquired object-snap points may show horizontal (0°) or vertical (90°) alignment guides. Guides are visual and create no topology. Shift temporarily inverts ORTHO without changing its persistent button state. ORTHO locks the original coordinate exactly, including decimals; only its moving axis receives GRID snap. Numeric coordinate input remains decimal-capable.
+- **Dynamic input:** The pointer-local readout shows X/Y for Node placement and X/Y, length, and angle for Member placement. The existing command grammar also accepts explicit absolute and relative coordinates; active command fields support Tab/Enter. Visual readouts and status controls never become a second snap resolver.
+- **Navigation:** Wheel zooms about the pointer; middle-button drag pans even during a drawing command; double middle-click fits the model bounds. Empty-workspace initial view and Fit do not derive scale from Grid spacing.
+- **Selection and editing:** A click selects one object, Shift adds/removes selection. The two-click marquee starts on first left click and finishes on second: left-to-right Window selects wholly enclosed objects, right-to-left Crossing selects objects it touches. Hover is distinct from selection and results. Overlapping picks offer a chooser. Selected nodes expose a grip; dragging previews attached members and commits one identity-preserving node-coordinate edit only if valid. Double-click focuses Properties. Delete/Backspace and the panel action use the same dependency-safe delete policy.
+- **Local history:** Undo/Redo covers create, delete, move, and property edits. A Member with a newly created endpoint is one history step. A new edit clears Redo. Save advances the checkpoint and server draft version without rewriting previous AnalysisRuns; Undo after Save becomes a new unsaved current-version edit, and saving it creates a new revision. Focused editable fields retain native undo.
+- **Status and responsiveness:** A bottom status bar exposes Grid display, Grid Snap, Object Snap, ORTHO, Tracking, Dynamic Input, coordinates, and save state. Pointer movement updates only bounded transient presentation; it does not rebuild the Workspace, request the server, or create Grid DOM proportional to visible millimetres.
+
 This contract freezes interaction and presentation only. It neither changes the `TRUSS_2D` mechanics assumptions nor creates a mechanics rule in the browser. Existing specialist contracts remain authoritative for persistence, authorization, revision lineage, analysis, Prediction, Compare, Explain, and Reflection.
 
 ## 1. Product goal
