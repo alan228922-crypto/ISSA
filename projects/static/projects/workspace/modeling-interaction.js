@@ -116,7 +116,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     commandState = transition(commandState, { type: "ESC" });
     tool = "SELECT";
     clearInputs();
-    transientCad({ activeCommand: "SELECT", origin: null, preview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false });
+    transientCad({ activeCommand: "SELECT", origin: null, preview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false });
     if (dynamicOverlay) dynamicOverlay.hidden = true;
     updateUi(root, tool, memberStart, contextualInstruction);
     cadStatus(root, cadState(canvasController.getState()));
@@ -165,7 +165,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const chooseTool = (nextTool) => {
     tool = nextTool; memberStart = null; acquiredSnap = null; contextualInstruction = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
-    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
+    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
     if (dynamicOverlay) dynamicOverlay.hidden = nextTool === "SELECT" || cadState(current).dynamicInput === false;
   };
   for (const button of root.querySelectorAll("[data-workspace-tool]")) button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
@@ -261,6 +261,37 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     }
   };
   canvasController.setCanvasClickHandler(handleCanvasClick);
+  const gripPosition = (clientKey, world, screen) => {
+    if (!world) return null;
+    const state = canvasController.getState(); const cad = cadState(state);
+    const original = state.draft.nodes.find((node) => node.client_key === clientKey);
+    if (!original) return null;
+    const origin = { x: original.x_mm, y: original.y_mm };
+    const candidates = snapCandidates(state.draft, cad).filter((candidate) => candidate.canonicalKey !== `NODE:${clientKey}`);
+    const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates, viewTransform: state.viewTransform, origin, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+    return { point: resolved.point, original, draft: state.draft };
+  };
+  const clearGrip = () => transientCad({ gripPreview: null });
+  canvasController.setGripHandlers({
+    onPreview: (clientKey, world, screen) => {
+      const moved = gripPosition(clientKey, world, screen); if (!moved) return;
+      const positions = new Map(moved.draft.nodes.map((node) => [node.client_key, { x: node.x_mm, y: node.y_mm }]));
+      const members = moved.draft.physical_members.filter((member) => member.start_node_client_key === clientKey || member.end_node_client_key === clientKey).map((member) => ({
+        start: member.start_node_client_key === clientKey ? moved.point : positions.get(member.start_node_client_key),
+        end: member.end_node_client_key === clientKey ? moved.point : positions.get(member.end_node_client_key),
+      }));
+      transientCad({ gripPreview: { point: moved.point, members } });
+    },
+    onCommit: (clientKey, world, screen) => {
+      const moved = gripPosition(clientKey, world, screen); clearGrip(); if (!moved) return;
+      const { point, original, draft } = moved;
+      if (Math.abs(point.x - original.x_mm) < 1e-9 && Math.abs(point.y - original.y_mm) < 1e-9) return;
+      const conflict = draft.nodes.some((node) => node.client_key !== clientKey && Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
+      if (conflict) { showError({ code: "NODE_MOVE_CONFLICT", message: "目标位置已有节点，请换一个位置；原节点未移动。" }); return; }
+      apply({ type: "UPDATE_OBJECT", target: { kind: "GEOMETRY_NODE", clientKey }, changes: { x_mm: point.x, y_mm: point.y } });
+    },
+    onCancel: clearGrip,
+  });
   const hasConnectionAt = (draft, point) => {
     const connectedNodes = new Set(draft.connections.map((connection) => connection.geometry_node_client_key));
     return draft.nodes.some((node) => connectedNodes.has(node.client_key) && Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);

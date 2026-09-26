@@ -416,6 +416,116 @@ def test_cad_object_snap_toggle_does_not_turn_off_grid_snap(context, workspace_p
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_cad_hover_preselection_does_not_change_selection(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    member = page.locator('[data-client-key="m1"]')
+    member.locator('line').hover(force=True)
+    assert member.get_attribute('data-hovered') == 'true'
+    assert member.get_attribute('data-selected') == 'false'
+    assert page.locator('#workspace-properties-panel [data-property-identity]').count() == 0
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_node_grip_drag_previews_and_preserves_identity(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    grip = page.locator('[data-cad-node-grip]')
+    assert grip.count() == 1
+    box = grip.bounding_box()
+    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + 50, y - 20, steps=5)
+    assert page.locator('[data-cad-grip-preview]').count() >= 1
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == len(draft['nodes'])
+    page.mouse.up()
+    assert page.locator('[data-cad-grip-preview]').count() == 0
+    assert page.locator('[data-client-key="n1"]').count() == 1
+    assert page.locator('[data-client-key="m1"]').count() == 1
+    assert page.locator('[data-client-key="n1"] circle').first.get_attribute('cx') != '0'
+    assert page.locator('#workspace-save-status').text_content() == '未保存修改：有'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_grip_rejects_move_onto_existing_node_without_topology_change(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    start = page.locator('[data-cad-node-grip]').bounding_box()
+    end = page.locator('[data-client-key="n2"] circle').bounding_box()
+    sx, sy = start['x'] + start['width'] / 2, start['y'] + start['height'] / 2
+    ex, ey = end['x'] + end['width'] / 2, end['y'] + end['height'] / 2
+    page.mouse.move(sx, sy)
+    page.mouse.down()
+    page.mouse.move(ex, ey, steps=10)
+    page.mouse.up()
+    assert '目标位置已有节点' in page.locator('#workspace-error').inner_text()
+    assert page.locator('[data-client-key="n1"] circle').first.get_attribute('cx') == '0'
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == len(draft['nodes'])
+    assert page.locator('[data-object-kind="Connection"]').count() == len(draft['connections'])
+    assert page.locator('#workspace-save-status').text_content() == '未保存修改：无'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_double_click_focuses_editable_properties(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-client-key="n1"] circle').dblclick(force=True)
+    assert page.locator('[data-property-identity]').text_content() == '节点 左'
+    assert page.evaluate("document.activeElement?.hasAttribute('data-property-x')") is True
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_ambiguous_nearby_objects_require_explicit_choice(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    node = page.locator('[data-client-key="n1"] circle')
+    node.scroll_into_view_if_needed()
+    box = node.bounding_box()
+    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    page.mouse.click(x + 8.5, y - 4.5)
+    chooser = page.locator('[data-cad-overlap-chooser]')
+    assert chooser.count() == 1
+    assert '节点 左' in chooser.inner_text()
+    assert '连接' in chooser.inner_text()
+    assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'false'
+    chooser.get_by_role('button', name='节点 左').click()
+    assert chooser.count() == 0
+    assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_crossing_marquee_has_distinct_visual_feedback(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    box = page.locator('#workspace-canvas').bounding_box()
+    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    page.mouse.click(x + 40, y - 100)
+    page.mouse.move(x - 40, y + 40)
+    assert page.locator('[data-selection-marquee]').get_attribute('data-selection-mode') == 'CROSSING'
+    page.keyboard.press('Escape')
+    page.mouse.click(x - 40, y - 100)
+    page.mouse.move(x + 40, y + 40)
+    assert page.locator('[data-selection-marquee]').get_attribute('data-selection-mode') == 'WINDOW'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_cad_pointer_dynamic_xy_and_explicit_relative_input(context, workspace_page):
     page = workspace_page(user=context[0], project=context[1])
     page.locator('[data-workspace-tool="NODE"]').click()

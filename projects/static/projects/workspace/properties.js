@@ -166,6 +166,10 @@ function appendDelete(root, selected, canvasController, showError) {
 }
 
 export function bindPropertyPanel({ root, canvasController, materials = [], sections = [], showError = () => {} }) {
+  canvasController.setPropertiesHandler(() => {
+    root.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    (root.querySelector("input, select, button") || root).focus({ preventScroll: true });
+  });
   document.addEventListener("keydown", (event) => {
     if (!["Delete", "Backspace"].includes(event.key) || event.defaultPrevented) return;
     const target = event.target;

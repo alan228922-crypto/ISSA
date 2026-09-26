@@ -80,6 +80,15 @@ function orientationLayer() {
 
 function cadPresentationLayer(cad = {}) {
   const group = element("g", { "data-cad-presentation": "true", "pointer-events": "none" });
+  if (cad.gripPreview) {
+    for (const member of cad.gripPreview.members || []) group.append(element("line", {
+      "data-cad-grip-preview": "member", x1: member.start.x, y1: member.start.y,
+      x2: member.end.x, y2: member.end.y, stroke: "#d97706", "stroke-width": 6,
+      "stroke-dasharray": "10 5", "pointer-events": "none",
+    }));
+    group.append(element("circle", { "data-cad-grip-preview": "node", cx: cad.gripPreview.point.x,
+      cy: cad.gripPreview.point.y, r: 9, fill: "#f59e0b", "pointer-events": "none" }));
+  }
   if (cad.trackingGuide?.start && cad.trackingGuide?.end) group.append(element("line", {
     "data-cad-tracking-guide": "true",
     x1: cad.trackingGuide.start.x, y1: cad.trackingGuide.start.y,
@@ -201,6 +210,13 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const group = selectable("Connection", connection.client_key, labels.label("CONNECTION", connection.client_key), uiState);
     group.append(element("rect", { x: target.x - 8 * unit, y: target.y - 8 * unit, width: 16 * unit, height: 16 * unit, fill: "white", stroke: "currentColor", "stroke-width": 2.5 * unit }));
     layers[2].append(group);
+  }
+  if (uiState.cad?.activeCommand === "SELECT" && !uiState.readOnly) for (const item of uiState.selectedObjects || []) {
+    if (item.kind !== "GEOMETRY_NODE") continue;
+    const point = nodePositions.get(item.clientKey); if (!point) continue;
+    layers[2].append(element("rect", { "data-cad-node-grip": item.clientKey,
+      x: point.x - 5 * unit, y: point.y - 5 * unit, width: 10 * unit, height: 10 * unit,
+      fill: "#f59e0b", stroke: "#854d0e", "stroke-width": 1.5 * unit, cursor: "move" }));
   }
 
   const defs = element("defs");

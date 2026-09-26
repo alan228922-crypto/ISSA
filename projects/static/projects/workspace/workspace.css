@@ -34,6 +34,7 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 [data-teaching-focused="true"] { outline: 3px solid #7c3aed; outline-offset: 3px; background: #f3e8ff; }
 #workspace-canvas { width: 100%; height: 100%; min-height: 560px; background: #fbfdff; outline: 2px solid transparent; }
 #workspace-canvas [data-object-kind], #workspace-canvas [data-object-kind] > * { scroll-margin-bottom: 120px; }
+#workspace-canvas [data-hovered="true"]:not([data-selected="true"]) > * { filter: drop-shadow(0 0 5px #0f766e); }
 #workspace-status-bar { display: flex; flex-wrap:wrap; gap: 10px; position:fixed; bottom:0; left:50%; transform:translateX(-50%); z-index:20; width:min(100vw,1440px); padding: 8px 14px; background: #172033; color: #fff; font-variant-numeric: tabular-nums; box-shadow:0 -4px 16px #17203333; }
 .workspace-drafting-status { display:flex; flex-wrap:wrap; gap:4px; width:100%; }
 .workspace-drafting-status button { border:1px solid #8193ad; border-radius:5px; padding:5px 8px; background:#26364e; color:#fff; cursor:pointer; }
@@ -45,6 +46,9 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 [data-cad-dynamic-overlay] label { display:grid; gap:2px; width:64px; }
 [data-cad-dynamic-overlay] input { width:100%; min-width:0; padding:3px; pointer-events:auto; }
 [data-cad-dynamic-overlay] span { display:block; }
+[data-cad-overlap-chooser] { position:absolute; z-index:12; display:grid; gap:4px; width:max-content; min-width:130px; max-width:210px; padding:7px; border:1px solid #9bbdf2; border-radius:7px; background:#fff; box-shadow:0 8px 20px #17203333; }
+[data-cad-overlap-chooser] button { text-align:left; padding:6px 8px; border:0; border-radius:4px; background:#f2f6ff; color:#172033; cursor:pointer; }
+[data-cad-overlap-chooser] button:hover,[data-cad-overlap-chooser] button:focus-visible { background:#dceaff; }
 #workspace-report { margin-top: 16px; padding: 20px; border: 1px solid #bdc8d8; background: #fff; }
 #workspace-report-view > section, #workspace-report-view > details { margin-top: 16px; padding-top: 8px; border-top: 1px solid #d8e0eb; }
 #workspace-report table { width: 100%; border-collapse: collapse; margin: 8px 0; }
