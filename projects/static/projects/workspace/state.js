@@ -1,6 +1,25 @@
 import { applyEditorAction } from "./editor.js";
 import { reduceView } from "./canvas-interaction.js";
 
+function draftFingerprint(draft) {
+  const { version, ...content } = draft;
+  return JSON.stringify(content);
+}
+
+function historyOf(state) {
+  return state.history || { past: [], future: [], checkpoint: draftFingerprint(state.draft) };
+}
+
+function withCurrentVersion(state, draft) {
+  return Object.freeze({ ...draft, version: state.draftVersion });
+}
+
+function pruneSelection(state, draft) {
+  const collections = { GEOMETRY_NODE: "nodes", PHYSICAL_MEMBER: "physical_members", CONNECTION: "connections", SUPPORT: "supports", NODE_LOAD: "node_loads" };
+  const selectedObjects = (state.selectedObjects || []).filter((item) => draft[collections[item.kind]]?.some((record) => record.client_key === item.clientKey));
+  return { selectedObjects, selectedObject: selectedObjects.at(-1) || null, focusedObject: null };
+}
+
 export function readWorkspaceBootstrap(documentRef = document) {
   const element = documentRef.getElementById("workspace-bootstrap");
   if (!element) throw new Error("WORKSPACE_BOOTSTRAP_MISSING");
@@ -11,6 +30,7 @@ export function createWorkspaceState(bootstrap) {
   return Object.freeze({
     draft: bootstrap.draft,
     draftVersion: bootstrap.draft.version,
+    history: Object.freeze({ past: [], future: [], checkpoint: draftFingerprint(bootstrap.draft) }),
     readOnly: bootstrap.read_only,
     selectedObject: null,
     selectedObjects: [],
@@ -21,7 +41,24 @@ export function createWorkspaceState(bootstrap) {
 }
 
 export function applyWorkspaceEditorAction(state, action) {
-  return Object.freeze({...state, draft: applyEditorAction(state.draft, action), dirty: true});
+  const draft = applyEditorAction(state.draft, action);
+  if (draft === state.draft || draftFingerprint(draft) === draftFingerprint(state.draft)) return state;
+  const history = historyOf(state);
+  return Object.freeze({ ...state, draft, history: Object.freeze({ past: [...history.past, state.draft], future: [], checkpoint: history.checkpoint }), dirty: draftFingerprint(draft) !== history.checkpoint });
+}
+
+export function undoWorkspaceEdit(state) {
+  const history = historyOf(state);
+  if (!history.past.length) return state;
+  const draft = withCurrentVersion(state, history.past.at(-1));
+  return Object.freeze({ ...state, draft, ...pruneSelection(state, draft), history: Object.freeze({ past: history.past.slice(0, -1), future: [state.draft, ...history.future], checkpoint: history.checkpoint }), dirty: draftFingerprint(draft) !== history.checkpoint, resultOverlay: null, analysisResult: null });
+}
+
+export function redoWorkspaceEdit(state) {
+  const history = historyOf(state);
+  if (!history.future.length) return state;
+  const draft = withCurrentVersion(state, history.future[0]);
+  return Object.freeze({ ...state, draft, ...pruneSelection(state, draft), history: Object.freeze({ past: [...history.past, state.draft], future: history.future.slice(1), checkpoint: history.checkpoint }), dirty: draftFingerprint(draft) !== history.checkpoint, resultOverlay: null, analysisResult: null });
 }
 
 export function applyWorkspaceViewEvent(state, event) {
@@ -30,7 +67,9 @@ export function applyWorkspaceViewEvent(state, event) {
 
 export function applyWorkspaceSaveSuccess(state, response, submittedDraft = state.draft) {
   const draft = Object.freeze({ ...state.draft, version: response.draft_version });
-  return Object.freeze({ ...state, draft, draftVersion: response.draft_version, dirty: state.draft !== submittedDraft });
+  const history = historyOf(state);
+  const checkpoint = draftFingerprint(submittedDraft);
+  return Object.freeze({ ...state, draft, draftVersion: response.draft_version, history: Object.freeze({ ...history, checkpoint }), dirty: draftFingerprint(draft) !== checkpoint });
 }
 
 export function focusWorkspaceIssue(state, issue) {

@@ -526,6 +526,151 @@ def test_cad_crossing_marquee_has_distinct_visual_feedback(context, workspace_pa
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_cad_undo_redo_create_and_delete_with_keyboard(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    canvas = page.locator('#workspace-canvas')
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas.click(position={'x': 200, 'y': 200})
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+    canvas.focus()
+    page.keyboard.press('ControlOrMeta+z')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+    page.keyboard.press('ControlOrMeta+Shift+z')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+    page.locator('[data-workspace-tool="SELECT"]').click()
+    page.locator('[data-object-kind="GeometryNode"] circle').click(force=True)
+    page.keyboard.press('Delete')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+    canvas.focus()
+    page.keyboard.press('ControlOrMeta+z')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+    page.keyboard.press('ControlOrMeta+y')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_undo_after_save_keeps_current_server_version(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    canvas = page.locator('#workspace-canvas')
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas.click(position={'x': 200, 'y': 200})
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    saved_version = page.locator('#workspace-draft-version').inner_text()
+    canvas.focus()
+    page.keyboard.press('ControlOrMeta+z')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+    assert page.locator('#workspace-draft-version').inner_text() == saved_version
+    assert page.locator('#workspace-save-status').inner_text() == '未保存修改：有'
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-status-bar').textContent.includes('未保存修改：无')")
+    assert page.locator('#workspace-draft-version').inner_text() != saved_version
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_member_creation_with_new_endpoint_is_one_undo_step(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    canvas = page.locator('#workspace-canvas')
+    canvas.click(position={'x': 300, 'y': 100})
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == len(draft['physical_members']) + 1
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == len(draft['nodes']) + 1
+    canvas.focus()
+    page.keyboard.press('ControlOrMeta+z')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == len(draft['physical_members'])
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == len(draft['nodes'])
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_undo_keeps_native_editable_input_untouched(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('#workspace-canvas').click(position={'x': 200, 'y': 200})
+    page.locator('.ux-precision summary').click()
+    command = page.locator('[data-cad-command-input]')
+    command.fill('12,34')
+    command.press('ControlOrMeta+z')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_new_edit_after_undo_discards_redo(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    canvas = page.locator('#workspace-canvas')
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas.click(position={'x': 180, 'y': 180})
+    canvas.click(position={'x': 260, 'y': 180})
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 2
+    canvas.focus()
+    page.keyboard.press('ControlOrMeta+z')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
+    canvas.click(position={'x': 340, 'y': 180})
+    assert page.locator('[data-cad-redo]').is_disabled()
+    canvas.focus()
+    page.keyboard.press('ControlOrMeta+Shift+z')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 2
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_undo_redo_support_and_load_property_edits(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    canvas = page.locator('#workspace-canvas')
+    page.locator('[data-client-key="s1"] path').click(force=True)
+    support = page.locator('[data-property-support-type]')
+    support.select_option('ROLLER_X')
+    canvas.focus()
+    assert page.locator('[data-property-support-type]').count() == 1
+    page.keyboard.press('ControlOrMeta+z')
+    assert page.locator('[data-property-support-type]').input_value() == 'PINNED'
+    page.keyboard.press('ControlOrMeta+Shift+z')
+    assert page.locator('[data-property-support-type]').input_value() == 'ROLLER_X'
+    page.locator('[data-client-key="l1"] line').click(force=True)
+    load = page.locator('[data-property-fy]')
+    load.fill('-250')
+    load.press('Tab')
+    canvas.focus()
+    page.keyboard.press('ControlOrMeta+z')
+    assert page.locator('[data-property-fy]').input_value() == '-100'
+    page.keyboard.press('ControlOrMeta+y')
+    assert page.locator('[data-property-fy]').input_value() == '-250'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_undo_redo_node_grip_move(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    canvas = page.locator('#workspace-canvas')
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    box = page.locator('[data-cad-node-grip]').bounding_box()
+    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + 60, y - 20, steps=5)
+    page.mouse.up()
+    moved_x = page.locator('[data-client-key="n1"] circle').first.get_attribute('cx')
+    assert moved_x != '0'
+    canvas.focus()
+    page.keyboard.press('ControlOrMeta+z')
+    assert page.locator('[data-client-key="n1"] circle').first.get_attribute('cx') == '0'
+    page.keyboard.press('ControlOrMeta+Shift+z')
+    assert page.locator('[data-client-key="n1"] circle').first.get_attribute('cx') == moved_x
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_cad_pointer_dynamic_xy_and_explicit_relative_input(context, workspace_page):
     page = workspace_page(user=context[0], project=context[1])
     page.locator('[data-workspace-tool="NODE"]').click()

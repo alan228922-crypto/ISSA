@@ -205,6 +205,7 @@ export function applyEditorAction(draft, action) {
       return connectNode(draft, node);
     }
     case "CREATE_MEMBER": return createMember(draft, action.member);
+    case "CREATE_MEMBER_WITH_ENDPOINT": return createMember(action.node ? add(draft, "GEOMETRY_NODE", action.node) : draft, action.member);
     case "CREATE_CONNECTION": return createConnection(draft, action.connection);
     case "CREATE_SUPPORT": return createReferenced(draft, "SUPPORT", action.support);
     case "CREATE_NODE_LOAD": return createReferenced(draft, "NODE_LOAD", action.nodeLoad);

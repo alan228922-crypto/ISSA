@@ -211,7 +211,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   });
   // Mouse focus is part of an active pointer gesture. Replacing SVG children here
   // would detach the pointer target before pointerup/click is dispatched.
-  svg.addEventListener("focusin", (event) => { if (!gesture) select(selectionFromElement(event.target), false); });
+  svg.addEventListener("focusin", (event) => { if (!gesture && event.target !== svg) select(selectionFromElement(event.target), false); });
   svg.addEventListener("keydown", (event) => {
     if (event.key === "Enter") select(selectionFromElement(event.target));
     const delta = { ArrowLeft: { x: -24, y: 0 }, ArrowRight: { x: 24, y: 0 }, ArrowUp: { x: 0, y: -24 }, ArrowDown: { x: 0, y: 24 } }[event.key];

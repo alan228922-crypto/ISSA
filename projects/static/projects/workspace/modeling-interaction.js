@@ -4,7 +4,7 @@ import { parseCadInput } from "./cad-input.js";
 import { transition } from "./cad-state.js";
 import { resolvePointerPoint } from "./geometry.js";
 import { renderCadPresentation } from "./renderer.js";
-import { applyWorkspaceEditorAction } from "./state.js";
+import { applyWorkspaceEditorAction, undoWorkspaceEdit, redoWorkspaceEdit } from "./state.js";
 import { createStudentLabelResolver } from "./labels.js";
 
 const TOOL_INSTRUCTIONS = Object.freeze({ SELECT: "点击结构查看或修改", NODE: "在画布放置节点；交叉处放置节点即形成桁架铰接", MEMBER: "选择起点，再选择终点", SUPPORT: "选择构件节点放置支座", LOAD: "选择构件节点施加荷载" });
@@ -157,10 +157,11 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const completeMemberAt = (point) => {
     const profile = memberProfile(); if (!memberStart || !profile) return false;
-    let current = canvasController.getState(); let endpoint = current.draft.nodes.find((node) => Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
-    if (!endpoint) { endpoint = { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" }; apply({ type: "PLACE_JOINT_NODE", node: endpoint }, { origin: point }); current = canvasController.getState(); }
+    const current = canvasController.getState(); let endpoint = current.draft.nodes.find((node) => Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
+    const newNode = endpoint ? null : { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" };
+    endpoint ||= newNode;
     if (endpoint.client_key === memberStart) return false;
-    apply({ type: "CREATE_MEMBER", member: { client_key: nextKey(current.draft.physical_members, "member"), start_node_client_key: memberStart, end_node_client_key: endpoint.client_key, material_id: profile.materialId, section_id: profile.sectionId, label: "", is_active: true } }, { origin: point, preview: null, snapFeedback: null });
+    if (!apply({ type: "CREATE_MEMBER_WITH_ENDPOINT", node: newNode, member: { client_key: nextKey(current.draft.physical_members, "member"), start_node_client_key: memberStart, end_node_client_key: endpoint.client_key, material_id: profile.materialId, section_id: profile.sectionId, label: "", is_active: true } }, { origin: point, preview: null, snapFeedback: null })) return false;
     updateDynamics(point); memberStart = null; commandState = transition(commandState, { type: "ENTER", valid: true, point }); distanceInput.value = ""; angleInput.value = ""; updateUi(root, tool, memberStart); return true;
   };
   const chooseTool = (nextTool) => {
@@ -343,6 +344,25 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   });
   document.addEventListener("keyup", (event) => { if (event.key === "Shift" && cadState(canvasController.getState()).temporaryOrtho) { transientCad({ temporaryOrtho: false }); cadStatus(root, cadState(canvasController.getState())); } });
   document.addEventListener("cad-space-tap", repeatLastTool);
+  const undoButton = root.querySelector("[data-cad-undo]"); const redoButton = root.querySelector("[data-cad-redo]");
+  const syncHistory = (state) => { if (undoButton) undoButton.disabled = !state.history?.past.length; if (redoButton) redoButton.disabled = !state.history?.future.length; };
+  canvasController.subscribeStateChange(syncHistory);
+  const travelHistory = (direction) => {
+    if (memberStart) cancelCommand();
+    const current = canvasController.getState();
+    const next = direction === "UNDO" ? undoWorkspaceEdit(current) : redoWorkspaceEdit(current);
+    if (next === current) return;
+    acquiredSnap = null;
+    canvasController.replaceState({ ...next, cad: Object.freeze({ ...cadState(next), origin: null, preview: null, gripPreview: null, snapFeedback: null, trackingGuide: null }) });
+    root.querySelector("#workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无";
+  };
+  undoButton?.addEventListener("click", () => travelHistory("UNDO"));
+  redoButton?.addEventListener("click", () => travelHistory("REDO"));
+  document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || !["z", "y"].includes(event.key.toLowerCase()) || !(event.ctrlKey || event.metaKey) || event.altKey || editableFocus(event.target) || root.dataset.uxStage !== "build") return;
+    const direction = event.key.toLowerCase() === "y" || event.shiftKey ? "REDO" : "UNDO";
+    event.preventDefault(); travelHistory(direction);
+  });
   svg.addEventListener("pointerleave", () => transientCad({ preview: null, snapFeedback: null, trackingGuide: null }));
-  updateUi(root, tool, memberStart, contextualInstruction); cadStatus(root, cadState(canvasController.getState())); return Object.freeze({ getTool: () => tool });
+  updateUi(root, tool, memberStart, contextualInstruction); cadStatus(root, cadState(canvasController.getState())); syncHistory(canvasController.getState()); return Object.freeze({ getTool: () => tool });
 }
