@@ -323,6 +323,28 @@ def test_cad_escape_and_repeat_last_tool_respect_input_focus(context, workspace_
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_cad_completed_member_can_repeat_with_enter_and_space(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    page.locator('#workspace-canvas').click(position={'x': 300, 'y': 100})
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == 2
+    canvas = page.locator('#workspace-canvas')
+    canvas.focus()
+    page.keyboard.press('Escape')
+    assert page.locator('[data-workspace-tool="SELECT"]').get_attribute('aria-pressed') == 'true'
+    page.keyboard.press('Enter')
+    assert page.locator('[data-workspace-tool="MEMBER"]').get_attribute('aria-pressed') == 'true'
+    page.keyboard.press('Escape')
+    canvas.focus()
+    page.keyboard.press('Space')
+    assert page.locator('[data-workspace-tool="MEMBER"]').get_attribute('aria-pressed') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_cad_shift_temporarily_inverts_ortho_without_changing_button(context, workspace_page):
     page = workspace_page(user=context[0], project=context[1])
     page.locator('.ux-precision summary').click()
@@ -1293,6 +1315,45 @@ def test_grid_pattern_lod_stays_bounded_without_changing_snap(context, workspace
     assert result == {'patterns': 3, 'lines': 0, 'nearLevels': 'minor medium major',
                       'farLevels': 'major', 'nearSnap': {'x': 12, 'y': 29},
                       'farSnap': {'x': 12, 'y': 29}}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize('width,height', [(500, 500), (1000, 1000), (2000, 1000)])
+def test_cad_large_view_pointer_navigation_keeps_grid_dom_bounded(context, workspace_page, width, height):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['nodes'][1]['x_mm'] = width
+    draft['nodes'] += [
+        {'client_key': 'n3', 'x_mm': width, 'y_mm': height, 'label': ''},
+        {'client_key': 'n4', 'x_mm': 0, 'y_mm': height, 'label': ''},
+    ]
+    draft['physical_members'] += [
+        {'client_key': 'm2', 'start_node_client_key': 'n2', 'end_node_client_key': 'n3', 'material_id': material.id, 'section_id': section.id, 'label': '', 'is_active': True},
+        {'client_key': 'm3', 'start_node_client_key': 'n3', 'end_node_client_key': 'n4', 'material_id': material.id, 'section_id': section.id, 'label': '', 'is_active': True},
+        {'client_key': 'm4', 'start_node_client_key': 'n4', 'end_node_client_key': 'n1', 'material_id': material.id, 'section_id': section.id, 'label': '', 'is_active': True},
+    ]
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-cad-fit]').click()
+    canvas = page.locator('#workspace-canvas')
+    box = canvas.bounding_box()
+    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    requests = []
+    page.on('request', lambda request: requests.append(request.url))
+    page.locator('[data-workspace-tool="NODE"]').click()
+    for offset in range(0, 100, 10):
+        page.mouse.move(x + offset, y + offset / 2)
+    before = canvas.locator('[data-world-layer]').get_attribute('transform')
+    page.mouse.wheel(0, -300)
+    page.mouse.down(button='middle')
+    page.mouse.move(x + 35, y + 25, steps=5)
+    page.mouse.up(button='middle')
+    assert canvas.locator('[data-world-layer]').get_attribute('transform') != before
+    assert canvas.locator('[data-canvas-grid] pattern').count() == 3
+    assert canvas.locator('[data-canvas-grid] line').count() == 0
+    assert canvas.locator('[data-cad-snap-marker]').count() <= 1
+    assert requests == []
 
 
 @pytest.mark.browser
