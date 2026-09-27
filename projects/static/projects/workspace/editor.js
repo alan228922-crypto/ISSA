@@ -147,7 +147,27 @@ function update(draft, action) {
   const [name, items] = collection(draft, kind);
   const index = items.findIndex((item) => item.client_key === clientKey);
   if (index < 0) fail("EDITOR_TARGET_NOT_FOUND");
-  return {...draft, [name]: items.map((item, itemIndex) => itemIndex === index ? {...item, ...action.changes} : item)};
+  const next = {...draft, [name]: items.map((item, itemIndex) => itemIndex === index ? {...item, ...action.changes} : item)};
+  if (kind === "GEOMETRY_NODE" && (Object.hasOwn(action.changes, "x_mm") || Object.hasOwn(action.changes, "y_mm"))) {
+    const moved = next.nodes[index];
+    if (!Number.isFinite(moved.x_mm) || !Number.isFinite(moved.y_mm)) fail("EDITOR_INVALID_ACTION");
+    const affectedMembers = next.physical_members.filter((member) => member.start_node_client_key === clientKey || member.end_node_client_key === clientKey);
+    if (affectedMembers.some((member) => {
+      const start = next.nodes.find((node) => node.client_key === member.start_node_client_key);
+      const end = next.nodes.find((node) => node.client_key === member.end_node_client_key);
+      return !start || !end || Math.hypot(end.x_mm - start.x_mm, end.y_mm - start.y_mm) <= 1e-9;
+    })) fail("EDITOR_NODE_MOVE_ZERO_LENGTH");
+    for (const connection of next.connections) {
+      const affected = connection.geometry_node_client_key === clientKey || connection.participating_member_client_keys.some((memberKey) => affectedMembers.some((member) => member.client_key === memberKey));
+      if (!affected) continue;
+      const node = next.nodes.find((item) => item.client_key === connection.geometry_node_client_key);
+      if (!node || connection.participating_member_client_keys.some((memberKey) => {
+        const member = next.physical_members.find((item) => item.client_key === memberKey);
+        return !member || !pointOnMember(next, node, member);
+      })) fail("EDITOR_NODE_MOVE_BREAKS_CONNECTION");
+    }
+  }
+  return next;
 }
 
 function referenced(draft, kind, clientKey) {
@@ -180,7 +200,8 @@ function deleteObjectsAtomically(draft, targets) {
   if (physical_members.some((member) => !nodes.some((node) => node.client_key === member.start_node_client_key) || !nodes.some((node) => node.client_key === member.end_node_client_key))) fail("EDITOR_DEPENDENCY_CONFLICT");
   const survivingMemberKeys = new Set(physical_members.map((member) => member.client_key));
   if (draft.connections.some((item) => removed.CONNECTION.has(item.client_key) && item.participating_member_client_keys.some((memberKey) => survivingMemberKeys.has(memberKey)))) fail("EDITOR_DEPENDENCY_CONFLICT");
-  const connections = draft.connections.filter((item) => !removed.CONNECTION.has(item.client_key)).map((item) => ({ ...item, participating_member_client_keys: item.participating_member_client_keys.filter((memberKey) => survivingMemberKeys.has(memberKey)) })).filter((item) => item.participating_member_client_keys.length);
+  const connections = draft.connections.filter((item) => !removed.CONNECTION.has(item.client_key));
+  if (connections.some((item) => item.participating_member_client_keys.some((memberKey) => !survivingMemberKeys.has(memberKey)))) fail("EDITOR_DEPENDENCY_CONFLICT");
   if (connections.some((connection) => !nodes.some((node) => node.client_key === connection.geometry_node_client_key))) fail("EDITOR_DEPENDENCY_CONFLICT");
   const connectionKeys = new Set(connections.map((item) => item.client_key));
   const supports = draft.supports.filter((item) => !removed.SUPPORT.has(item.client_key));

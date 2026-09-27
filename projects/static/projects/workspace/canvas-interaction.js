@@ -191,9 +191,8 @@ export function bindCanvasInteractions(svg, initialState, render) {
       }
       const rendered = renderedObjectsFromSvg(svg);
       const candidates = pickCandidatesAt(point, rendered);
-      const directHit = rendered.find((item) => item.kind === direct?.kind && item.clientKey === direct?.clientKey)?.hit;
-      const ambiguousEdge = ["CONNECTION", "GEOMETRY_NODE"].includes(direct?.kind) && directHit?.type === "POINT" && distance(point, directHit.point) > 6;
-      if (candidates.length > 1 && (!direct || ambiguousEdge)) { showChooser(candidates, point, event.shiftKey); return; }
+      const pointCandidates = candidates.filter((candidate) => rendered.some((item) => item.kind === candidate.kind && item.clientKey === candidate.clientKey && item.hit.type === "POINT"));
+      if (candidates.length > 1 && (!direct || pointCandidates.length > 1)) { showChooser(candidates, point, event.shiftKey); return; }
       const hit = direct || candidates[0];
       if (!hit) { marqueeAnchor = { point, additive: event.shiftKey }; drawMarquee(point, point); return; }
       select(hit, true, event.shiftKey);

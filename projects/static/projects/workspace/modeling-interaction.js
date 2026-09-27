@@ -137,7 +137,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       return true;
     } catch (error) {
       if (error instanceof EditorActionError) {
-        const messages = { NODE_NOT_ON_MEMBER: "此节点未连接构件；请先绘制构件。", MULTIPLE_JOINTS_AT_NODE: "此节点有多个旧连接，无法确定支座或荷载目标；请先整理模型。" };
+        const messages = { NODE_NOT_ON_MEMBER: "此节点未连接构件；请先绘制构件。", MULTIPLE_JOINTS_AT_NODE: "此节点有多个旧连接，无法确定支座或荷载目标；请先整理模型。", EDITOR_NODE_MOVE_BREAKS_CONNECTION: "移动会使连接脱离构件，原节点未移动。", EDITOR_NODE_MOVE_ZERO_LENGTH: "此位置会使构件长度为零，原节点未移动。" };
         showError({ code: error.code, message: messages[error.code] || "当前工具目标不满足建模条件。" }); return false;
       }
       throw error;
@@ -177,7 +177,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const button = root.querySelector(selector);
     button?.addEventListener("click", () => toggleCad(field, button));
   }
-  const dynamicPoint = () => { const origin = memberOrigin(); const distance = Number(distanceInput?.value); const angle = Number(angleInput?.value); if (!origin || !Number.isFinite(distance) || distance <= 0 || !Number.isFinite(angle)) return null; const radians = angle * Math.PI / 180; return { x: origin.x + distance * Math.cos(radians), y: origin.y + distance * Math.sin(radians) }; };
+  const dynamicPoint = () => { const origin = memberOrigin(); const distance = Number(distanceInput?.value); const angle = Number(angleInput?.value); if (!origin || distanceInput?.value === "" || angleInput?.value === "" || !Number.isFinite(distance) || distance <= 0 || !Number.isFinite(angle)) return null; const radians = angle * Math.PI / 180; return { x: origin.x + distance * Math.cos(radians), y: origin.y + distance * Math.sin(radians) }; };
   for (const [input, field] of [[distanceInput, "DISTANCE"], [angleInput, "ANGLE"]]) input?.addEventListener("input", () => { commandState = transition(commandState, { type: "INPUT_CHANGE", mode: "DYNAMIC", field, value: input.value }); updateDynamics(dynamicPoint()); });
   for (const [input, field] of [[distanceInput, "DISTANCE"], [angleInput, "ANGLE"]]) input?.addEventListener("keydown", (event) => {
     if (event.key === "Tab") {
@@ -209,7 +209,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   for (const input of [xInput, yInput]) input?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     event.preventDefault();
-    if (!exactPoint({ x: Number(xInput.value), y: Number(yInput.value) })) showError({ code: "CAD_INPUT_MALFORMED", message: "请输入有效的 X、Y 坐标。" });
+    if (xInput.value === "" || yInput.value === "" || !exactPoint({ x: Number(xInput.value), y: Number(yInput.value) })) showError({ code: "CAD_INPUT_MALFORMED", message: "请输入有效的 X、Y 坐标。" });
   });
   root.querySelector("[data-cad-relative-place]")?.addEventListener("click", () => {
     const origin = tool === "MEMBER" ? memberOrigin() : cadState(canvasController.getState()).origin;

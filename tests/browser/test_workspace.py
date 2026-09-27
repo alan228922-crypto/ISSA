@@ -157,19 +157,37 @@ def test_marquee_drag_selects_without_creating_node(context, workspace_page):
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_batch_delete_prunes_joints_and_preserves_shared_member(context, workspace_page):
+def test_batch_delete_requires_explicit_selection_of_dependent_joints(context, workspace_page):
     page = workspace_page(user=context[0], project=context[1])
     result = page.evaluate("""async () => {
       const {applyEditorAction} = await import('/static/projects/workspace/editor.js');
       const nodes=['n1','n2','n3'].map((client_key,i)=>({client_key,x_mm:i*100,y_mm:0,label:''}));
       const member=(client_key,start,end)=>({client_key,start_node_client_key:start,end_node_client_key:end,material_id:1,section_id:1,label:'',is_active:true});
       const draft={nodes,physical_members:[member('m1','n1','n2'),member('m2','n2','n3')],connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']},{client_key:'c2',geometry_node_client_key:'n2',participating_member_client_keys:['m1','m2']},{client_key:'c3',geometry_node_client_key:'n3',participating_member_client_keys:['m2']}],supports:[],node_loads:[]};
-      const next=applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]});
+      let conflict=null;try{applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]})}catch(error){conflict=error.code}
+      const next=applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'},{kind:'PHYSICAL_MEMBER',clientKey:'m2'},{kind:'CONNECTION',clientKey:'c1'},{kind:'CONNECTION',clientKey:'c2'},{kind:'CONNECTION',clientKey:'c3'}]});
       const loaded={...draft,supports:[{client_key:'s1',target_connection_client_key:'c1',support_type:'PINNED',restrained_axis:null}]};
-      let conflict=null;try{applyEditorAction(loaded,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]})}catch(error){conflict=error.code}
-      return {members:next.physical_members.map(x=>x.client_key),joints:next.connections.map(x=>[x.client_key,x.participating_member_client_keys]),nodes:next.nodes.length,conflict,original:draft.physical_members.length};
+      let loadedConflict=null;try{applyEditorAction(loaded,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]})}catch(error){loadedConflict=error.code}
+      return {members:next.physical_members.length,joints:next.connections.length,nodes:next.nodes.length,conflict,loadedConflict,original:draft.physical_members.length};
     }""")
-    assert result == {'members':['m2'],'joints':[['c2',['m2']],['c3',['m2']]],'nodes':3,'conflict':'EDITOR_DEPENDENCY_CONFLICT','original':2}
+    assert result == {'members':0,'joints':0,'nodes':3,'conflict':'EDITOR_DEPENDENCY_CONFLICT','loadedConflict':'EDITOR_DEPENDENCY_CONFLICT','original':2}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_delete_rejects_unselected_connection_instead_of_cascading(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-client-key="m1"] line').click(force=True)
+    page.keyboard.press('Delete')
+    assert page.locator('[data-client-key="m1"]').count() == 1
+    assert page.locator('[data-client-key="c1"]').count() == 1
+    assert '依赖' in page.locator('#workspace-error').inner_text()
+    assert page.locator('#workspace-save-status').inner_text() == '未保存修改：无'
 
 
 @pytest.mark.browser
@@ -457,6 +475,7 @@ def test_cad_node_grip_drag_previews_and_preserves_identity(context, workspace_p
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.locator('[data-client-key="n1"] circle').click(force=True)
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
     grip = page.locator('[data-cad-node-grip]')
     assert grip.count() == 1
     box = grip.bounding_box()
@@ -482,6 +501,7 @@ def test_cad_grip_rejects_move_onto_existing_node_without_topology_change(contex
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.locator('[data-client-key="n1"] circle').click(force=True)
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
     start = page.locator('[data-cad-node-grip]').bounding_box()
     end = page.locator('[data-client-key="n2"] circle').bounding_box()
     sx, sy = start['x'] + start['width'] / 2, start['y'] + start['height'] / 2
@@ -495,6 +515,33 @@ def test_cad_grip_rejects_move_onto_existing_node_without_topology_change(contex
     assert page.locator('[data-object-kind="GeometryNode"]').count() == len(draft['nodes'])
     assert page.locator('[data-object-kind="Connection"]').count() == len(draft['connections'])
     assert page.locator('#workspace-save-status').text_content() == '未保存修改：无'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_node_move_rejects_disconnecting_interior_joint(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['nodes'].append({'client_key': 'n3', 'x_mm': 500, 'y_mm': 0, 'label': '中点'})
+    draft['connections'].append({'client_key': 'c3', 'geometry_node_client_key': 'n3', 'participating_member_client_keys': ['m1']})
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-client-key="n3"] circle').click(force=True)
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 中点').click()
+    grip = page.locator('[data-cad-node-grip]').bounding_box()
+    x, y = grip['x'] + grip['width'] / 2, grip['y'] + grip['height'] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x, y - 50, steps=5)
+    page.mouse.up()
+    assert page.locator('[data-client-key="n3"] circle').first.get_attribute('cy') == '0'
+    assert '连接' in page.locator('#workspace-error').inner_text()
+    assert page.locator('#workspace-save-status').inner_text() == '未保存修改：无'
+    y_input = page.locator('[data-property-y]')
+    y_input.fill('100')
+    y_input.press('Tab')
+    assert page.locator('[data-property-y]').input_value() == '0'
+    assert page.locator('#workspace-save-status').inner_text() == '未保存修改：无'
 
 
 @pytest.mark.browser
@@ -526,6 +573,22 @@ def test_cad_ambiguous_nearby_objects_require_explicit_choice(context, workspace
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'false'
     chooser.get_by_role('button', name='节点 左').click()
     assert chooser.count() == 0
+    assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_exact_overlap_requires_explicit_choice(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    chooser = page.locator('[data-cad-overlap-chooser]')
+    assert chooser.count() == 1
+    assert '节点 左' in chooser.inner_text()
+    assert '连接' in chooser.inner_text()
+    assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'false'
+    chooser.get_by_role('button', name='节点 左').click()
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
 
 
@@ -701,12 +764,36 @@ def test_cad_undo_redo_support_and_load_property_edits(context, workspace_page):
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_cad_property_edit_syncs_undo_button_and_saved_checkpoint(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['connections'] = []
+    draft['supports'] = []
+    draft['node_loads'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-client-key="n1"] circle').click(force=True)
+    assert page.locator('[data-cad-undo]').is_disabled()
+    label = page.locator('[data-property-label]')
+    label.fill('新标签')
+    label.press('Tab')
+    assert page.locator('[data-cad-undo]').is_enabled()
+    assert page.locator('#workspace-save-status').inner_text() == '未保存修改：有'
+    label = page.locator('[data-property-label]')
+    label.fill('左')
+    label.press('Tab')
+    assert page.locator('#workspace-save-status').inner_text() == '未保存修改：无'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_cad_undo_redo_node_grip_move(context, workspace_page):
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
     canvas = page.locator('#workspace-canvas')
     page.locator('[data-client-key="n1"] circle').click(force=True)
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
     box = page.locator('[data-cad-node-grip]').bounding_box()
     x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
     page.mouse.move(x, y)
@@ -752,6 +839,23 @@ def test_cad_pointer_dynamic_xy_and_explicit_relative_input(context, workspace_p
     page.locator('[data-cad-dynamic-input]').click()
     page.mouse.move(box['x'] + 240, box['y'] + 240)
     assert overlay.is_hidden()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_cad_blank_dynamic_coordinate_is_not_zero(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    page.locator('[data-workspace-tool="NODE"]').click()
+    canvas = page.locator('#workspace-canvas')
+    box = canvas.bounding_box()
+    page.mouse.move(box['x'] + 220, box['y'] + 220)
+    x_input = page.locator('[data-cad-x]')
+    y_input = page.locator('[data-cad-y]')
+    x_input.fill('')
+    y_input.fill('12')
+    y_input.press('Enter')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+    assert '有效' in page.locator('#workspace-error').inner_text()
 
 
 @pytest.mark.browser
@@ -805,10 +909,13 @@ def test_direct_joint_click_selects_node_and_shift_click_toggles(context, worksp
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.locator('[data-client-key="c1"] rect').click(force=True)
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
     page.locator('[data-client-key="c1"] rect').click(force=True, modifiers=['Shift'])
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'false'
     page.locator('[data-client-key="n1"] circle').click(force=True)
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
     page.locator('[data-client-key="n2"] circle').click(force=True, modifiers=['Shift'])
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
     assert page.locator('[data-client-key="n2"]').get_attribute('data-selected') == 'true'
@@ -1389,7 +1496,7 @@ def test_editor_mutations_are_immutable(context, workspace_page):
         'malformed': {'name':'EditorActionError','code':'EDITOR_INVALID_ACTION','unchanged':True},
         'missing': {'name':'EditorActionError','code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
         'forbidden': {'name':'EditorActionError','code':'EDITOR_UPDATE_FIELD_NOT_ALLOWED','unchanged':True},
-        'dependency': None,
+        'dependency': {'name':'EditorActionError','code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True},
     }
 
 

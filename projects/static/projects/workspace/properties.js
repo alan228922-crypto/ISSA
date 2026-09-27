@@ -9,6 +9,7 @@ const OBJECTS = Object.freeze({
   SUPPORT: { collection: "supports", label: "支座" },
   NODE_LOAD: { collection: "node_loads", label: "荷载" },
 });
+const propertyEditing = new WeakSet();
 
 function selectedRecord(state) {
   const selected = state.selectedObject;
@@ -18,10 +19,21 @@ function selectedRecord(state) {
   return record ? { definition, record, selected } : null;
 }
 
-function updateState(canvasController, action, notifyPanel = false) {
-  const next = applyWorkspaceEditorAction(canvasController.getState(), action);
-  canvasController.replaceState(next, notifyPanel);
-  document.getElementById("workspace-save-status").textContent = "未保存修改：有";
+function updateState(canvasController, action, showError = null) {
+  const current = canvasController.getState();
+  try {
+    const next = applyWorkspaceEditorAction(current, action);
+    if (next !== current) {
+      propertyEditing.add(canvasController);
+      try { canvasController.replaceState(next); }
+      finally { propertyEditing.delete(canvasController); }
+    }
+    document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无";
+  } catch (error) {
+    if (!(error instanceof EditorActionError) || !showError) throw error;
+    showError({ code: error.code, message: error.code === "EDITOR_NODE_MOVE_BREAKS_CONNECTION" ? "移动会使连接脱离构件，原节点未移动。" : "此位置会使构件长度为零，原节点未移动。" });
+    canvasController.replaceState(current);
+  }
 }
 
 function labeledInput(root, { text, value, type = "text", dataName, onChange }) {
@@ -43,11 +55,11 @@ function appendLabelControl(root, selected, record, canvasController) {
   } });
 }
 
-function appendNodeControls(root, selected, node, canvasController) {
+function appendNodeControls(root, selected, node, canvasController, showError) {
   for (const [field, text, dataName] of [["x_mm", "X（mm）", "propertyX"], ["y_mm", "Y（mm）", "propertyY"]]) {
     labeledInput(root, { text, value: node[field], type: "number", dataName, onChange: (input) => {
       const value = Number(input.value);
-      if (Number.isFinite(value)) updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: value } });
+      if (input.value !== "" && Number.isFinite(value)) updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: value } }, showError);
     } });
   }
   appendLabelControl(root, selected, node, canvasController);
@@ -133,7 +145,7 @@ function appendLoadControls(root, selected, load, canvasController) {
   for (const [field, text, dataName] of [["fx_N", "Fx (N)", "propertyFx"], ["fy_N", "Fy (N)", "propertyFy"]]) {
     labeledInput(root, { text, value: load[field], type: "number", dataName, onChange: (input) => {
       const value = Number(input.value);
-      if (Number.isFinite(value)) updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: value } });
+      if (input.value !== "" && Number.isFinite(value)) updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: value } });
     } });
   }
   appendLabelControl(root, selected, load, canvasController);
@@ -146,7 +158,7 @@ function deleteSelection(canvasController, showError) {
   try {
     const next = applyWorkspaceEditorAction(state, { type: "DELETE_OBJECTS", targets });
     canvasController.replaceState({ ...next, selectedObject: null, selectedObjects: [], focusedObject: null }, true);
-    document.getElementById("workspace-save-status").textContent = "未保存修改：有";
+    document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无";
   } catch (error) {
     if (error instanceof EditorActionError) {
       showError({ code: error.code, message: error.code === "EDITOR_DEPENDENCY_CONFLICT" ? "无法删除：仍有构件、支座或荷载依赖所选对象。请同时选中依赖对象再删除。" : "所选对象无法删除，请重新选择。" });
@@ -180,6 +192,7 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     deleteSelection(canvasController, showError);
   });
   const render = (state) => {
+    if (propertyEditing.has(canvasController)) return;
     root.replaceChildren();
     const current = selectedRecord(state);
     const parent = root.closest("#workspace-workflow-panel");
@@ -207,7 +220,7 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     heading("可以做什么");
     if (current.selected.kind === "CONNECTION") appendConnectionDetails(root, current.record, labels);
     if (!state.readOnly) {
-      if (kind === "GEOMETRY_NODE") appendNodeControls(root, current.selected, current.record, canvasController);
+      if (kind === "GEOMETRY_NODE") appendNodeControls(root, current.selected, current.record, canvasController, showError);
       if (kind === "PHYSICAL_MEMBER") appendMemberControls(root, current.selected, current.record, canvasController, materials, sections);
       if (kind === "SUPPORT") appendSupportControls(root, current.selected, current.record, canvasController);
       if (kind === "NODE_LOAD") appendLoadControls(root, current.selected, current.record, canvasController);
