@@ -62,14 +62,11 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
             page.locator(f'[data-workspace-tool="{name}"]').click()
 
         choose_tool("MEMBER")
-        for start, end in (("node-1", "node-2"), ("node-1", "node-3"), ("node-2", "node-3")):
+        for start, end in (("node-1", "node-2"), ("connection-1", "node-3"), ("connection-2", "connection-3")):
             page.locator(f'[data-client-key="{start}"]').click()
             page.locator(f'[data-client-key="{end}"]').click()
         assert page.locator('[data-object-kind="PhysicalMember"]').count() == 3
 
-        choose_tool("CONNECTION")
-        for key in ("node-1", "node-2", "node-3"):
-            page.locator(f'[data-client-key="{key}"] circle').click(force=True)
         assert page.locator('[data-object-kind="Connection"]').count() == 3
 
         choose_tool("SUPPORT")

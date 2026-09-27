@@ -53,10 +53,10 @@ def test_build_guidance_context_save_and_check(context, workspace_page):
     page = workspace_page(user=owner, project=project)
     assert page.locator(".ux-precision").get_attribute("open") is None
     tools = page.locator("[data-workspace-tool]")
-    assert tools.count() == 6
+    assert tools.count() == 5
     assert all(button.locator("[data-tool-icon]").count() == 1 for button in tools.all())
     page.locator('[data-workspace-tool="NODE"]').click()
-    assert page.get_by_text("在画布点一下放置节点").is_visible()
+    assert page.get_by_text("在画布放置节点；交叉处放置节点即形成桁架铰接").is_visible()
     page.locator("#workspace-canvas").click(position={"x": 200, "y": 200})
     assert page.get_by_text("已放置节点").is_visible()
     assert page.locator("[data-ux-save-indicator]").inner_text() == "有未保存修改"
@@ -80,7 +80,7 @@ def test_build_guidance_context_save_and_check(context, workspace_page):
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_connection_tool_does_not_reuse_stale_selection_on_blank_canvas(context, workspace_page):
+def test_node_joint_does_not_reuse_stale_selection_on_blank_canvas(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
     canvas = page.locator('#workspace-canvas')
@@ -91,16 +91,15 @@ def test_connection_tool_does_not_reuse_stale_selection_on_blank_canvas(context,
     page.locator('[data-client-key="node-1"]').click()
     page.locator('[data-client-key="node-2"]').click()
     assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
-    page.locator('[data-workspace-tool="CONNECTION"]').click()
-    page.locator('[data-client-key="node-1"] circle').click()
-    assert page.locator('[data-object-kind="Connection"]').count() == 1
+    assert page.locator('[data-object-kind="Connection"]').count() == 2
+    page.locator('[data-workspace-tool="NODE"]').click()
     canvas.click(position={"x": 500, "y": 350})
-    assert page.locator('[data-object-kind="Connection"]').count() == 1
+    assert page.locator('[data-object-kind="Connection"]').count() == 2
 
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_support_and_load_tools_explain_missing_explicit_connection(context, workspace_page):
+def test_support_and_load_tools_use_automatic_endpoint_joints(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
     canvas = page.locator('#workspace-canvas')
@@ -110,31 +109,13 @@ def test_support_and_load_tools_explain_missing_explicit_connection(context, wor
     page.locator('[data-workspace-tool="MEMBER"]').click()
     page.locator('[data-client-key="node-1"]').click()
     page.locator('[data-client-key="node-2"]').click()
-    assert page.locator('[data-object-kind="Connection"]').count() == 0
-
+    assert page.locator('[data-object-kind="Connection"]').count() == 2
     page.locator('[data-workspace-tool="SUPPORT"]').click()
-    page.locator('[data-client-key="node-1"] circle').click(force=True)
-    assert page.locator('[data-object-kind="Support"]').count() == 0
-    assert '先使用「连接」工具' in page.locator('[data-modeling-instruction]').inner_text()
-    canvas.hover(position={"x": 500, "y": 300})
-    assert '先使用「连接」工具' in page.locator('[data-modeling-instruction]').inner_text()
-
-    page.locator('[data-workspace-tool="LOAD"]').click()
-    page.locator('[data-client-key="node-2"] circle').click(force=True)
-    assert page.locator('[data-object-kind="NodeLoad"]').count() == 0
-    assert '先使用「连接」工具' in page.locator('[data-modeling-instruction]').inner_text()
-    canvas.hover(position={"x": 500, "y": 300})
-    assert '先使用「连接」工具' in page.locator('[data-modeling-instruction]').inner_text()
-
-    page.locator('[data-workspace-tool="CONNECTION"]').click()
-    page.locator('[data-client-key="node-1"] circle').click(force=True)
-    assert page.locator('[data-object-kind="Connection"]').count() == 1
-    page.locator('[data-workspace-tool="SUPPORT"]').click()
-    page.locator('[data-object-kind="Connection"] rect').click(force=True)
+    page.locator('[data-object-kind="Connection"] rect').first.click(force=True)
     assert page.locator('[data-object-kind="Support"]').get_attribute('data-selected') == 'true'
     assert page.locator('[data-property-support-type]').is_visible()
     page.locator('[data-workspace-tool="LOAD"]').click()
-    page.locator('[data-object-kind="Connection"] rect').click(force=True)
+    page.locator('[data-object-kind="Connection"] rect').last.click(force=True)
     assert page.locator('[data-object-kind="NodeLoad"]').get_attribute('data-selected') == 'true'
     assert page.locator('[data-property-fy]').is_visible()
 
