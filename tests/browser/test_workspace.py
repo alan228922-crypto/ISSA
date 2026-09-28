@@ -193,6 +193,65 @@ def test_structural_load_symbol_preview_is_transient_and_property_edit_updates_c
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_structural_palette_selection_support_cards_map_to_existing_axes(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['connections'].append({'client_key': 'c2', 'geometry_node_client_key': 'n2', 'participating_member_client_keys': ['m1']})
+    draft['supports'] = []
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="SUPPORT"]').click()
+    choices = page.locator('[data-support-choice]')
+    assert choices.count() == 3
+    assert '铰支座' in choices.nth(0).inner_text()
+    assert '限制竖向移动' in choices.nth(1).inner_text()
+    assert '限制水平移动' in choices.nth(2).inner_text()
+    choices.nth(1).click()
+    page.locator('[data-client-key="n1"] [data-node-body]').click(force=True)
+    assert page.locator('[data-property-support-type]').input_value() == 'ROLLER_Y'
+    choices.nth(2).click()
+    page.locator('[data-client-key="n2"] [data-node-body]').click(force=True)
+    assert page.locator('[data-property-support-type]').input_value() == 'ROLLER_X'
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    supports = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft.supports")
+    assert [(item['support_type'], item['restrained_axis']) for item in supports] == [('ROLLER', 'Y'), ('ROLLER', 'X')]
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_structural_palette_selection_load_copy_and_independent_visual_states(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="LOAD"]').click()
+    assert '集中力' in page.locator('[data-load-palette]').inner_text()
+    page.locator('[data-draft-object-kind="NODE_LOAD"][data-draft-object-key="l1"]').click()
+    assert '水平力' in page.locator('[data-property-fx]').locator('..').inner_text()
+    assert '竖向力' in page.locator('[data-property-fy]').locator('..').inner_text()
+    page.locator('[data-draft-object-kind="SUPPORT"][data-draft-object-key="s1"]').click()
+    assert page.locator('[data-client-key="s1"] [data-selection-outline]').evaluate('(element) => getComputedStyle(element).display') != 'none'
+    result = page.evaluate("""async () => {
+      const {renderWorkspace}=await import('/static/projects/workspace/renderer.js');
+      const svg=document.querySelector('#workspace-canvas');
+      const draft=JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft;
+      renderWorkspace(svg,draft,{selectedObject:{kind:'PhysicalMember',clientKey:'m1'},resultOverlay:{m1:{state:'TENSION',color:'#b91c1c',dash:'7 3',label:'受拉'}}});
+      const member=svg.querySelector('[data-client-key="m1"]');
+      const node=svg.querySelector('[data-client-key="n1"]');
+      const body=member.querySelector('[data-member-body]');
+      const hit=member.querySelector('[data-symbol-hit]');
+      const nodeHit=node.querySelector('[data-symbol-hit]').getBoundingClientRect();
+      return {bodyStroke:body.getAttribute('stroke'),bodyDash:body.getAttribute('stroke-dasharray'),selection:getComputedStyle(member.querySelector('[data-selection-outline]')).display,hitPointer:getComputedStyle(hit).pointerEvents,hitWidth:Number(hit.getAttribute('stroke-width'))*Math.abs(hit.getScreenCTM().a),nodeHitWidth:nodeHit.width,bodyPointer:getComputedStyle(body).pointerEvents};
+    }""")
+    assert result['bodyStroke'] == '#b91c1c' and result['bodyDash'] == '7 3'
+    assert result['selection'] != 'none' and result['hitPointer'] == 'stroke'
+    assert 15 <= result['hitWidth'] <= 24 and 20 <= result['nodeHitWidth'] <= 28
+    assert result['bodyPointer'] == 'none'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_editor_independent_delete_preserves_gaps_and_undo_restores_identity(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
@@ -1066,7 +1125,7 @@ def test_cad_undo_redo_support_and_load_property_edits(context, workspace_page):
     assert page.locator('[data-property-support-type]').input_value() == 'PINNED'
     page.keyboard.press('ControlOrMeta+Shift+z')
     assert page.locator('[data-property-support-type]').input_value() == 'ROLLER_X'
-    page.locator('[data-client-key="l1"] line').click(force=True)
+    page.locator('[data-client-key="l1"] [data-load-stem]').click(force=True)
     load = page.locator('[data-property-fy]')
     load.fill('-250')
     load.press('Tab')
@@ -2112,7 +2171,7 @@ def test_workspace_properties_edit_support_and_load_and_persist(context, workspa
     assert support_type.input_value() == 'ROLLER_Y'
     assert page.locator('#workspace-save-status').text_content() == '未保存修改：有'
 
-    page.locator('[data-client-key="l1"] line').click(force=True)
+    page.locator('[data-client-key="l1"] [data-load-stem]').click(force=True)
     assert page.locator('[data-property-identity]').text_content() == '荷载 荷载'
     page.locator('[data-property-fx]').fill('0')
     page.locator('[data-property-fy]').fill('-250')
@@ -2126,7 +2185,7 @@ def test_workspace_properties_edit_support_and_load_and_persist(context, workspa
 
     page.locator('[data-client-key="s1"] path').click(force=True)
     assert page.locator('[data-property-support-type]').input_value() == 'ROLLER_Y'
-    page.locator('[data-client-key="l1"] line').click(force=True)
+    page.locator('[data-client-key="l1"] [data-load-stem]').click(force=True)
     assert page.locator('[data-property-fx]').input_value() == '0'
     assert page.locator('[data-property-fy]').input_value() == '-250'
 

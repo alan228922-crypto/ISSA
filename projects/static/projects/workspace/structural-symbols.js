@@ -42,6 +42,9 @@ export function renderSupport(support, target, unit) {
   visual.append(element("line", { "data-support-part": "base", x1: -22, y1: baseY, x2: 22, y2: baseY, stroke: "#1f2937", "stroke-width": 2.2, "pointer-events": "none" }));
   visual.append(element("rect", { "data-support-part": "hatch", x: -22, y: baseY - 8, width: 44, height: 8, fill: "url(#workspace-support-hatch)", "pointer-events": "none" }));
   fragment.append(visual);
+  for (const [attribute, color, inset] of [["data-hover-outline", "#0f766e", 3], ["data-selection-outline", "#0759c7", 1]]) {
+    fragment.append(element("rect", { [attribute]: "true", x: -24 + inset, y: (roller ? -55 : -46) + inset, width: 48 - 2 * inset, height: (roller ? 42 : 33) - 2 * inset, rx: 3, fill: "none", stroke: color, "stroke-width": 2, transform, "pointer-events": "none" }));
+  }
   const hit = element("g", { transform, "data-symbol-hit": "true" });
   hit.append(element("rect", { x: -23, y: roller ? -54 : -45, width: 46, height: roller ? 39 : 30, fill: "transparent", "pointer-events": "all" }));
   fragment.append(hit);
@@ -58,6 +61,9 @@ export function renderLoad(load, target, unit, visualState = {}) {
     const tailX = target.x - dirX * 48 * unit; const tailY = target.y - dirY * 48 * unit;
     const baseX = target.x - dirX * 10 * unit; const baseY = target.y - dirY * 10 * unit;
     const normalX = -dirY; const normalY = dirX;
+    if (!visualState.preview) for (const [attribute, color, width] of [["data-hover-outline", "#0f766e", 7], ["data-selection-outline", "#0759c7", 10]]) {
+      fragment.append(element("line", { [attribute]: "true", x1: tailX, y1: tailY, x2: target.x, y2: target.y, stroke: color, "stroke-width": width * unit, "pointer-events": "none" }));
+    }
     const part = element("g", { "data-structural-symbol": "load", "data-load-component": axis, "pointer-events": "none" });
     part.append(element("line", { "data-load-stem": "true", x1: tailX, y1: tailY, x2: target.x, y2: target.y, stroke: "#b91c1c", "stroke-width": 2.5 * unit, "pointer-events": "none" }));
     part.append(element("polygon", { "data-load-arrowhead": "true", points: `${target.x},${target.y} ${baseX + normalX * 5 * unit},${baseY + normalY * 5 * unit} ${baseX - normalX * 5 * unit},${baseY - normalY * 5 * unit}`, fill: "#b91c1c", "pointer-events": "none" }));

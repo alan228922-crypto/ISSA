@@ -38,6 +38,10 @@ function nodeTarget(draft, target) {
 
 function updateUi(root, tool, memberStart, contextualInstruction = null) {
   root.dataset.uxTool = tool;
+  const supportPalette = root.querySelector("[data-support-palette]");
+  const loadPalette = root.querySelector("[data-load-palette]");
+  if (supportPalette) supportPalette.hidden = tool !== "SUPPORT";
+  if (loadPalette) loadPalette.hidden = tool !== "LOAD";
   for (const button of root.querySelectorAll("[data-workspace-tool]")) {
     const active = button.dataset.workspaceTool === tool;
     button.dataset.active = active ? "true" : "false"; button.setAttribute("aria-pressed", active ? "true" : "false");
@@ -93,6 +97,7 @@ function cadStatus(root, cad, resolution = null) {
 export function bindModelingInteractions({ root, svg, canvasController, showError, readOnly }) {
   if (readOnly) return Object.freeze({ getTool: () => "SELECT" });
   let tool = "SELECT"; let memberStart = null; let contextualInstruction = null; let lastCompletedTool = null; let commandState = { state: "SELECTING", fieldIndex: null };
+  let supportChoice = "PINNED";
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
   const commandInput = root.querySelector("[data-cad-command-input]");
   const dynamicOverlay = root.querySelector("[data-cad-dynamic-overlay]");
@@ -170,6 +175,10 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (dynamicOverlay) dynamicOverlay.hidden = nextTool === "SELECT" || cadState(current).dynamicInput === false;
   };
   for (const button of root.querySelectorAll("[data-workspace-tool]")) button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
+  for (const button of root.querySelectorAll("[data-support-choice]")) button.addEventListener("click", () => {
+    supportChoice = button.dataset.supportChoice;
+    for (const choice of root.querySelectorAll("[data-support-choice]")) choice.setAttribute("aria-pressed", String(choice === button));
+  });
   const orthoButton = root.querySelector("[data-cad-ortho]"); const snapButton = root.querySelector("[data-cad-snap]");
   const toggleCad = (field, button) => { const current = canvasController.getState(); const nextCad = Object.freeze({ ...cadState(current), [field]: !cadState(current)[field], trackingGuide: field === "tracking" ? null : cadState(current).trackingGuide }); canvasController.replaceState({ ...current, cad: nextCad }); button.setAttribute("aria-pressed", nextCad[field] ? "true" : "false"); if (field === "dynamicInput" && dynamicOverlay) dynamicOverlay.hidden = !nextCad.dynamicInput || tool === "SELECT"; cadStatus(root, nextCad); };
   orthoButton?.addEventListener("click", () => toggleCad("ortho", orthoButton)); snapButton?.addEventListener("click", () => toggleCad("gridSnap", snapButton));
@@ -255,7 +264,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     }
     if (tool === "SUPPORT") {
       const clientKey = nextKey(current.draft.supports, "support");
-      if (apply({ type: "CREATE_SUPPORT_AT_NODE", nodeClientKey: node.clientKey, support: { client_key: clientKey, support_type: "PINNED", restrained_axis: null } })) return { kind: "SUPPORT", clientKey };
+      const support = supportChoice === "PINNED" ? { support_type: "PINNED", restrained_axis: null } : { support_type: "ROLLER", restrained_axis: supportChoice.at(-1) };
+      if (apply({ type: "CREATE_SUPPORT_AT_NODE", nodeClientKey: node.clientKey, support: { client_key: clientKey, ...support } })) return { kind: "SUPPORT", clientKey };
     }
     if (tool === "LOAD") {
       const clientKey = nextKey(current.draft.node_loads, "load");

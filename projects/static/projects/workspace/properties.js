@@ -170,7 +170,7 @@ function appendSupportControls(root, selected, support, canvasController, draft,
   label.textContent = "支座类型";
   const select = document.createElement("select");
   select.dataset.propertySupportType = "";
-  for (const [value, text] of [["PINNED", "铰支座"], ["ROLLER_X", "滚动支座（限制 X）"], ["ROLLER_Y", "滚动支座（限制 Y）"]]) {
+  for (const [value, text] of [["PINNED", "铰支座"], ["ROLLER_X", "滚动支座（限制水平移动）"], ["ROLLER_Y", "滚动支座（限制竖向移动）"]]) {
     const option = document.createElement("option"); option.value = value; option.textContent = text; select.append(option);
   }
   select.value = supportValue(support);
@@ -185,7 +185,7 @@ function appendLoadControls(root, selected, load, canvasController, draft, label
   appendChoice(root, { text: "作用位置", value: load.target_connection_client_key, choices: draft.connections.map((item) => ({ id: item.client_key, name: labels.label("CONNECTION", item.client_key) })), dataName: "propertyLoadTarget", allowNull: true, onChange: (select) => {
     updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { target_connection_client_key: select.value || null } });
   } });
-  for (const [field, text, dataName] of [["fx_N", "Fx (N)", "propertyFx"], ["fy_N", "Fy (N)", "propertyFy"]]) {
+  for (const [field, text, dataName] of [["fx_N", "水平力 Fx (N)", "propertyFx"], ["fy_N", "竖向力 Fy (N)", "propertyFy"]]) {
     labeledInput(root, { text, value: load[field], type: "number", dataName, onChange: (input) => {
       const value = Number(input.value);
       if (input.value !== "" && Number.isFinite(value)) updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: value } });

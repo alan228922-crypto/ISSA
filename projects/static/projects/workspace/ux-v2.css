@@ -48,6 +48,17 @@
 .workspace-tool-list [data-workspace-tool] { display:flex; align-items:center; gap:7px; min-height:48px; padding:7px; border:1px solid var(--ux-line); border-radius:8px; background:#fff; color:var(--ux-ink); font-size:14px; font-weight:700; cursor:pointer; }
 .workspace-tool-list [data-workspace-tool][aria-pressed="true"] { background:#155eef; border-color:#155eef; color:#fff; }
 .workspace-tool-list [data-tool-icon] { display:inline-grid; place-items:center; width:22px; height:22px; font-size:19px; line-height:1; }
+.sketch-tool-palette { display:grid; gap:6px; margin-top:10px; padding:10px; border:1px solid var(--ux-line); border-radius:9px; background:#f8fafc; }
+.sketch-tool-palette[hidden] { display:none; }
+.sketch-tool-palette p { margin:0 0 3px; font-weight:750; font-size:13px; }
+.sketch-tool-palette small { color:var(--ux-muted); font-size:11px; line-height:1.25; }
+.sketch-tool-palette button { display:flex; align-items:center; gap:9px; width:100%; min-height:42px; padding:5px 7px; border:1px solid var(--ux-line); border-radius:7px; background:#fff; color:var(--ux-ink); text-align:left; font:inherit; font-size:12px; font-weight:650; cursor:pointer; }
+.sketch-tool-palette button[aria-pressed="true"] { border-color:var(--ux-blue); background:#eaf2ff; box-shadow:inset 3px 0 var(--ux-blue); }
+.sketch-support-icon { position:relative; flex:none; width:32px; height:29px; border-bottom:2px solid #334155; }
+.sketch-support-icon::before { content:""; position:absolute; left:6px; top:4px; width:20px; height:17px; background:#fff; border:2px solid #334155; clip-path:polygon(50% 0,100% 100%,0 100%); }
+.sketch-support-icon[data-icon-support^="roller"]::after { content:"○  ○"; position:absolute; left:4px; top:17px; width:28px; height:9px; color:#334155; font-size:11px; line-height:1; letter-spacing:-2px; }
+.sketch-support-icon[data-icon-support="roller-x"] { transform:rotate(-90deg); }
+.sketch-load-icon { display:inline-block; color:#b91c1c; font-size:19px; line-height:1; vertical-align:middle; }
 .workspace-member-properties { margin:16px 0; padding:12px; border:1px solid var(--ux-line); border-radius:9px; }
 #workspace-root[data-ux-selection="object"]:not([data-ux-tool="MEMBER"]) .workspace-member-properties { display:none; }
 .ux-material-link { display:inline-block; margin:8px 0; }

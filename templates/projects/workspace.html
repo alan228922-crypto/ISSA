@@ -36,6 +36,16 @@
             <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false"><span data-tool-icon aria-hidden="true">△</span>支座</button>
             <button type="button" data-workspace-tool="LOAD" aria-pressed="false"><span data-tool-icon aria-hidden="true">↓</span>荷载</button>
           </div>
+          <div class="sketch-tool-palette" data-support-palette hidden aria-label="选择支座形式">
+            <p>支座形式</p>
+            <button type="button" data-support-choice="PINNED" aria-pressed="true"><span class="sketch-support-icon" data-icon-support="pinned" aria-hidden="true"></span><span>铰支座</span></button>
+            <button type="button" data-support-choice="ROLLER_Y" aria-pressed="false"><span class="sketch-support-icon" data-icon-support="roller-y" aria-hidden="true"></span><span>滚动支座<br><small>限制竖向移动</small></span></button>
+            <button type="button" data-support-choice="ROLLER_X" aria-pressed="false"><span class="sketch-support-icon" data-icon-support="roller-x" aria-hidden="true"></span><span>滚动支座<br><small>限制水平移动</small></span></button>
+          </div>
+          <div class="sketch-tool-palette" data-load-palette hidden aria-label="集中力工具">
+            <p><span class="sketch-load-icon" aria-hidden="true">↓</span> 集中力</p>
+            <small>点击构件节点放置；在右侧输入水平力 Fx 和竖向力 Fy（N）。</small>
+          </div>
           <details class="ux-precision"><summary>精确绘制</summary>
           <label class="workspace-command">坐标命令
             <input type="text" data-cad-command-input inputmode="decimal" autocomplete="off" placeholder="1000,500 / @1000,0 / 1000&lt;30">
