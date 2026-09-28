@@ -8,9 +8,10 @@ const COLLECTIONS = {
 
 const UPDATE_FIELDS = {
   GEOMETRY_NODE: new Set(["x_mm", "y_mm", "label"]),
-  PHYSICAL_MEMBER: new Set(["material_id", "section_id", "label", "is_active"]),
-  SUPPORT: new Set(["support_type", "restrained_axis"]),
-  NODE_LOAD: new Set(["fx_N", "fy_N", "label"]),
+  PHYSICAL_MEMBER: new Set(["start_node_client_key", "end_node_client_key", "material_id", "section_id", "label", "is_active"]),
+  CONNECTION: new Set(["geometry_node_client_key", "participating_member_client_keys"]),
+  SUPPORT: new Set(["target_connection_client_key", "support_type", "restrained_axis"]),
+  NODE_LOAD: new Set(["target_connection_client_key", "fx_N", "fy_N", "label"]),
 };
 
 const FIELDS = {
@@ -97,7 +98,8 @@ function connectNode(draft, node) {
   if (!participants.length) return draft;
   const existing = draft.connections.find((connection) => connection.geometry_node_client_key === node.client_key);
   if (existing) {
-    const merged = [...new Set([...existing.participating_member_client_keys, ...participants])].sort();
+    const present = existing.participating_member_client_keys.filter((key) => key !== null);
+    const merged = [...existing.participating_member_client_keys, ...participants.filter((key) => !present.includes(key)).sort()];
     if (merged.length === existing.participating_member_client_keys.length) return draft;
     return { ...draft, connections: draft.connections.map((connection) => connection === existing ? { ...connection, participating_member_client_keys: merged } : connection) };
   }
@@ -116,7 +118,7 @@ export function resolveNodeConnection(draft, nodeClientKey) {
 
 function createMember(draft, member) {
   requireObject("PHYSICAL_MEMBER", member);
-  if (!nodes(draft, [member.start_node_client_key, member.end_node_client_key])) fail("EDITOR_REFERENCE_NOT_FOUND");
+  if (!nodes(draft, [member.start_node_client_key, member.end_node_client_key].filter((value) => value !== null))) fail("EDITOR_REFERENCE_NOT_FOUND");
   let next = add(draft, "PHYSICAL_MEMBER", member);
   for (const node of next.nodes) if (pointOnMember(next, node, member)) next = connectNode(next, node);
   return next;
@@ -125,15 +127,16 @@ function createMember(draft, member) {
 function createConnection(draft, connection) {
   requireObject("CONNECTION", connection);
   const keys = connection.participating_member_client_keys;
-  if (!key(connection.geometry_node_client_key) || !Array.isArray(keys) || keys.length === 0) fail("EDITOR_INVALID_ACTION");
-  if (!nodes(draft, [connection.geometry_node_client_key]) || !members(draft, keys)) fail("EDITOR_REFERENCE_NOT_FOUND");
-  if (new Set(keys).size !== keys.length || keys.some((value, index) => index > 0 && keys[index - 1] >= value)) fail("EDITOR_INVALID_ACTION");
+  if (!Array.isArray(keys) || keys.length === 0) fail("EDITOR_INVALID_ACTION");
+  const present = keys.filter((value) => value !== null);
+  if (!nodes(draft, connection.geometry_node_client_key === null ? [] : [connection.geometry_node_client_key]) || !members(draft, present)) fail("EDITOR_REFERENCE_NOT_FOUND");
+  if (new Set(present).size !== present.length || present.some((value, index) => index > 0 && present[index - 1] >= value)) fail("EDITOR_INVALID_ACTION");
   return add(draft, "CONNECTION", {...connection, participating_member_client_keys: [...keys]});
 }
 
 function createReferenced(draft, kind, value) {
   requireObject(kind, value);
-  if (!key(value.target_connection_client_key) || !has(draft.connections, value.target_connection_client_key)) fail("EDITOR_REFERENCE_NOT_FOUND");
+  if (value.target_connection_client_key !== null && (!key(value.target_connection_client_key) || !has(draft.connections, value.target_connection_client_key))) fail("EDITOR_REFERENCE_NOT_FOUND");
   return add(draft, kind, value);
 }
 
@@ -141,12 +144,24 @@ function update(draft, action) {
   if (!object(action.target) || !key(action.target.clientKey) || !object(action.changes)) fail("EDITOR_INVALID_ACTION");
   const {kind, clientKey} = action.target;
   if (!Object.hasOwn(COLLECTIONS, kind)) fail("EDITOR_INVALID_ACTION");
-  if (kind === "CONNECTION") fail("EDITOR_UPDATE_FIELD_NOT_ALLOWED");
   const allowed = UPDATE_FIELDS[kind];
   if (!allowed || Object.keys(action.changes).some((field) => !allowed.has(field))) fail("EDITOR_UPDATE_FIELD_NOT_ALLOWED");
   const [name, items] = collection(draft, kind);
   const index = items.findIndex((item) => item.client_key === clientKey);
   if (index < 0) fail("EDITOR_TARGET_NOT_FOUND");
+  for (const field of ["start_node_client_key", "end_node_client_key", "geometry_node_client_key", "target_connection_client_key"]) {
+    if (!Object.hasOwn(action.changes, field)) continue;
+    const value = action.changes[field];
+    const references = field === "target_connection_client_key" ? draft.connections : draft.nodes;
+    if (value !== null && (!key(value) || !has(references, value))) fail("EDITOR_REFERENCE_NOT_FOUND");
+  }
+  for (const field of ["material_id", "section_id"]) {
+    if (Object.hasOwn(action.changes, field) && action.changes[field] !== null && (!Number.isInteger(action.changes[field]) || action.changes[field] <= 0)) fail("EDITOR_INVALID_ACTION");
+  }
+  if (Object.hasOwn(action.changes, "participating_member_client_keys")) {
+    const slots = action.changes.participating_member_client_keys;
+    if (!Array.isArray(slots) || slots.some((value) => value !== null && (!key(value) || !has(draft.physical_members, value))) || new Set(slots.filter((value) => value !== null)).size !== slots.filter((value) => value !== null).length) fail("EDITOR_REFERENCE_NOT_FOUND");
+  }
   const next = {...draft, [name]: items.map((item, itemIndex) => itemIndex === index ? {...item, ...action.changes} : item)};
   if (kind === "GEOMETRY_NODE" && (Object.hasOwn(action.changes, "x_mm") || Object.hasOwn(action.changes, "y_mm"))) {
     const moved = next.nodes[index];
@@ -155,35 +170,21 @@ function update(draft, action) {
     if (affectedMembers.some((member) => {
       const start = next.nodes.find((node) => node.client_key === member.start_node_client_key);
       const end = next.nodes.find((node) => node.client_key === member.end_node_client_key);
-      return !start || !end || Math.hypot(end.x_mm - start.x_mm, end.y_mm - start.y_mm) <= 1e-9;
+      return start && end && Math.hypot(end.x_mm - start.x_mm, end.y_mm - start.y_mm) <= 1e-9;
     })) fail("EDITOR_NODE_MOVE_ZERO_LENGTH");
     for (const connection of next.connections) {
       const affected = connection.geometry_node_client_key === clientKey || connection.participating_member_client_keys.some((memberKey) => affectedMembers.some((member) => member.client_key === memberKey));
       if (!affected) continue;
       const node = next.nodes.find((item) => item.client_key === connection.geometry_node_client_key);
-      if (!node || connection.participating_member_client_keys.some((memberKey) => {
+      if (!node) continue;
+      if (connection.participating_member_client_keys.some((memberKey) => {
+        if (memberKey === null) return false;
         const member = next.physical_members.find((item) => item.client_key === memberKey);
-        return !member || !pointOnMember(next, node, member);
+        return member && next.nodes.some((item) => item.client_key === member.start_node_client_key) && next.nodes.some((item) => item.client_key === member.end_node_client_key) && !pointOnMember(next, node, member);
       })) fail("EDITOR_NODE_MOVE_BREAKS_CONNECTION");
     }
   }
   return next;
-}
-
-function referenced(draft, kind, clientKey) {
-  if (kind === "GEOMETRY_NODE") return draft.physical_members.some((member) => member.start_node_client_key === clientKey || member.end_node_client_key === clientKey) || draft.connections.some((connection) => connection.geometry_node_client_key === clientKey);
-  if (kind === "PHYSICAL_MEMBER") return draft.connections.some((connection) => connection.participating_member_client_keys.includes(clientKey));
-  if (kind === "CONNECTION") return draft.supports.some((support) => support.target_connection_client_key === clientKey) || draft.node_loads.some((load) => load.target_connection_client_key === clientKey);
-  return false;
-}
-
-function remove(draft, action) {
-  if (!object(action.target) || !key(action.target.clientKey)) fail("EDITOR_INVALID_ACTION");
-  const {kind, clientKey} = action.target;
-  const [name, items] = collection(draft, kind);
-  if (!has(items, clientKey)) fail("EDITOR_TARGET_NOT_FOUND");
-  if (referenced(draft, kind, clientKey)) fail("EDITOR_DEPENDENCY_CONFLICT");
-  return {...draft, [name]: items.filter((item) => item.client_key !== clientKey)};
 }
 
 function deleteObjectsAtomically(draft, targets) {
@@ -196,17 +197,20 @@ function deleteObjectsAtomically(draft, targets) {
     removed[target.kind].add(target.clientKey);
   }
   const nodes = draft.nodes.filter((item) => !removed.GEOMETRY_NODE.has(item.client_key));
-  const physical_members = draft.physical_members.filter((item) => !removed.PHYSICAL_MEMBER.has(item.client_key));
-  if (physical_members.some((member) => !nodes.some((node) => node.client_key === member.start_node_client_key) || !nodes.some((node) => node.client_key === member.end_node_client_key))) fail("EDITOR_DEPENDENCY_CONFLICT");
-  const survivingMemberKeys = new Set(physical_members.map((member) => member.client_key));
-  if (draft.connections.some((item) => removed.CONNECTION.has(item.client_key) && item.participating_member_client_keys.some((memberKey) => survivingMemberKeys.has(memberKey)))) fail("EDITOR_DEPENDENCY_CONFLICT");
-  const connections = draft.connections.filter((item) => !removed.CONNECTION.has(item.client_key));
-  if (connections.some((item) => item.participating_member_client_keys.some((memberKey) => !survivingMemberKeys.has(memberKey)))) fail("EDITOR_DEPENDENCY_CONFLICT");
-  if (connections.some((connection) => !nodes.some((node) => node.client_key === connection.geometry_node_client_key))) fail("EDITOR_DEPENDENCY_CONFLICT");
-  const connectionKeys = new Set(connections.map((item) => item.client_key));
-  const supports = draft.supports.filter((item) => !removed.SUPPORT.has(item.client_key));
-  const node_loads = draft.node_loads.filter((item) => !removed.NODE_LOAD.has(item.client_key));
-  if ([...supports, ...node_loads].some((item) => !connectionKeys.has(item.target_connection_client_key))) fail("EDITOR_DEPENDENCY_CONFLICT");
+  const physical_members = draft.physical_members.filter((item) => !removed.PHYSICAL_MEMBER.has(item.client_key)).map((member) => ({...member,
+    start_node_client_key: removed.GEOMETRY_NODE.has(member.start_node_client_key) ? null : member.start_node_client_key,
+    end_node_client_key: removed.GEOMETRY_NODE.has(member.end_node_client_key) ? null : member.end_node_client_key,
+  }));
+  const connections = draft.connections.filter((item) => !removed.CONNECTION.has(item.client_key)).map((connection) => ({...connection,
+    geometry_node_client_key: removed.GEOMETRY_NODE.has(connection.geometry_node_client_key) ? null : connection.geometry_node_client_key,
+    participating_member_client_keys: connection.participating_member_client_keys.map((key) => removed.PHYSICAL_MEMBER.has(key) ? null : key),
+  }));
+  const supports = draft.supports.filter((item) => !removed.SUPPORT.has(item.client_key)).map((support) => ({...support,
+    target_connection_client_key: removed.CONNECTION.has(support.target_connection_client_key) ? null : support.target_connection_client_key,
+  }));
+  const node_loads = draft.node_loads.filter((item) => !removed.NODE_LOAD.has(item.client_key)).map((load) => ({...load,
+    target_connection_client_key: removed.CONNECTION.has(load.target_connection_client_key) ? null : load.target_connection_client_key,
+  }));
   return { ...draft, nodes, physical_members, connections, supports, node_loads };
 }
 

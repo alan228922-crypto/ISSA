@@ -40,6 +40,7 @@ MESSAGES = {
     'PROJECT_READ_DENIED': '您没有查看该项目的权限。',
     'PROJECT_NOT_FOUND': '未找到指定的项目或分析记录。',
     'INVALID_DRAFT': '模型数据未通过验证，请检查输入。',
+    'INCOMPLETE_DRAFT': '当前草稿尚未完整，请先运行模型检查并补齐未指定的对象。',
     'INVALID_SECTION_DEFINITION': '截面定义格式不正确。',
     'OVERLAP_UNSUPPORTED': '当前不支持包含重叠区域的组合截面。',
     'SOLVER_FAILED': '分析计算未能完成，请检查模型后重试。',

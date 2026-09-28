@@ -1325,6 +1325,12 @@ Immutable ModelRevision
 
 不要每次 mouse drag 就建立 revision。
 
+### D-DRAFT-INDEPENDENCE-01 — Editable Draft independence
+
+【Confirmed】編輯層寬鬆，分析層嚴格；Draft Validity ≠ Analysis Validity。學生可單獨刪除 Node、Member、Connection、Support、Load、Material、Section，不能以依賴關係阻止，也不能連帶刪除其他草稿物件。存活物件的失效引用以 nullable relation / `SET_NULL` 表示；Connection 參與構件由可為空的 explicit participation slot 保留「待重新指定」意圖，不以消失的 M2M row 冒充原本無參與者。
+
+`physical-draft-v1` 可保存、重載、撤銷及重新指定缺少端點、作用位置、材料、截面或參與構件的草稿。Model Check 以簡體中文指出具體缺項；Analyze 與 canonical `physical-snapshot-v1` 在建立 ModelRevision、AnalysisRun 或呼叫 Solver 前拒絕不完整草稿。共享 Material / Section 刪除只更新當前 editable Draft，在同一交易內清空引用、讓每個受影響 Project 的 `draft_version` 增加一次並記錄影響；既有 ModelRevision、歷史分析與 Report 不變。
+
 ---
 
 ## 25.3 Revision Snapshot

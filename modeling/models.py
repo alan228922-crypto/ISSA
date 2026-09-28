@@ -32,10 +32,10 @@ class PhysicalMember(models.Model):
     # PhysicalMember 保存學生設計中的完整構件，之後才會被轉成 Solver 使用的分析構件。
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="physical_members")
     client_key = models.CharField(max_length=128)
-    start_geometry_node = models.ForeignKey(GeometryNode, on_delete=models.CASCADE, related_name="starting_physical_members")
-    end_geometry_node = models.ForeignKey(GeometryNode, on_delete=models.CASCADE, related_name="ending_physical_members")
-    material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name="physical_members")
-    section = models.ForeignKey(Section, on_delete=models.PROTECT, related_name="physical_members")
+    start_geometry_node = models.ForeignKey(GeometryNode, on_delete=models.SET_NULL, null=True, blank=True, related_name="starting_physical_members")
+    end_geometry_node = models.ForeignKey(GeometryNode, on_delete=models.SET_NULL, null=True, blank=True, related_name="ending_physical_members")
+    material = models.ForeignKey(Material, on_delete=models.SET_NULL, null=True, blank=True, related_name="physical_members")
+    section = models.ForeignKey(Section, on_delete=models.SET_NULL, null=True, blank=True, related_name="physical_members")
     label = models.CharField(max_length=200, blank=True)
     is_active = models.BooleanField(default=True)
 
@@ -65,8 +65,8 @@ class Connection(models.Model):
     # Connection 是明確的連接點；兩個位置看起來接近，不代表程式會自動把它們連在一起。
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="connections")
     client_key = models.CharField(max_length=128)
-    geometry_node = models.ForeignKey(GeometryNode, on_delete=models.CASCADE, related_name="connections")
-    participating_members = models.ManyToManyField(PhysicalMember, related_name="connections", blank=True)
+    geometry_node = models.ForeignKey(GeometryNode, on_delete=models.SET_NULL, null=True, blank=True, related_name="connections")
+    participating_members = models.ManyToManyField(PhysicalMember, through="ConnectionParticipation", related_name="connections", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -78,6 +78,23 @@ class Connection(models.Model):
             raise ValidationError({"geometry_node": "连接节点必须属于同一项目。"})
 
 
+class ConnectionParticipation(models.Model):
+    """One intended participation; a NULL member is a rebindable gap."""
+
+    connection = models.ForeignKey(Connection, on_delete=models.CASCADE, related_name="participation_slots")
+    member = models.ForeignKey(PhysicalMember, on_delete=models.SET_NULL, null=True, blank=True, related_name="participation_slots")
+    position = models.PositiveIntegerField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["connection", "position"], name="unique_connection_participation_position")]
+        ordering = ["position"]
+
+    def clean(self):
+        super().clean()
+        if self.member_id and self.connection_id and self.member.project_id != self.connection.project_id:
+            raise ValidationError({"member": "参与构件必须属于同一项目。"})
+
+
 class Support(models.Model):
     class Type(models.TextChoices):
         PINNED = "PINNED", "铰支座"
@@ -85,7 +102,7 @@ class Support(models.Model):
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="supports")
     client_key = models.CharField(max_length=128)
-    target_connection = models.ForeignKey(Connection, on_delete=models.CASCADE, related_name="supports")
+    target_connection = models.ForeignKey(Connection, on_delete=models.SET_NULL, null=True, blank=True, related_name="supports")
     support_type = models.CharField(max_length=16, choices=Type.choices)
     restrained_axis = models.CharField(max_length=1, null=True, blank=True)
 
@@ -111,7 +128,7 @@ class NodeLoad(models.Model):
     # 荷載必須放在 Connection 上，這樣分析時才能知道力量作用在哪個節點。
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="node_loads")
     client_key = models.CharField(max_length=128)
-    target_connection = models.ForeignKey(Connection, on_delete=models.CASCADE, related_name="node_loads")
+    target_connection = models.ForeignKey(Connection, on_delete=models.SET_NULL, null=True, blank=True, related_name="node_loads")
     fx_N = models.FloatField()
     fy_N = models.FloatField()
     label = models.CharField(max_length=200, blank=True)

@@ -5,8 +5,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from projects.models import Project
 
 from .forms import CompositeComponentFormSet, CompositeSectionForm, MaterialForm, RectangleSectionForm
-from .models import Material, Section
-from .services import SectionServiceError, create_section, update_section
+from .models import Material, Section, Strip
+from .services import SectionServiceError, create_section, delete_resource, rebind_strip_material, update_section
 
 
 def _owned_project(request, project_id):
@@ -30,6 +30,8 @@ def index(request, project_id):
         "project": project,
         "materials": Material.objects.filter(owner_user=request.user).order_by("name", "id"),
         "sections": Section.objects.filter(owner_user=request.user).order_by("name", "id"),
+        "strips": Strip.objects.filter(owner_user=request.user).select_related("material").order_by("name", "id"),
+        "delete_feedback": request.session.pop("resource_delete_feedback", None),
     })
 
 
@@ -54,6 +56,59 @@ def material_edit(request, project_id, material_id):
         form.save()
         return redirect("materials:index", project_id=project.id)
     return render(request, "materials/material_form.html", {"project": project, "form": form, "editing": True})
+
+
+def _delete_page(request, project, resource):
+    from modeling.models import PhysicalMember
+    from .models import Strip
+
+    if request.method == "POST":
+        receipt = delete_resource(actor=request.user, resource=resource)
+        request.session["resource_delete_feedback"] = (
+            f"已删除{resource.name}。{receipt.object_counts_json['members']} 个构件"
+            f"和 {receipt.object_counts_json['strips']} 个条材需要重新指定；这些对象不会被删除。"
+        )
+        return redirect("materials:index", project_id=project.id)
+    return render(request, "materials/delete_confirm.html", {
+        "project": project,
+        "resource": resource,
+        "resource_kind": "材料" if isinstance(resource, Material) else "截面",
+        "affected_member_count": PhysicalMember.objects.filter(**{"material" if isinstance(resource, Material) else "section": resource}).count(),
+        "affected_strip_count": Strip.objects.filter(material=resource).count() if isinstance(resource, Material) else 0,
+    })
+
+
+@login_required
+def material_delete(request, project_id, material_id):
+    project = _owned_project(request, project_id)
+    material = get_object_or_404(Material, pk=material_id, owner_user=request.user)
+    return _delete_page(request, project, material)
+
+
+@login_required
+def section_delete(request, project_id, section_id):
+    project = _owned_project(request, project_id)
+    section = get_object_or_404(Section, pk=section_id, owner_user=request.user)
+    return _delete_page(request, project, section)
+
+
+@login_required
+def strip_material(request, project_id, strip_id):
+    project = _owned_project(request, project_id)
+    strip = get_object_or_404(Strip, pk=strip_id, owner_user=request.user)
+    error = None
+    if request.method == "POST":
+        try:
+            rebind_strip_material(actor=request.user, strip=strip, material_id=request.POST.get("material_id") or None)
+        except SectionServiceError:
+            error = "请选择自己的材料。"
+        else:
+            return redirect("materials:index", project_id=project.id)
+    return render(request, "materials/strip_material.html", {
+        "project": project, "strip": strip,
+        "materials": Material.objects.filter(owner_user=request.user).order_by("name", "id"),
+        "error": error,
+    })
 
 
 @login_required

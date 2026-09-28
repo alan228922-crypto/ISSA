@@ -22,7 +22,7 @@ def _draft(project):
     )
     connections = list(
         Connection.objects.filter(project=project)
-        .prefetch_related("participating_members")
+        .prefetch_related("participation_slots__member")
         .order_by("client_key")
     )
     return {
@@ -35,8 +35,8 @@ def _draft(project):
         "physical_members": [
             {
                 "client_key": member.client_key,
-                "start_node_client_key": member.start_geometry_node.client_key,
-                "end_node_client_key": member.end_geometry_node.client_key,
+                "start_node_client_key": member.start_geometry_node.client_key if member.start_geometry_node_id else None,
+                "end_node_client_key": member.end_geometry_node.client_key if member.end_geometry_node_id else None,
                 "material_id": member.material_id,
                 "section_id": member.section_id,
                 "label": member.label,
@@ -47,17 +47,18 @@ def _draft(project):
         "connections": [
             {
                 "client_key": connection.client_key,
-                "geometry_node_client_key": connection.geometry_node.client_key,
-                "participating_member_client_keys": list(
-                    connection.participating_members.order_by("client_key").values_list("client_key", flat=True)
-                ),
+                "geometry_node_client_key": connection.geometry_node.client_key if connection.geometry_node_id else None,
+                "participating_member_client_keys": [
+                    slot.member.client_key if slot.member_id else None
+                    for slot in connection.participation_slots.all()
+                ],
             }
             for connection in connections
         ],
         "supports": [
             {
                 "client_key": support.client_key,
-                "target_connection_client_key": support.target_connection.client_key,
+                "target_connection_client_key": support.target_connection.client_key if support.target_connection_id else None,
                 "support_type": support.support_type,
                 "restrained_axis": support.restrained_axis,
             }
@@ -66,7 +67,7 @@ def _draft(project):
         "node_loads": [
             {
                 "client_key": load.client_key,
-                "target_connection_client_key": load.target_connection.client_key,
+                "target_connection_client_key": load.target_connection.client_key if load.target_connection_id else None,
                 "fx_N": load.fx_N,
                 "fy_N": load.fy_N,
                 "label": load.label,

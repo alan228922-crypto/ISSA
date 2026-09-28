@@ -7,6 +7,134 @@ from tests.application.test_physical_draft import context, valid_payload
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_editor_independent_delete_preserves_gaps_and_undo_restores_identity(context, workspace_page):
+    owner, project, material, section = context
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const {applyEditorAction} = await import('/static/projects/workspace/editor.js');
+      const {applyWorkspaceEditorAction, undoWorkspaceEdit} = await import('/static/projects/workspace/state.js');
+      const draft={schema_version:'physical-draft-v1',version:1,nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:''},{client_key:'n2',x_mm:100,y_mm:0,label:''}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'',is_active:true}],connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']}],supports:[{client_key:'s1',target_connection_client_key:'c1',support_type:'PINNED',restrained_axis:null}],node_loads:[{client_key:'l1',target_connection_client_key:'c1',fx_N:0,fy_N:-1,label:''}]};
+      const deletedNode=applyEditorAction(draft,{type:'DELETE_OBJECT',target:{kind:'GEOMETRY_NODE',clientKey:'n1'}});
+      const deletedMember=applyEditorAction(draft,{type:'DELETE_OBJECT',target:{kind:'PHYSICAL_MEMBER',clientKey:'m1'}});
+      const deletedConnection=applyEditorAction(draft,{type:'DELETE_OBJECT',target:{kind:'CONNECTION',clientKey:'c1'}});
+      const rebound=applyEditorAction(deletedNode,{type:'UPDATE_OBJECT',target:{kind:'PHYSICAL_MEMBER',clientKey:'m1'},changes:{start_node_client_key:'n2'}});
+      const movedIncomplete=applyEditorAction(deletedNode,{type:'UPDATE_OBJECT',target:{kind:'GEOMETRY_NODE',clientKey:'n2'},changes:{x_mm:120}});
+      const state={draft,draftVersion:1,readOnly:false};
+      const undone=undoWorkspaceEdit(applyWorkspaceEditorAction(state,{type:'DELETE_OBJECT',target:{kind:'GEOMETRY_NODE',clientKey:'n1'}}));
+      return {node:{members:deletedNode.physical_members.length,start:deletedNode.physical_members[0].start_node_client_key,connectionNode:deletedNode.connections[0].geometry_node_client_key},member:{nodes:deletedMember.nodes.length,slots:deletedMember.connections[0].participating_member_client_keys},connection:{members:deletedConnection.physical_members.length,support:deletedConnection.supports[0].target_connection_client_key,load:deletedConnection.node_loads[0].target_connection_client_key},rebound:rebound.physical_members[0].start_node_client_key,movedIncomplete:movedIncomplete.nodes.find(node=>node.client_key==='n2').x_mm,undo:JSON.stringify(undone.draft)===JSON.stringify(draft),original:JSON.stringify(draft).includes('"start_node_client_key":"n1"')};
+    }""")
+    assert result == {
+        'node': {'members': 1, 'start': None, 'connectionNode': None},
+        'member': {'nodes': 2, 'slots': [None]},
+        'connection': {'members': 1, 'support': None, 'load': None},
+        'rebound': 'n2', 'movedIncomplete': 120, 'undo': True, 'original': True,
+    }
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_editor_can_create_incomplete_objects_without_inventing_references(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {applyEditorAction}=await import('/static/projects/workspace/editor.js');
+      const base={schema_version:'physical-draft-v1',version:0,nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:''}],physical_members:[],connections:[],supports:[],node_loads:[]};
+      const member=applyEditorAction(base,{type:'CREATE_MEMBER',member:{client_key:'m1',start_node_client_key:'n1',end_node_client_key:null,material_id:null,section_id:null,label:'',is_active:true}});
+      const connection=applyEditorAction(member,{type:'CREATE_CONNECTION',connection:{client_key:'c1',geometry_node_client_key:null,participating_member_client_keys:[null]}});
+      const support=applyEditorAction(connection,{type:'CREATE_SUPPORT',support:{client_key:'s1',target_connection_client_key:null,support_type:'PINNED',restrained_axis:null}});
+      const load=applyEditorAction(support,{type:'CREATE_NODE_LOAD',nodeLoad:{client_key:'l1',target_connection_client_key:null,fx_N:0,fy_N:-1,label:''}});
+      return {member:load.physical_members[0],connection:load.connections[0],support:load.supports[0],load:load.node_loads[0],baseUnchanged:base.physical_members.length===0};
+    }""")
+    assert result['member']['end_node_client_key'] is None
+    assert result['connection']['participating_member_client_keys'] == [None]
+    assert result['support']['target_connection_client_key'] is None
+    assert result['load']['target_connection_client_key'] is None
+    assert result['baseUnchanged'] is True
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_incomplete_objects_are_selectable_and_rebindable_from_properties(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['physical_members'][0].update(start_node_client_key=None, material_id=None, section_id=None)
+    draft['connections'][0].update(geometry_node_client_key=None, participating_member_client_keys=[None])
+    draft['supports'][0]['target_connection_client_key'] = None
+    draft['node_loads'][0]['target_connection_client_key'] = None
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+
+    page.locator('[data-draft-object-kind="PHYSICAL_MEMBER"][data-draft-object-key="m1"]').click()
+    assert page.locator('[data-property-start-node]').input_value() == ''
+    assert page.locator('[data-property-material]').input_value() == ''
+    page.locator('[data-property-start-node]').select_option('n1')
+    page.locator('[data-property-material]').select_option(str(material.id))
+    page.locator('[data-property-section]').select_option(str(section.id))
+
+    page.locator('[data-draft-object-kind="CONNECTION"][data-draft-object-key="c1"]').click()
+    page.locator('[data-property-connection-node]').select_option('n1')
+    page.locator('[data-property-participant="0"]').select_option('m1')
+    page.locator('[data-draft-object-kind="SUPPORT"][data-draft-object-key="s1"]').click()
+    page.locator('[data-property-support-target]').select_option('c1')
+    page.locator('[data-draft-object-kind="NODE_LOAD"][data-draft-object-key="l1"]').click()
+    page.locator('[data-property-load-target]').select_option('c1')
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    saved = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    assert saved['physical_members'][0]['start_node_client_key'] == 'n1'
+    assert saved['physical_members'][0]['material_id'] == material.id
+    assert saved['connections'][0]['participating_member_client_keys'] == ['m1']
+    assert saved['supports'][0]['target_connection_client_key'] == 'c1'
+    assert saved['node_loads'][0]['target_connection_client_key'] == 'c1'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_rebinding_multiple_participation_slots_keeps_earlier_choice(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['physical_members'].append({**draft['physical_members'][0], 'client_key': 'm2'})
+    draft['connections'][0]['participating_member_client_keys'] = [None, None]
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-draft-object-kind="CONNECTION"][data-draft-object-key="c1"]').click()
+    page.locator('[data-property-participant="0"]').select_option('m1')
+    page.locator('[data-property-participant="1"]').select_option('m1')
+    assert page.locator('[data-property-participant="1"]').input_value() == ''
+    assert '已在此连接中参与' in page.locator('#workspace-error').inner_text()
+    page.locator('[data-property-participant="1"]').select_option('m2')
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    saved = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    assert saved['connections'][0]['participating_member_client_keys'] == ['m1', 'm2']
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_property_delete_confirms_impact_then_keeps_dependent_draft(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-draft-object-kind="GEOMETRY_NODE"][data-draft-object-key="n1"]').click()
+    messages = []
+    page.on('dialog', lambda dialog: (messages.append(dialog.message), dialog.accept()))
+    page.locator('[data-property-delete]').click()
+    assert messages and '4 个其他对象' in messages[0] and '不会被删除' in messages[0]
+    assert page.locator('[data-draft-object-kind="PHYSICAL_MEMBER"][data-draft-object-key="m1"]').count() == 1
+    assert '未指定' in page.locator('[data-draft-object-kind="SUPPORT"][data-draft-object-key="s1"]').inner_text()
+    assert '未指定' in page.locator('[data-draft-object-kind="NODE_LOAD"][data-draft-object-key="l1"]').inner_text()
+    assert page.locator('[data-delete-feedback]').count() == 1
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    saved = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    assert saved['physical_members'][0]['start_node_client_key'] is None
+    assert saved['connections'][0]['geometry_node_client_key'] is None
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_member_endpoints_become_truss_joints_without_connection_tool(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
@@ -157,25 +285,25 @@ def test_marquee_drag_selects_without_creating_node(context, workspace_page):
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_batch_delete_requires_explicit_selection_of_dependent_joints(context, workspace_page):
+def test_batch_delete_preserves_unselected_joints_as_incomplete(context, workspace_page):
     page = workspace_page(user=context[0], project=context[1])
     result = page.evaluate("""async () => {
       const {applyEditorAction} = await import('/static/projects/workspace/editor.js');
       const nodes=['n1','n2','n3'].map((client_key,i)=>({client_key,x_mm:i*100,y_mm:0,label:''}));
       const member=(client_key,start,end)=>({client_key,start_node_client_key:start,end_node_client_key:end,material_id:1,section_id:1,label:'',is_active:true});
       const draft={nodes,physical_members:[member('m1','n1','n2'),member('m2','n2','n3')],connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']},{client_key:'c2',geometry_node_client_key:'n2',participating_member_client_keys:['m1','m2']},{client_key:'c3',geometry_node_client_key:'n3',participating_member_client_keys:['m2']}],supports:[],node_loads:[]};
-      let conflict=null;try{applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]})}catch(error){conflict=error.code}
+      const single=applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]});
       const next=applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'},{kind:'PHYSICAL_MEMBER',clientKey:'m2'},{kind:'CONNECTION',clientKey:'c1'},{kind:'CONNECTION',clientKey:'c2'},{kind:'CONNECTION',clientKey:'c3'}]});
       const loaded={...draft,supports:[{client_key:'s1',target_connection_client_key:'c1',support_type:'PINNED',restrained_axis:null}]};
-      let loadedConflict=null;try{applyEditorAction(loaded,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]})}catch(error){loadedConflict=error.code}
-      return {members:next.physical_members.length,joints:next.connections.length,nodes:next.nodes.length,conflict,loadedConflict,original:draft.physical_members.length};
+      const loadedAfter=applyEditorAction(loaded,{type:'DELETE_OBJECTS',targets:[{kind:'PHYSICAL_MEMBER',clientKey:'m1'}]});
+      return {members:next.physical_members.length,joints:next.connections.length,nodes:next.nodes.length,singleJoint:single.connections[0].participating_member_client_keys,loadedSupport:loadedAfter.supports[0].target_connection_client_key,original:draft.physical_members.length};
     }""")
-    assert result == {'members':0,'joints':0,'nodes':3,'conflict':'EDITOR_DEPENDENCY_CONFLICT','loadedConflict':'EDITOR_DEPENDENCY_CONFLICT','original':2}
+    assert result == {'members':0,'joints':0,'nodes':3,'singleJoint':[None],'loadedSupport':'c1','original':2}
 
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_cad_delete_rejects_unselected_connection_instead_of_cascading(context, workspace_page):
+def test_cad_delete_keeps_unselected_connection_as_incomplete(context, workspace_page):
     owner, project, material, section = context
     draft = valid_payload(material, section)
     draft['supports'] = []
@@ -183,11 +311,12 @@ def test_cad_delete_rejects_unselected_connection_instead_of_cascading(context, 
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.locator('[data-client-key="m1"] line').click(force=True)
+    page.on('dialog', lambda dialog: dialog.accept())
     page.keyboard.press('Delete')
-    assert page.locator('[data-client-key="m1"]').count() == 1
+    assert page.locator('[data-client-key="m1"]').count() == 0
     assert page.locator('[data-client-key="c1"]').count() == 1
-    assert '依赖' in page.locator('#workspace-error').inner_text()
-    assert page.locator('#workspace-save-status').inner_text() == '未保存修改：无'
+    assert '需要重新指定' in page.locator('[data-delete-feedback]').inner_text()
+    assert page.locator('#workspace-save-status').inner_text() == '未保存修改：有'
 
 
 @pytest.mark.browser
@@ -924,15 +1053,15 @@ def test_direct_joint_click_selects_node_and_shift_click_toggles(context, worksp
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_explicit_connection_delete_rejects_surviving_member(context, workspace_page):
+def test_explicit_connection_delete_preserves_surviving_member(context, workspace_page):
     page = workspace_page(user=context[0], project=context[1])
     result = page.evaluate("""async () => {
       const {applyEditorAction} = await import('/static/projects/workspace/editor.js');
       const draft={nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:''},{client_key:'n2',x_mm:100,y_mm:0,label:''}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2',material_id:1,section_id:1,label:'',is_active:true}],connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']}],supports:[],node_loads:[]};
-      try{applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'CONNECTION',clientKey:'c1'}]})}catch(error){return {code:error.code,unchanged:draft.connections.length===1}}
-      return {code:null,unchanged:false};
+      const next=applyEditorAction(draft,{type:'DELETE_OBJECTS',targets:[{kind:'CONNECTION',clientKey:'c1'}]});
+      return {connections:next.connections.length,members:next.physical_members.length,original:draft.connections.length};
     }""")
-    assert result == {'code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True}
+    assert result == {'connections':0,'members':1,'original':1}
 
 
 @pytest.mark.browser
@@ -1330,8 +1459,9 @@ def test_property_and_delete_controls_edit_persist_and_block_dependencies(contex
     page.locator('[data-client-key="c1"]').focus()
     page.keyboard.press("Enter")
     assert page.locator("[data-property-x]").input_value() == "0"
+    page.on('dialog', lambda dialog: dialog.dismiss())
     page.locator("[data-property-delete]").click()
-    assert "依赖" in page.locator("#workspace-error").text_content()
+    assert page.locator("#workspace-error").text_content() == ""
     assert page.locator('[data-client-key="c1"]').count() == 1
 
     page.locator('[data-workspace-tool="NODE"]').click()
@@ -1496,7 +1626,7 @@ def test_editor_mutations_are_immutable(context, workspace_page):
         'malformed': {'name':'EditorActionError','code':'EDITOR_INVALID_ACTION','unchanged':True},
         'missing': {'name':'EditorActionError','code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
         'forbidden': {'name':'EditorActionError','code':'EDITOR_UPDATE_FIELD_NOT_ALLOWED','unchanged':True},
-        'dependency': {'name':'EditorActionError','code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True},
+        'dependency': None,
     }
 
 
@@ -1531,8 +1661,8 @@ def test_editor_enforces_full_reference_update_and_delete_matrix(context, worksp
         'missingConnection': {'code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
         'missingSupport': {'code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
         'missingLoad': {'code':'EDITOR_REFERENCE_NOT_FOUND','unchanged':True},
-        'nodeDependency': {'code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True},
-        'connectionDependency': {'code':'EDITOR_DEPENDENCY_CONFLICT','unchanged':True},
+        'nodeDependency': None,
+        'connectionDependency': None,
         'unknownKind': {'code':'EDITOR_INVALID_ACTION','unchanged':True},
     }
 
@@ -1742,10 +1872,14 @@ def test_workspace_modeling_tools_do_not_create_connection_at_crossing(context, 
 def test_workspace_modeling_tools_are_unavailable_for_read_only_viewer(context, workspace_page):
     from competitions.models import EventMembership
 
-    owner, project, _, _ = context
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     viewer = owner.__class__.objects.create_user(username='workspace_viewer', password='pass', role='MANAGER')
     EventMembership.objects.create(user=viewer, event=project.event, membership_type=EventMembership.Type.MANAGER)
     page = workspace_page(user=viewer, project=project)
+    page.locator('[data-draft-object-kind="CONNECTION"][data-draft-object-key="c1"]').click()
+    assert page.locator('[data-property-connection-node]').count() == 0
+    assert page.locator('[data-property-participant]').count() == 0
     assert page.locator('[data-workspace-tool]').count() == 0
     assert page.locator('#workspace-save').is_disabled()
     canvas = page.locator('#workspace-canvas')
@@ -2461,18 +2595,18 @@ def test_beginner_error_uses_what_why_next_and_collapsed_technical_detail(contex
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
-    page.locator('[data-client-key="c1"]').focus()
-    page.keyboard.press("Enter")
-    page.locator("[data-property-delete]").click()
+    page.locator('[data-client-key="n2"] circle').click(force=True)
+    page.locator('[data-property-x]').fill('0')
+    page.locator('[data-property-x]').press('Tab')
 
     error = page.locator("#workspace-error")
     assert error.locator("[data-error-what]").text_content()
     assert error.locator("[data-error-why]").text_content()
-    assert "请先" in error.locator("[data-error-next]").text_content()
+    assert "下一步" in error.locator("[data-error-next]").text_content()
     technical = error.locator("details[data-error-technical]")
     assert technical.get_attribute("open") is None
-    assert "EDITOR_DEPENDENCY_CONFLICT" in technical.text_content()
-    assert "EDITOR_DEPENDENCY_CONFLICT" not in error.locator("[data-error-what]").text_content()
+    assert "EDITOR_NODE_MOVE_ZERO_LENGTH" in technical.text_content()
+    assert "EDITOR_NODE_MOVE_ZERO_LENGTH" not in error.locator("[data-error-what]").text_content()
 
 
 @pytest.mark.browser

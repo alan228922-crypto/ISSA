@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
-from tests.application.test_physical_draft import context
+from tests.application.test_physical_draft import context, valid_payload
 
 
 @pytest.mark.django_db
@@ -23,6 +23,66 @@ def test_material_pages_require_login_and_owner_scope(context, client):
     ).status_code == 404
     assert Material.objects.get(pk=material.id).name == "竹材"
     assert Section.objects.get(pk=section.id).name == "矩形"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("kind", ["material", "section"])
+def test_owner_confirms_resource_delete_then_sees_nonblocking_impact(context, client, kind):
+    from materials.models import Material, Section
+    from modeling.models import PhysicalMember
+    from modeling.services import save_physical_draft
+
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    resource = material if kind == "material" else section
+    model = Material if kind == "material" else Section
+    url = reverse(f"materials:{kind}_delete", kwargs={"project_id": project.pk, f"{kind}_id": resource.pk})
+    client.force_login(owner)
+
+    confirm = client.get(url)
+    assert confirm.status_code == 200
+    assert "构件不会被删除" in confirm.content.decode()
+    assert model.objects.filter(pk=resource.pk).exists()
+    response = client.post(url, follow=True)
+    assert response.status_code == 200
+    assert not model.objects.filter(pk=resource.pk).exists()
+    assert PhysicalMember.objects.get(project=project).pk
+    assert "需要重新指定" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_resource_delete_page_denies_nonowner(context, client):
+    from accounts.models import User
+    from materials.models import Material
+
+    owner, project, material, _ = context
+    client.force_login(User.objects.create_user("resource-page-other"))
+    url = reverse("materials:material_delete", kwargs={"project_id": project.pk, "material_id": material.pk})
+    assert client.get(url).status_code == 404
+    assert client.post(url).status_code == 404
+    assert Material.objects.filter(pk=material.pk).exists()
+
+
+@pytest.mark.django_db
+def test_deleted_material_leaves_visible_strip_with_rebind_path(context, client):
+    from materials.models import Material, Strip
+    from materials.services import delete_resource
+
+    owner, project, material, _ = context
+    strip = Strip.objects.create(owner_user=owner, material=material, name="旧竹条", width_mm=1, thickness_mm=2)
+    delete_resource(actor=owner, resource=material)
+    replacement = Material.objects.create(owner_user=owner, name="新竹材", E_MPa=2400, density_g_per_mm3=0.0008, source_type="MEASURED")
+    client.force_login(owner)
+
+    listing = client.get(reverse("materials:index", kwargs={"project_id": project.pk})).content.decode()
+    assert "旧竹条" in listing
+    assert "未指定" in listing
+    url = reverse("materials:strip_material", kwargs={"project_id": project.pk, "strip_id": strip.pk})
+    assert client.get(url).status_code == 200
+    response = client.post(url, {"material_id": replacement.pk})
+    assert response.status_code == 302
+    strip.refresh_from_db()
+    assert strip.material_id == replacement.pk
 
 
 @pytest.mark.django_db

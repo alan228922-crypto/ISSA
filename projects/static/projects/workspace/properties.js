@@ -10,6 +10,12 @@ const OBJECTS = Object.freeze({
   NODE_LOAD: { collection: "node_loads", label: "荷载" },
 });
 const propertyEditing = new WeakSet();
+let deleteFeedback = "";
+
+function hasTargetLocation(draft, targetConnectionKey) {
+  if (!targetConnectionKey) return false;
+  return Boolean(draft.connections.find((item) => item.client_key === targetConnectionKey)?.geometry_node_client_key);
+}
 
 function selectedRecord(state) {
   const selected = state.selectedObject;
@@ -65,29 +71,38 @@ function appendNodeControls(root, selected, node, canvasController, showError) {
   appendLabelControl(root, selected, node, canvasController);
 }
 
-function appendChoice(root, { text, value, choices, dataName, onChange }) {
+function appendChoice(root, { text, value, choices, dataName, onChange, allowNull = false }) {
   const label = document.createElement("label");
   label.textContent = text;
   const select = document.createElement("select");
   select.dataset[dataName] = "";
+  if (allowNull) {
+    const option = document.createElement("option"); option.value = ""; option.textContent = "未指定"; select.append(option);
+  }
   for (const choice of choices) {
     const option = document.createElement("option");
     option.value = String(choice.id);
     option.textContent = choice.name;
     select.append(option);
   }
-  select.value = String(value);
+  select.value = String(value ?? "");
   select.addEventListener("change", () => onChange(select));
   label.append(select);
   root.append(label);
 }
 
-function appendMemberControls(root, selected, member, canvasController, materials, sections) {
-  appendChoice(root, { text: "材料", value: member.material_id, choices: materials, dataName: "propertyMaterial", onChange: (select) => {
-    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { material_id: Number(select.value) } });
+function appendMemberControls(root, selected, member, canvasController, materials, sections, draft, labels) {
+  const nodes = draft.nodes.map((node) => ({ id: node.client_key, name: labels.label("GEOMETRY_NODE", node.client_key) }));
+  for (const [field, text, dataName] of [["start_node_client_key", "起点", "propertyStartNode"], ["end_node_client_key", "终点", "propertyEndNode"]]) {
+    appendChoice(root, { text, value: member[field], choices: nodes, dataName, allowNull: true, onChange: (select) => {
+      updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: select.value || null } });
+    } });
+  }
+  appendChoice(root, { text: "材料", value: member.material_id, choices: materials, dataName: "propertyMaterial", allowNull: true, onChange: (select) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { material_id: select.value ? Number(select.value) : null } });
   } });
-  appendChoice(root, { text: "截面", value: member.section_id, choices: sections, dataName: "propertySection", onChange: (select) => {
-    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { section_id: Number(select.value) } });
+  appendChoice(root, { text: "截面", value: member.section_id, choices: sections, dataName: "propertySection", allowNull: true, onChange: (select) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { section_id: select.value ? Number(select.value) : null } });
   } });
   appendLabelControl(root, selected, member, canvasController);
   const label = document.createElement("label");
@@ -111,21 +126,46 @@ function appendMemberControls(root, selected, member, canvasController, material
   root.append(details);
 }
 
-function appendConnectionDetails(root, connection, labels) {
+function appendConnectionDetails(root, connection, labels, selected, canvasController, draft, editable, showError) {
   const node = document.createElement("p");
-  node.dataset.propertyConnectionNode = "";
-  node.textContent = `${labels.label("GEOMETRY_NODE", connection.geometry_node_client_key)}`;
+  node.dataset.propertyConnectionNodeText = "";
+  node.textContent = connection.geometry_node_client_key ? labels.label("GEOMETRY_NODE", connection.geometry_node_client_key) : "位置节点：未指定";
   const members = document.createElement("p");
   members.dataset.propertyConnectionMembers = "";
-  members.textContent = `参与构件：${connection.participating_member_client_keys.map((key) => labels.label("PHYSICAL_MEMBER", key)).join("、")}`;
+  members.textContent = `参与构件：${connection.participating_member_client_keys.map((key) => key ? labels.label("PHYSICAL_MEMBER", key) : "未指定").join("、") || "无"}`;
   root.append(node, members);
+  if (!editable) return;
+  const nodeChoices = draft.nodes.map((item) => ({ id: item.client_key, name: labels.label("GEOMETRY_NODE", item.client_key) }));
+  appendChoice(root, { text: "位置节点", value: connection.geometry_node_client_key, choices: nodeChoices, dataName: "propertyConnectionNode", allowNull: true, onChange: (select) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { geometry_node_client_key: select.value || null } });
+  } });
+  connection.participating_member_client_keys.forEach((key, index) => {
+    const choices = draft.physical_members.map((item) => ({ id: item.client_key, name: labels.label("PHYSICAL_MEMBER", item.client_key) }));
+    appendChoice(root, { text: `参与构件 ${index + 1}`, value: key, choices, dataName: "propertyParticipant", allowNull: true, onChange: (select) => {
+      const current = canvasController.getState().draft.connections.find((item) => item.client_key === selected.clientKey);
+      if (!current) return;
+      const slots = [...current.participating_member_client_keys];
+      const chosen = select.value || null;
+      if (chosen && slots.some((value, slotIndex) => slotIndex !== index && value === chosen)) {
+        select.value = slots[index] || "";
+        showError({ code: "EDITOR_DUPLICATE_PARTICIPANT", message: "该构件已在此连接中参与，请选择其他构件。" });
+        return;
+      }
+      slots[index] = chosen;
+      updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { participating_member_client_keys: slots } });
+    } });
+    root.lastElementChild.querySelector("select").dataset.propertyParticipant = String(index);
+  });
 }
 
 function supportValue(support) {
   return support.support_type === "ROLLER" ? `ROLLER_${support.restrained_axis}` : "PINNED";
 }
 
-function appendSupportControls(root, selected, support, canvasController) {
+function appendSupportControls(root, selected, support, canvasController, draft, labels) {
+  appendChoice(root, { text: "作用位置", value: support.target_connection_client_key, choices: draft.connections.map((item) => ({ id: item.client_key, name: labels.label("CONNECTION", item.client_key) })), dataName: "propertySupportTarget", allowNull: true, onChange: (select) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { target_connection_client_key: select.value || null } });
+  } });
   const label = document.createElement("label");
   label.textContent = "支座类型";
   const select = document.createElement("select");
@@ -141,7 +181,10 @@ function appendSupportControls(root, selected, support, canvasController) {
   label.append(select); root.append(label);
 }
 
-function appendLoadControls(root, selected, load, canvasController) {
+function appendLoadControls(root, selected, load, canvasController, draft, labels) {
+  appendChoice(root, { text: "作用位置", value: load.target_connection_client_key, choices: draft.connections.map((item) => ({ id: item.client_key, name: labels.label("CONNECTION", item.client_key) })), dataName: "propertyLoadTarget", allowNull: true, onChange: (select) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { target_connection_client_key: select.value || null } });
+  } });
   for (const [field, text, dataName] of [["fx_N", "Fx (N)", "propertyFx"], ["fy_N", "Fy (N)", "propertyFy"]]) {
     labeledInput(root, { text, value: load[field], type: "number", dataName, onChange: (input) => {
       const value = Number(input.value);
@@ -157,11 +200,25 @@ function deleteSelection(canvasController, showError) {
   if (!targets.length) return;
   try {
     const next = applyWorkspaceEditorAction(state, { type: "DELETE_OBJECTS", targets });
+    const newlyIncomplete = [
+      ...next.draft.physical_members.filter((item) => {
+        const prior = state.draft.physical_members.find((old) => old.client_key === item.client_key);
+        return prior && ((prior.start_node_client_key && !item.start_node_client_key) || (prior.end_node_client_key && !item.end_node_client_key));
+      }),
+      ...next.draft.connections.filter((item) => {
+        const prior = state.draft.connections.find((old) => old.client_key === item.client_key);
+        return prior && ((prior.geometry_node_client_key && !item.geometry_node_client_key) || item.participating_member_client_keys.some((key, index) => key === null && prior.participating_member_client_keys[index]));
+      }),
+      ...next.draft.supports.filter((item) => state.draft.supports.some((old) => old.client_key === item.client_key && hasTargetLocation(state.draft, old.target_connection_client_key) && !hasTargetLocation(next.draft, item.target_connection_client_key))),
+      ...next.draft.node_loads.filter((item) => state.draft.node_loads.some((old) => old.client_key === item.client_key && hasTargetLocation(state.draft, old.target_connection_client_key) && !hasTargetLocation(next.draft, item.target_connection_client_key))),
+    ];
+    if (newlyIncomplete.length && !window.confirm(`删除后，${newlyIncomplete.length} 个其他对象需要重新指定。这些对象不会被删除。继续？`)) return;
+    deleteFeedback = newlyIncomplete.length ? `已删除所选对象；${newlyIncomplete.length} 个对象需要重新指定，且不会被删除。` : "已删除所选对象。";
     canvasController.replaceState({ ...next, selectedObject: null, selectedObjects: [], focusedObject: null }, true);
     document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无";
   } catch (error) {
     if (error instanceof EditorActionError) {
-      showError({ code: error.code, message: error.code === "EDITOR_DEPENDENCY_CONFLICT" ? "无法删除：仍有构件、支座或荷载依赖所选对象。请同时选中依赖对象再删除。" : "所选对象无法删除，请重新选择。" });
+      showError({ code: error.code, message: "所选对象无法删除，请重新选择。" });
       return;
     }
     throw error;
@@ -180,7 +237,7 @@ function appendDelete(root, selected, canvasController, showError) {
 export function bindPropertyPanel({ root, canvasController, materials = [], sections = [], showError = () => {} }) {
   canvasController.setPropertiesHandler(() => {
     root.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    (root.querySelector("input, select, button") || root).focus({ preventScroll: true });
+    (root.querySelector("input, select, [data-property-delete]") || root).focus({ preventScroll: true });
   });
   document.addEventListener("keydown", (event) => {
     if (!["Delete", "Backspace"].includes(event.key) || event.defaultPrevented) return;
@@ -194,6 +251,21 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
   const render = (state) => {
     if (propertyEditing.has(canvasController)) return;
     root.replaceChildren();
+    if (deleteFeedback) { const feedback = document.createElement("p"); feedback.dataset.deleteFeedback = ""; feedback.setAttribute("role", "status"); feedback.textContent = deleteFeedback; root.append(feedback); }
+    const labels = createStudentLabelResolver(state.draft);
+    const inventory = document.createElement("section"); inventory.dataset.draftObjectList = "";
+    const inventoryHeading = document.createElement("h3"); inventoryHeading.textContent = "草稿对象"; inventory.append(inventoryHeading);
+    for (const [kind, definition] of Object.entries(OBJECTS)) for (const record of state.draft[definition.collection] || []) {
+      const button = document.createElement("button"); button.type = "button";
+      button.dataset.draftObjectKind = kind; button.dataset.draftObjectKey = record.client_key;
+      button.textContent = labels.label(kind, record.client_key);
+      if (kind === "PHYSICAL_MEMBER" && (!record.start_node_client_key || !record.end_node_client_key || !record.material_id || !record.section_id) ||
+          kind === "CONNECTION" && (!record.geometry_node_client_key || record.participating_member_client_keys.includes(null)) ||
+          ["SUPPORT", "NODE_LOAD"].includes(kind) && !hasTargetLocation(state.draft, record.target_connection_client_key)) button.textContent += " · 未指定";
+      button.addEventListener("click", () => { const target = { kind, clientKey: record.client_key }; const current = canvasController.getState(); canvasController.replaceState({ ...current, selectedObject: target, selectedObjects: [target], focusedObject: target }); });
+      inventory.append(button);
+    }
+    root.append(inventory);
     const current = selectedRecord(state);
     const parent = root.closest("#workspace-workflow-panel");
     const workspace = root.closest("#workspace-root");
@@ -209,21 +281,20 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     heading("这是什么");
     if (!current) { note("这里是你的结构草稿。"); heading("可以做什么"); note("选择左侧工具，在画布放置节点、连接构件。"); heading("下一步"); note(state.draft.nodes.length ? "继续建立结构，或选择对象修改。" : "先放置第一个节点。"); return; }
     if ((state.selectedObjects?.length || 0) > 1) note(`已选择 ${state.selectedObjects.length} 个对象；下方显示最后选中的对象。删除会作用于全部所选对象。`);
-    const labels = createStudentLabelResolver(state.draft);
     const identity = document.createElement("p"); identity.dataset.propertyIdentity = ""; identity.textContent = labels.label(current.selected.kind, current.selected.clientKey); root.append(identity);
     const kind = current.selected.kind;
     if (kind === "GEOMETRY_NODE") note(`结构上的一个位置：X ${current.record.x_mm} mm，Y ${current.record.y_mm} mm。`);
-    if (kind === "PHYSICAL_MEMBER") { const from = labels.label("GEOMETRY_NODE", current.record.start_node_client_key); const to = labels.label("GEOMETRY_NODE", current.record.end_node_client_key); note(`从 ${from} 到 ${to}。材料与截面决定它的基本刚度。`); }
+    if (kind === "PHYSICAL_MEMBER") { const from = current.record.start_node_client_key ? labels.label("GEOMETRY_NODE", current.record.start_node_client_key) : "未指定"; const to = current.record.end_node_client_key ? labels.label("GEOMETRY_NODE", current.record.end_node_client_key) : "未指定"; note(`从 ${from} 到 ${to}。材料与截面决定它的基本刚度。`); }
     if (kind === "CONNECTION") note("这里明确连接参与的构件；构件相交不等于连接。");
-    if (kind === "SUPPORT") note(current.record.support_type === "PINNED" ? "铰支座限制水平和竖直位移。" : `滚动支座限制 ${current.record.restrained_axis} 方向位移。`);
-    if (kind === "NODE_LOAD") note(`作用在连接点上的荷载：水平 ${current.record.fx_N} N，竖直 ${current.record.fy_N} N。正负号表示方向。`);
+    if (kind === "SUPPORT") { note(current.record.support_type === "PINNED" ? "铰支座限制水平和竖直位移。" : `滚动支座限制 ${current.record.restrained_axis} 方向位移。`); if (!hasTargetLocation(state.draft, current.record.target_connection_client_key)) note("作用位置未指定，请重新指定连接或修复该连接的位置节点。"); }
+    if (kind === "NODE_LOAD") { note(`作用在连接点上的荷载：水平 ${current.record.fx_N} N，竖直 ${current.record.fy_N} N。正负号表示方向。`); if (!hasTargetLocation(state.draft, current.record.target_connection_client_key)) note("作用位置未指定，请重新指定连接或修复该连接的位置节点。"); }
     heading("可以做什么");
-    if (current.selected.kind === "CONNECTION") appendConnectionDetails(root, current.record, labels);
+    if (current.selected.kind === "CONNECTION") appendConnectionDetails(root, current.record, labels, current.selected, canvasController, state.draft, !state.readOnly, showError);
     if (!state.readOnly) {
       if (kind === "GEOMETRY_NODE") appendNodeControls(root, current.selected, current.record, canvasController, showError);
-      if (kind === "PHYSICAL_MEMBER") appendMemberControls(root, current.selected, current.record, canvasController, materials, sections);
-      if (kind === "SUPPORT") appendSupportControls(root, current.selected, current.record, canvasController);
-      if (kind === "NODE_LOAD") appendLoadControls(root, current.selected, current.record, canvasController);
+      if (kind === "PHYSICAL_MEMBER") appendMemberControls(root, current.selected, current.record, canvasController, materials, sections, state.draft, labels);
+      if (kind === "SUPPORT") appendSupportControls(root, current.selected, current.record, canvasController, state.draft, labels);
+      if (kind === "NODE_LOAD") appendLoadControls(root, current.selected, current.record, canvasController, state.draft, labels);
       appendDelete(root, current.selected, canvasController, showError);
     }
     heading("下一步");

@@ -11,6 +11,7 @@ from mechanics.truss2d.errors import MechanicsError
 from mechanics.truss2d.validation import validate_truss_model
 from mechanics.truss2d.postprocess import member_mass, member_stress, total_mass_g
 from projects.services import can_modify_project
+from modeling.completeness import draft_completeness_issues
 
 
 # ============================================================
@@ -173,6 +174,7 @@ def analyze_project(*,project,actor,expected_draft_version,prediction_id=None,so
                 raise AnalysisError(exc.code, exc.status_code) from exc
             if current.get('state') != Prediction.Status.COMPLETED or current.get('prediction').id != prediction.id: raise AnalysisError('PREDICTION_NOT_ELIGIBLE',409)
         if expected_draft_version!=project.draft_version: raise AnalysisError('STALE_DRAFT',409)
+        if draft_completeness_issues(project): raise AnalysisError('INCOMPLETE_DRAFT',422)
         # ====================================================
         # 第 4 階段：建立或重用 ModelRevision。
         #
@@ -248,10 +250,16 @@ def check_project(*,project,actor,expected_draft_version):
     # 回傳資料給前端後，前端可以先告訴學生要修正哪些問題，再決定是否正式 Analyze。
     # ========================================================
     # 模型檢查會走相同的轉換與求解檢查，但只回報問題，不保存正式分析紀錄。
-    if not can_modify_project(actor,project): raise AnalysisError('PROJECT_CHECK_DENIED',403)
-    if expected_draft_version!=project.draft_version: raise AnalysisError('STALE_DRAFT',409)
-    from modeling.snapshot import build_physical_snapshot
-    snapshot = build_physical_snapshot(project)
+    with transaction.atomic():
+        project = type(project).objects.select_for_update().select_related('event', 'owner_user').get(pk=project.pk)
+        if not can_modify_project(actor,project): raise AnalysisError('PROJECT_CHECK_DENIED',403)
+        if expected_draft_version!=project.draft_version: raise AnalysisError('STALE_DRAFT',409)
+        incomplete_issues = draft_completeness_issues(project)
+        if incomplete_issues:
+            return {'ok': False, 'draft_version': project.draft_version, 'issues': incomplete_issues}
+        from modeling.snapshot import build_physical_snapshot
+        snapshot = build_physical_snapshot(project)
+        checked_version = project.draft_version
     mapping = {}
     try:
         # 這裡使用目前草稿的暫時 Snapshot；因為只是檢查，不把它保存成正式版本。
@@ -263,4 +271,4 @@ def check_project(*,project,actor,expected_draft_version):
     except IdealizationError as exc: issues=[type('Issue',(),{'code':str(exc),'severity':'ERROR','entity_ids':()})()]
     # 將內部 ValidationIssue 轉成前端可以直接顯示的資料：錯誤代碼、嚴重程度、
     # 關聯的節點或構件，以及不暴露內部例外的中文提示。
-    return {'ok':not bool(issues),'draft_version':project.draft_version,'issues':[{'code':x.code,'severity':getattr(x,'severity','ERROR'),'stage':'MECHANICS','entity_refs':list(getattr(x,'entity_ids',())),'human_message':MESSAGES.get(x.code,'模型需要进一步检查。'), **({'physical_object': target} if (target := _check_issue_physical_object(tuple(getattr(x,'entity_ids',())), snapshot, mapping)) else {})} for x in issues]}
+    return {'ok':not bool(issues),'draft_version':checked_version,'issues':[{'code':x.code,'severity':getattr(x,'severity','ERROR'),'stage':'MECHANICS','entity_refs':list(getattr(x,'entity_ids',())),'human_message':MESSAGES.get(x.code,'模型需要进一步检查。'), **({'physical_object': target} if (target := _check_issue_physical_object(tuple(getattr(x,'entity_ids',())), snapshot, mapping)) else {})} for x in issues]}

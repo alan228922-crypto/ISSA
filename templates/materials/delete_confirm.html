@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-Hans"><meta charset="utf-8"><title>确认删除{{ resource_kind }}</title>
+<body>{% include "shared/product_header.html" %}<main>
+  <h1>确认删除{{ resource_kind }}：{{ resource.name }}</h1>
+  <p>删除后，{{ affected_member_count }} 个构件{% if affected_strip_count %}和 {{ affected_strip_count }} 个条材{% endif %}需要重新指定。构件不会被删除，条材也不会被删除。</p>
+  <p>受影响的当前草稿会更新版本；历史分析结果保持不变。</p>
+  <form method="post">{% csrf_token %}<button type="submit">确认删除</button></form>
+  <a href="{% url 'materials:index' project.id %}">取消</a>
+</main></body></html>

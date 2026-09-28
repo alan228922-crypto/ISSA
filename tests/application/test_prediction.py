@@ -310,7 +310,7 @@ def test_supported_project_purge_is_ordered_audited_and_idempotent(operational_g
     for model, ids in operational_graph["owned"].items():
         assert not model.objects.filter(pk__in=ids).exists()
         assert audit.deletion_counts_json[model._meta.label] == len(ids)
-    assert audit.deletion_counts_json["modeling.Connection_participating_members"] == 3
+    assert audit.deletion_counts_json["modeling.ConnectionParticipation"] == 3
     for model, ids in operational_graph["retained"].items():
         assert model.objects.filter(pk__in=ids).count() == len(ids)
     first_audit = ProjectOperationalPurgeAudit.objects.values().get(pk=audit.pk)

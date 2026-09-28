@@ -1,5 +1,7 @@
 """从 mutable ORM draft 生成纯 physical-snapshot-v1。"""
 
+from .completeness import draft_completeness_issues
+
 # ============================================================
 # 檔案閱讀指南
 #
@@ -11,6 +13,8 @@
 # 閱讀提示：snapshot 是目前草稿的固定副本，後續分析會使用這份副本。
 def build_physical_snapshot(project):
     """冻结数值，避免之后 Material/Section 的修改改变旧 Revision。"""
+    if draft_completeness_issues(project):
+        raise ValueError("INCOMPLETE_DRAFT")
     # 函數輸入是 ORM Project；輸出是 physical-snapshot-v1 字典，不會建立 Solver 物件。
     # 讀取關聯資料時固定排序，讓相同的設計每次都能產生相同內容，方便產生穩定 hash。
     # 先固定資料順序，確保同一個模型每次產生的 snapshot 都相同。

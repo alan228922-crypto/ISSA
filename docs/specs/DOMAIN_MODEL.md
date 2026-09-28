@@ -328,6 +328,10 @@ Invariant：
 - GeometryNode 位置可被多個 PhysicalMember 端點引用。
 - 幾何重合不應自動等於 Connection，除非 authoring rule 明確建立 connection。
 
+### Editable Draft deletion boundary (D-DRAFT-INDEPENDENCE-01)
+
+【Confirmed】Project 對草稿物件的 ownership FK 仍使用 CASCADE；草稿物件彼此的可缺省引用使用 nullable `SET_NULL`。刪除 GeometryNode 只使相關 Member 端點和 Connection 位置成為未指定；刪除 Member 只留下 Connection 中的 nullable participation slot；刪除 Connection 只使 Support / NodeLoad 作用位置未指定。Material / Section 可刪除而 Member 留存；Strip 的 Material 可未指定。這些 incomplete 狀態可保存和重綁，但不是合法 canonical Analysis Snapshot。Model Check 與 Analyze 的嚴格邊界由 ADR-34 約束。
+
 ---
 
 ## 9. PhysicalMember

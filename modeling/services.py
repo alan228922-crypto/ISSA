@@ -6,7 +6,7 @@ from django.db import transaction
 from materials.models import Material, Section
 from projects.services import can_modify_project
 
-from .models import Connection, GeometryNode, NodeLoad, PhysicalMember, Support
+from .models import Connection, ConnectionParticipation, GeometryNode, NodeLoad, PhysicalMember, Support
 
 
 class DraftSaveError(ValueError):
@@ -52,11 +52,25 @@ def _instance(instance):
 
 def _owned(model, object_id, owner_id, error_code):
     # 材料和截面必須屬於專案擁有者，不能直接引用別人的資料。
+    if object_id is None:
+        return None
     try:
         obj = model.objects.get(id=object_id, owner_user_id=owner_id)
     except (model.DoesNotExist, TypeError, ValueError) as exc:
         raise DraftSaveError(error_code) from exc
     return obj
+
+
+def _reference(objects, data, field, error_code):
+    if field not in data:
+        raise DraftSaveError("INVALID_DRAFT")
+    client_key = data[field]
+    if client_key is None:
+        return None
+    try:
+        return objects[client_key]
+    except (KeyError, TypeError) as exc:
+        raise DraftSaveError(error_code) from exc
 
 
 def save_physical_draft(*, actor, project, payload):
@@ -92,6 +106,12 @@ def save_physical_draft(*, actor, project, payload):
         if project.draft_version != expected_version:
             raise DraftSaveError("STALE_DRAFT")
 
+        # Nullable references no longer cascade, so replace the whole owned
+        # draft explicitly from leaves to roots inside this transaction.
+        Support.objects.filter(project=project).delete()
+        NodeLoad.objects.filter(project=project).delete()
+        Connection.objects.filter(project=project).delete()
+        PhysicalMember.objects.filter(project=project).delete()
         GeometryNode.objects.filter(project=project).delete()
         # 先建立節點，後面構件、連接點和荷載才能用 client_key 找到正確的資料。
         node_objects = {}
@@ -103,11 +123,8 @@ def save_physical_draft(*, actor, project, payload):
         member_objects = {}
         # 構件會引用前面建立的節點，並且必須引用專案擁有者自己的材料和截面。
         for key, data in members.items():
-            try:
-                start = node_objects[data["start_node_client_key"]]
-                end = node_objects[data["end_node_client_key"]]
-            except (KeyError, TypeError) as exc:
-                raise DraftSaveError("UNKNOWN_NODE") from exc
+            start = _reference(node_objects, data, "start_node_client_key", "UNKNOWN_NODE")
+            end = _reference(node_objects, data, "end_node_client_key", "UNKNOWN_NODE")
             material = _owned(Material, data.get("material_id"), project.owner_user_id, "FOREIGN_MATERIAL")
             section = _owned(Section, data.get("section_id"), project.owner_user_id, "FOREIGN_SECTION")
             member_objects[key] = _instance(PhysicalMember(
@@ -118,35 +135,30 @@ def save_physical_draft(*, actor, project, payload):
         connection_objects = {}
         # Connection 把幾何節點和參與的物理構件連起來，是支承與荷載的定位依據。
         for key, data in connections.items():
-            try:
-                node = node_objects[data["geometry_node_client_key"]]
-                participant_keys = data["participating_member_client_keys"]
-                participants = [member_objects[member_key] for member_key in participant_keys]
-            except KeyError as exc:
-                code = "UNKNOWN_NODE" if exc.args[0] == "geometry_node_client_key" or exc.args[0] in node_objects else "UNKNOWN_MEMBER"
-                raise DraftSaveError(code) from exc
-            if not isinstance(participant_keys, list):
+            node = _reference(node_objects, data, "geometry_node_client_key", "UNKNOWN_NODE")
+            participant_keys = data.get("participating_member_client_keys")
+            if not isinstance(participant_keys, list) or any(key is not None and (not isinstance(key, str) or not key) for key in participant_keys):
                 raise DraftSaveError("INVALID_DRAFT")
+            if len([key for key in participant_keys if key is not None]) != len(set(key for key in participant_keys if key is not None)):
+                raise DraftSaveError("INVALID_DRAFT")
+            participants = [_reference(member_objects, {"member": key}, "member", "UNKNOWN_MEMBER") for key in participant_keys]
             connection = _instance(Connection(project=project, client_key=key, geometry_node=node))
-            connection.participating_members.set(participants)
+            ConnectionParticipation.objects.bulk_create([
+                ConnectionParticipation(connection=connection, member=member, position=position)
+                for position, member in enumerate(participants)
+            ])
             connection_objects[key] = connection
 
         for key, data in supports.items():
             # 支承只能指向已存在的 Connection，不能直接指向任意座標。
             if not isinstance(data, dict):
                 raise DraftSaveError("INVALID_DRAFT")
-            try:
-                connection = connection_objects[data["target_connection_client_key"]]
-            except KeyError as exc:
-                raise DraftSaveError("UNKNOWN_CONNECTION") from exc
+            connection = _reference(connection_objects, data, "target_connection_client_key", "UNKNOWN_CONNECTION")
             _instance(Support(project=project, client_key=key, target_connection=connection, support_type=data.get("support_type"), restrained_axis=data.get("restrained_axis")))
 
         for key, data in loads.items():
             # 荷載同樣綁定 Connection，保存 fx_N / fy_N 兩個全域方向的節點外力。
-            try:
-                connection = connection_objects[data["target_connection_client_key"]]
-            except KeyError as exc:
-                raise DraftSaveError("UNKNOWN_CONNECTION") from exc
+            connection = _reference(connection_objects, data, "target_connection_client_key", "UNKNOWN_CONNECTION")
             _instance(NodeLoad(project=project, client_key=key, target_connection=connection, fx_N=data.get("fx_N"), fy_N=data.get("fy_N"), label=data.get("label", "")))
 
         project.draft_version += 1

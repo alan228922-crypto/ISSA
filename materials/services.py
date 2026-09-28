@@ -6,7 +6,7 @@ from django.db import transaction
 from mechanics.sections.model import Rectangle
 from mechanics.sections.properties import composite_properties, rectangle_properties
 
-from .models import Section, Strip
+from .models import Material, ResourceDeletionAudit, Section, Strip
 
 
 class SectionServiceError(ValueError):
@@ -97,3 +97,66 @@ def update_section(*, actor, section, name, definition):
         "properties_schema_version", "properties_json", "definition_hash", "updated_at",
     ))
     return section
+
+
+@transaction.atomic
+def delete_resource(*, actor, resource):
+    """Delete one shared resource and invalidate every affected current draft."""
+    from django.db.models import F
+    from modeling.models import PhysicalMember
+    from projects.models import Project
+
+    if not isinstance(resource, (Material, Section)):
+        raise SectionServiceError("INVALID_RESOURCE")
+    if not can_manage_material(actor, resource):
+        raise SectionServiceError("FORBIDDEN")
+
+    # Saves lock Projects before resolving catalog resources. Lock every owner
+    # Project in the same order so no concurrent save can introduce a new
+    # reference between impact discovery and resource deletion.
+    list(Project.objects.select_for_update().filter(owner_user_id=resource.owner_user_id).order_by("pk"))
+    current = type(resource).objects.select_for_update().filter(pk=resource.pk, owner_user_id=resource.owner_user_id).first()
+    if current is None:
+        raise SectionServiceError("RESOURCE_NOT_FOUND")
+
+    field = "material" if isinstance(current, Material) else "section"
+    members = PhysicalMember.objects.filter(**{field: current})
+    affected_project_ids = list(members.order_by("project_id").values_list("project_id", flat=True).distinct())
+    member_count = members.count()
+    members.update(**{field: None})
+    strip_count = 0
+    if isinstance(current, Material):
+        strips = Strip.objects.filter(material=current)
+        strip_count = strips.count()
+        strips.update(material=None)
+    if affected_project_ids:
+        Project.objects.filter(pk__in=affected_project_ids).update(draft_version=F("draft_version") + 1)
+
+    receipt = ResourceDeletionAudit.objects.create(
+        resource_kind=type(current).__name__.upper(),
+        resource_id=current.pk,
+        resource_name=current.name,
+        actor_id=actor.pk,
+        affected_project_ids=affected_project_ids,
+        object_counts_json={"members": member_count, "strips": strip_count},
+    )
+    current.delete()
+    return receipt
+
+
+@transaction.atomic
+def rebind_strip_material(*, actor, strip, material_id):
+    """Assign an owned Material to a retained Strip, or leave it incomplete."""
+    if not can_manage_material(actor, strip):
+        raise SectionServiceError("FORBIDDEN")
+    material = None
+    if material_id is not None:
+        try:
+            material = Material.objects.select_for_update().get(pk=material_id, owner_user_id=strip.owner_user_id)
+        except (Material.DoesNotExist, TypeError, ValueError) as exc:
+            raise SectionServiceError("FOREIGN_MATERIAL") from exc
+    current = Strip.objects.select_for_update().get(pk=strip.pk, owner_user_id=strip.owner_user_id)
+    current.material = material
+    current.full_clean()
+    current.save(update_fields=["material"])
+    return current
