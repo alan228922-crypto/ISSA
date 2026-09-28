@@ -206,7 +206,7 @@ def test_zero_vector_load_symbol_remains_visible_beyond_connection_marker(contex
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.set_viewport_size({"width": 1024, "height": 768})
-    circle = page.locator('[data-client-key="l1"] circle').bounding_box()
+    circle = page.locator('[data-client-key="l1"] [data-structural-symbol="load"]').bounding_box()
     marker = page.locator('[data-client-key="c1"] rect').bounding_box()
     assert circle['width'] >= marker['width'] + 16
 

@@ -67,6 +67,44 @@ def test_structural_sketch_many_symbols_and_crossing_do_not_add_topology(context
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_structural_result_stays_above_interaction_outlines_and_empty_symbols_focus(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {renderWorkspace}=await import('/static/projects/workspace/renderer.js');
+      const svg=document.querySelector('#workspace-canvas');
+      const draft={nodes:[{client_key:'n1',x_mm:0,y_mm:0},{client_key:'n2',x_mm:100,y_mm:0}],physical_members:[{client_key:'m1',start_node_client_key:'n1',end_node_client_key:'n2'}],connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:['m1']}],supports:[],node_loads:[{client_key:'l1',target_connection_client_key:'c1',fx_N:0,fy_N:0}]};
+      renderWorkspace(svg,draft,{selectedObjects:[{kind:'PhysicalMember',clientKey:'m1'},{kind:'Connection',clientKey:'c1'},{kind:'NodeLoad',clientKey:'l1'}],resultOverlay:{m1:{state:'TENSION',color:'#b91c1c',dash:'7 3',label:'受拉'}}});
+      const member=svg.querySelector('[data-client-key="m1"]'); member.dataset.hovered='true';
+      const children=[...member.children]; const body=member.querySelector('[data-member-body]');
+      const feedback=key=>{const group=svg.querySelector(`[data-client-key="${key}"]`);return {hover:Boolean(group.querySelector('[data-hover-outline]')),selection:group.querySelector('[data-selection-outline]')&&getComputedStyle(group.querySelector('[data-selection-outline]')).display!=='none'};};
+      return {bodyAboveHover:children.indexOf(body)>children.indexOf(member.querySelector('[data-hover-outline]')),bodyAboveSelection:children.indexOf(body)>children.indexOf(member.querySelector('[data-selection-outline]')),hoverDash:member.querySelector('[data-hover-outline]').getAttribute('stroke-dasharray'),selectionDash:member.querySelector('[data-selection-outline]').getAttribute('stroke-dasharray'),bodyColor:body.getAttribute('stroke'),connection:feedback('c1'),zeroLoad:feedback('l1')};
+    }""")
+    assert result == {'bodyAboveHover': True, 'bodyAboveSelection': True, 'hoverDash': '7 3', 'selectionDash': '7 3', 'bodyColor': '#b91c1c', 'connection': {'hover': True, 'selection': True}, 'zeroLoad': {'hover': True, 'selection': True}}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_support_and_load_with_connection_missing_geometry_remain_repairable(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['connections'][0]['geometry_node_client_key'] = None
+    draft['connections'].append({'client_key': 'c2', 'geometry_node_client_key': 'n2', 'participating_member_client_keys': ['m1']})
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    assert page.locator('[data-client-key="s1"][data-object-kind="Support"]').count() == 0
+    assert page.locator('[data-client-key="l1"][data-object-kind="NodeLoad"]').count() == 0
+    page.locator('[data-draft-object-kind="SUPPORT"][data-draft-object-key="s1"]').click()
+    assert page.locator('[data-property-support-target]').is_visible()
+    page.locator('[data-property-support-target]').select_option('c2')
+    assert page.locator('[data-client-key="s1"][data-object-kind="Support"]').count() == 1
+    page.locator('[data-draft-object-kind="NODE_LOAD"][data-draft-object-key="l1"]').click()
+    assert page.locator('[data-property-load-target]').is_visible()
+    page.locator('[data-property-load-target]').select_option('c2')
+    assert page.locator('[data-client-key="l1"][data-object-kind="NodeLoad"]').count() == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_structural_symbol_seam_keeps_world_anchors_and_single_shared_defs(context, workspace_page):
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))

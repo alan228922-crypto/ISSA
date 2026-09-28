@@ -24,9 +24,10 @@ export function structuralSymbolDefs() {
 export function renderMember(member, start, end, unit, visualState = {}) {
   const fragment = document.createDocumentFragment();
   const d = `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
-  fragment.append(symbol("line", "member", { "data-member-body": "true", x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: visualState.result?.color || "#1f2937", "stroke-width": 3 * unit, "stroke-dasharray": visualState.result?.dash || "none", "stroke-linecap": "round", "pointer-events": "none" }));
-  fragment.append(element("path", { "data-hover-outline": "true", d, fill: "none", stroke: "#0f766e", "stroke-width": 8 * unit, "pointer-events": "none" }));
-  fragment.append(element("path", { "data-selection-outline": "true", d, fill: "none", stroke: "#0759c7", "stroke-width": 11 * unit, "pointer-events": "none" }));
+  const dash = visualState.result?.dash || "none";
+  fragment.append(element("path", { "data-hover-outline": "true", d, fill: "none", stroke: "#0f766e", "stroke-width": 8 * unit, "stroke-dasharray": dash, "pointer-events": "none" }));
+  fragment.append(element("path", { "data-selection-outline": "true", d, fill: "none", stroke: "#0759c7", "stroke-width": 11 * unit, "stroke-dasharray": dash, "pointer-events": "none" }));
+  fragment.append(symbol("line", "member", { "data-member-body": "true", x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: visualState.result?.color || "#1f2937", "stroke-width": 3 * unit, "stroke-dasharray": dash, "stroke-linecap": "round", "pointer-events": "none" }));
   fragment.append(element("path", { "data-symbol-hit": "true", d, fill: "none", stroke: "transparent", "stroke-width": 18 * unit, "pointer-events": "stroke" }));
   return fragment;
 }
@@ -77,7 +78,13 @@ export function renderLoad(load, target, unit, visualState = {}) {
     fragment.append(part);
     if (!visualState.preview) fragment.append(element("path", { "data-symbol-hit": "true", d: `M ${tailX} ${tailY} L ${target.x - dirX * 10 * unit} ${target.y - dirY * 10 * unit}`, fill: "none", stroke: "transparent", "stroke-width": 15 * unit, "pointer-events": "stroke" }));
   }
-  if (!components.some(([, value]) => value)) fragment.append(symbol("circle", "load", { cx: target.x, cy: target.y, r: 22 * unit, fill: "none", stroke: "#b91c1c", "stroke-width": 2.5 * unit, "pointer-events": visualState.preview ? "none" : "stroke" }));
+  if (!components.some(([, value]) => value)) {
+    if (!visualState.preview) {
+      fragment.append(element("circle", { "data-hover-outline": "true", cx: target.x, cy: target.y, r: 26 * unit, fill: "none", stroke: "#0f766e", "stroke-width": 2 * unit, "pointer-events": "none" }));
+      fragment.append(element("circle", { "data-selection-outline": "true", cx: target.x, cy: target.y, r: 29 * unit, fill: "none", stroke: "#0759c7", "stroke-width": 2.5 * unit, "pointer-events": "none" }));
+    }
+    fragment.append(symbol("circle", "load", { cx: target.x, cy: target.y, r: 22 * unit, fill: "none", stroke: "#b91c1c", "stroke-width": 2.5 * unit, "pointer-events": visualState.preview ? "none" : "stroke" }));
+  }
   return fragment;
 }
 
@@ -93,6 +100,8 @@ export function renderNode(node, point, unit) {
 
 export function renderConnection(connection, target, unit) {
   const fragment = document.createDocumentFragment();
+  fragment.append(element("circle", { "data-hover-outline": "true", cx: target.x, cy: target.y, r: 18 * unit, fill: "none", stroke: "#0f766e", "stroke-width": 2 * unit, "pointer-events": "none" }));
+  fragment.append(element("circle", { "data-selection-outline": "true", cx: target.x, cy: target.y, r: 21 * unit, fill: "none", stroke: "#0759c7", "stroke-width": 2.5 * unit, "pointer-events": "none" }));
   fragment.append(symbol("circle", "connection", { "data-connection-ring": "true", "data-symbol-hit": "true", cx: target.x, cy: target.y, r: 14 * unit, fill: "none", stroke: "#1f2937", "stroke-width": 2 * unit, "pointer-events": "stroke" }));
   fragment.append(element("rect", { x: target.x - 8 * unit, y: target.y - 8 * unit, width: 16 * unit, height: 16 * unit, fill: "transparent", "pointer-events": "none" }));
   return fragment;
