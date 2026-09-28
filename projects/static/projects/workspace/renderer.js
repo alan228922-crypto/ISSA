@@ -1,6 +1,7 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 import { GRID_SPACING, visibleGridLevels } from "./grid.js";
 import { createStudentLabelResolver } from "./labels.js";
+import { structuralSymbolDefs, renderNode, renderMember, renderConnection, renderSupport, renderLoad } from "./structural-symbols.js";
 
 function element(name, attributes = {}) {
   const node = document.createElementNS(SVG_NS, name);
@@ -170,7 +171,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const result = uiState.resultOverlay?.[member.client_key];
     const group = selectable("PhysicalMember", member.client_key, `${labels.label("PHYSICAL_MEMBER", member.client_key)}${result ? `，结果：${result.label}` : ""}`, uiState);
     group.dataset.resultState = result?.state || "";
-    group.append(element("line", { x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: result?.color || "currentColor", "stroke-width": 8, "stroke-dasharray": result?.dash || "none" }));
+    group.append(renderMember(member, start, end, unit, { result }));
     layers[0].append(group);
   }
 
@@ -180,8 +181,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     if (!target) continue;
     const label = support.support_type === "ROLLER" ? `${labels.label("SUPPORT", support.client_key)}，滚动支座，限制 ${support.restrained_axis}` : `${labels.label("SUPPORT", support.client_key)}，铰支座`;
     const group = selectable("Support", support.client_key, label, uiState);
-    group.append(element("path", { d: `M ${target.x - 14 * unit} ${target.y - 32 * unit} L ${target.x + 14 * unit} ${target.y - 32 * unit} L ${target.x} ${target.y - 10 * unit} Z`, fill: "white", stroke: "currentColor", "stroke-width": 2.5 * unit }));
-    if (support.support_type === "ROLLER") group.append(element("line", support.restrained_axis === "X" ? { x1: target.x - 12 * unit, y1: target.y - 38 * unit, x2: target.x + 12 * unit, y2: target.y - 38 * unit, stroke: "currentColor", "stroke-width": 2.5 * unit } : { x1: target.x, y1: target.y - 34 * unit, x2: target.x, y2: target.y - 46 * unit, stroke: "currentColor", "stroke-width": 2.5 * unit }));
+    group.append(renderSupport(support, target, unit));
     layers[1].append(group);
   }
 
@@ -190,25 +190,21 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const target = connection && position(connection, nodePositions);
     if (!target) continue;
     const group = selectable("NodeLoad", load.client_key, labels.label("NODE_LOAD", load.client_key), uiState);
-    const dx = load.fx_N === 0 ? 0 : (load.fx_N > 0 ? 36 * unit : -36 * unit);
-    const dy = load.fy_N === 0 ? 0 : (load.fy_N > 0 ? 36 * unit : -36 * unit);
-    const length = Math.hypot(dx, dy);
-    if (!length) group.append(element("circle", { cx: target.x, cy: target.y, r: 20 * unit, fill: "none", stroke: "currentColor", "stroke-width": 2.5 * unit }));
-    else group.append(element("line", { x1: target.x - dx, y1: target.y - dy, x2: target.x - dx / length * 8 * unit, y2: target.y - dy / length * 8 * unit, stroke: "currentColor", "stroke-width": 2.5 * unit, "marker-end": "url(#workspace-load-arrow)" }));
+    group.append(renderLoad(load, target, unit));
     layers[1].append(group);
   }
 
   for (const node of nodes) {
     const point = nodePositions.get(node.client_key);
     const group = selectable("GeometryNode", node.client_key, labels.label("GEOMETRY_NODE", node.client_key), uiState);
-    group.append(element("circle", { cx: point.x, cy: point.y, r: 7, fill: "currentColor" }));
+    group.append(renderNode(node, point, unit));
     layers[2].append(group);
   }
   for (const connection of connections) {
     const target = position(connection, nodePositions);
     if (!target) continue;
     const group = selectable("Connection", connection.client_key, labels.label("CONNECTION", connection.client_key), uiState);
-    group.append(element("rect", { x: target.x - 8 * unit, y: target.y - 8 * unit, width: 16 * unit, height: 16 * unit, fill: "white", stroke: "currentColor", "stroke-width": 2.5 * unit }));
+    group.append(renderConnection(connection, target, unit));
     layers[2].append(group);
   }
   if (uiState.cad?.activeCommand === "SELECT" && !uiState.readOnly) for (const item of uiState.selectedObjects || []) {
@@ -219,10 +215,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
       fill: "#f59e0b", stroke: "#854d0e", "stroke-width": 1.5 * unit, cursor: "move" }));
   }
 
-  const defs = element("defs");
-  const marker = element("marker", { id: "workspace-load-arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" });
-  marker.append(element("path", { d: "M 0 0 L 8 4 L 0 8 z", fill: "currentColor" }));
-  defs.append(marker);
+  const defs = structuralSymbolDefs();
   const world = element("g", { "data-world-layer": "true", transform: viewTransform(uiState.viewTransform) });
   if (uiState.cad?.gridVisible !== false) world.append(grid);
   world.append(...layers, cadPresentationLayer(uiState.cad));

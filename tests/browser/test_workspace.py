@@ -7,6 +7,25 @@ from tests.application.test_physical_draft import context, valid_payload
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_structural_symbol_seam_keeps_world_anchors_and_single_shared_defs(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""() => {
+      const svg = document.querySelector('#workspace-canvas');
+      const kinds = ['GeometryNode', 'PhysicalMember', 'Connection', 'Support', 'NodeLoad'];
+      return {
+        tagged: kinds.map(kind => svg.querySelector(`[data-object-kind="${kind}"] [data-structural-symbol]`) !== null),
+        defs: svg.querySelectorAll(':scope > defs').length,
+        member: (() => { const line = svg.querySelector('[data-object-kind="PhysicalMember"] line'); return [line?.getAttribute('x1'), line?.getAttribute('y1'), line?.getAttribute('x2'), line?.getAttribute('y2')]; })(),
+        wrappers: kinds.map(kind => Boolean(svg.querySelector(`[data-object-kind="${kind}"][data-client-key]`))),
+      };
+    }""")
+    assert result == {'tagged': [True] * 5, 'defs': 1, 'member': ['0', '0', '1000', '0'], 'wrappers': [True] * 5}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_editor_independent_delete_preserves_gaps_and_undo_restores_identity(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
