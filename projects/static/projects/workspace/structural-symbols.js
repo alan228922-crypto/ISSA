@@ -69,9 +69,11 @@ export function renderLoad(load, target, unit, visualState = {}) {
     part.append(element("polygon", { "data-load-arrowhead": "true", points: `${target.x},${target.y} ${baseX + normalX * 5 * unit},${baseY + normalY * 5 * unit} ${baseX - normalX * 5 * unit},${baseY - normalY * 5 * unit}`, fill: "#b91c1c", "pointer-events": "none" }));
     const labelX = axis === "Fx" ? (tailX + target.x) / 2 : target.x + 14 * unit;
     const labelY = axis === "Fx" ? target.y + 15 * unit : (tailY + target.y) / 2;
-    const label = element("text", { "data-load-label": "true", x: labelX, y: -labelY, transform: "scale(1 -1)", fill: "#991b1b", "font-size": 12 * unit, "text-anchor": axis === "Fx" ? "middle" : "start", "pointer-events": "none" });
-    label.textContent = `${Math.abs(value)} N`;
-    part.append(label);
+    if (visualState.showLabels !== false) {
+      const label = element("text", { "data-load-label": "true", x: labelX, y: -labelY, transform: "scale(1 -1)", fill: "#991b1b", "font-size": 12 * unit, "text-anchor": axis === "Fx" ? "middle" : "start", "pointer-events": "none" });
+      label.textContent = `${Math.abs(value)} N`;
+      part.append(label);
+    }
     fragment.append(part);
     if (!visualState.preview) fragment.append(element("path", { "data-symbol-hit": "true", d: `M ${tailX} ${tailY} L ${target.x - dirX * 10 * unit} ${target.y - dirY * 10 * unit}`, fill: "none", stroke: "transparent", "stroke-width": 15 * unit, "pointer-events": "stroke" }));
   }

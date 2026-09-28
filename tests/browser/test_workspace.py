@@ -1,8 +1,68 @@
+from pathlib import Path
+
 import pytest
 
 from modeling.services import save_physical_draft
 from tests.application.test_analysis_acceptance import save_bt01_draft
 from tests.application.test_physical_draft import context, valid_payload
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_structural_sketch_visual_acceptance_and_fixed_dom_cost(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    captures = Path(__file__).resolve().parents[2] / '.superpowers/sdd/2026-09-28-structural-sketch-visual-language/screenshots'
+    captures.mkdir(parents=True, exist_ok=True)
+    for width, height in [(1024, 768), (1280, 800), (1440, 900)]:
+        page.set_viewport_size({'width': width, 'height': height})
+        for name, scale in [('near', 0.8), ('mid', 0.55), ('far', 0.28)]:
+            result = page.evaluate("""async (scale) => {
+              const {renderWorkspace}=await import('/static/projects/workspace/renderer.js');
+              const svg=document.querySelector('#workspace-canvas');
+              const nodes=[[0,0],[300,0],[600,0],[900,0],[150,220],[450,220],[750,220],[1100,0]].map(([x,y],i)=>({client_key:`n${i}`,x_mm:x,y_mm:y,label:''}));
+              const segments=[[0,1],[1,2],[2,3],[0,4],[4,1],[1,5],[5,2],[2,6],[6,3],[3,7],[4,5],[5,6]].map(([a,b],i)=>({client_key:`m${i}`,start_node_client_key:`n${a}`,end_node_client_key:`n${b}`,material_id:1,section_id:1,label:'',is_active:true}));
+              const connections=[0,1,2,3,4,5,6,7].map(i=>({client_key:`c${i}`,geometry_node_client_key:`n${i}`,participating_member_client_keys:segments.filter(m=>[m.start_node_client_key,m.end_node_client_key].includes(`n${i}`)).map(m=>m.client_key)}));
+              const draft={nodes,physical_members:segments,connections,supports:[{client_key:'pin',target_connection_client_key:'c0',support_type:'PINNED',restrained_axis:null},{client_key:'rollerY',target_connection_client_key:'c3',support_type:'ROLLER',restrained_axis:'Y'},{client_key:'rollerX',target_connection_client_key:'c7',support_type:'ROLLER',restrained_axis:'X'}],node_loads:[{client_key:'down',target_connection_client_key:'c4',fx_N:0,fy_N:-20,label:''},{client_key:'up',target_connection_client_key:'c5',fx_N:0,fy_N:15,label:''},{client_key:'right',target_connection_client_key:'c1',fx_N:30,fy_N:0,label:''},{client_key:'left',target_connection_client_key:'c2',fx_N:-25,fy_N:0,label:''},{client_key:'both',target_connection_client_key:'c6',fx_N:40,fy_N:-50,label:''}]};
+              const view={a:scale,b:0,c:0,d:-scale,e:90,f:350};
+              renderWorkspace(svg,draft,{viewTransform:view,selectedObject:{kind:'Support',clientKey:'rollerY'}});
+              const emptyState=document.querySelector('[data-ux-empty-state]'); if (emptyState) emptyState.hidden=true;
+              const kinds=['GeometryNode','PhysicalMember','Connection','Support','NodeLoad'];
+              const counts=Object.fromEntries(kinds.map(kind=>[kind,svg.querySelectorAll(`[data-object-kind="${kind}"]`).length]));
+              const tips=[...svg.querySelectorAll('[data-load-arrowhead]')].map(head=>head.getAttribute('points').split(' ')[0]);
+              const stable=svg.querySelector('[data-render-layer="members"]');
+              svg.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:420,clientY:420,pointerId:1}));
+              return {counts,tips,labels:svg.querySelectorAll('[data-load-label]').length,defs:svg.querySelectorAll('#workspace-support-hatch').length,patterns:svg.querySelectorAll('[data-grid-level]').length,selected:getComputedStyle(svg.querySelector('[data-client-key="rollerY"] [data-selection-outline]')).display,decorations:[...svg.querySelectorAll('[data-support-part]')].every(el=>getComputedStyle(el).pointerEvents==='none'),memberLayerStable:stable===svg.querySelector('[data-render-layer="members"]')};
+            }""", scale)
+            assert result['counts'] == {'GeometryNode': 8, 'PhysicalMember': 12, 'Connection': 8, 'Support': 3, 'NodeLoad': 5}
+            assert result['defs'] == 1 and result['patterns'] == 3
+            assert result['selected'] != 'none' and result['decorations'] is True
+            assert result['memberLayerStable'] is True
+            assert len(result['tips']) == 6
+            if name == 'far':
+                assert result['labels'] == 0
+            else:
+                assert result['labels'] == 6
+            page.screenshot(path=str(captures / f'structural-sketch-{width}x{height}-{name}.png'))
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_structural_sketch_many_symbols_and_crossing_do_not_add_topology(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {renderWorkspace}=await import('/static/projects/workspace/renderer.js');
+      const svg=document.querySelector('#workspace-canvas');
+      const nodes=[{client_key:'a',x_mm:-100,y_mm:-100},{client_key:'b',x_mm:100,y_mm:100},{client_key:'c',x_mm:-100,y_mm:100},{client_key:'d',x_mm:100,y_mm:-100}];
+      const members=[['a','b'],['c','d']].map(([a,b],i)=>({client_key:`cross${i}`,start_node_client_key:a,end_node_client_key:b}));
+      members.push({client_key:'incomplete',start_node_client_key:'a',end_node_client_key:null});
+      for(let i=0;i<150;i++) nodes.push({client_key:`extra${i}`,x_mm:300+i*60,y_mm:0});
+      const connections=nodes.slice(4).map((node,i)=>({client_key:`conn${i}`,geometry_node_client_key:node.client_key,participating_member_client_keys:[null]}));
+      const supports=connections.map((connection,i)=>({client_key:`support${i}`,target_connection_client_key:connection.client_key,support_type:i%2?'ROLLER':'PINNED',restrained_axis:i%2?'Y':null}));
+      const node_loads=connections.map((connection,i)=>({client_key:`load${i}`,target_connection_client_key:connection.client_key,fx_N:0,fy_N:-10}));
+      renderWorkspace(svg,{nodes,physical_members:members,connections,supports,node_loads},{viewTransform:{a:1,b:0,c:0,d:-1,e:400,f:300}});
+      return {nodes:svg.querySelectorAll('[data-object-kind="GeometryNode"]').length,members:svg.querySelectorAll('[data-object-kind="PhysicalMember"]').length,connections:svg.querySelectorAll('[data-object-kind="Connection"]').length,supports:svg.querySelectorAll('[data-object-kind="Support"]').length,loads:svg.querySelectorAll('[data-object-kind="NodeLoad"]').length,defs:svg.querySelectorAll('#workspace-support-hatch').length,markers:svg.querySelectorAll('#workspace-load-arrow').length,gridLines:svg.querySelectorAll('[data-canvas-grid] line').length,crossingAtOrigin:svg.querySelectorAll('[data-object-kind="Connection"] circle[cx="0"][cy="0"]').length};
+    }""")
+    assert result == {'nodes': 154, 'members': 2, 'connections': 150, 'supports': 150, 'loads': 150, 'defs': 1, 'markers': 1, 'gridLines': 0, 'crossingAtOrigin': 0}
 
 
 @pytest.mark.browser

@@ -145,8 +145,8 @@ def test_created_support_and_load_show_controls_and_persist(context, workspace_p
     connection.click(force=True)
     load = page.locator('[data-object-kind="NodeLoad"]')
     assert load.count() == 1 and load.get_attribute('data-selected') == 'true'
-    assert load.locator('line').count() == 1
-    assert load.locator('line').bounding_box()['height'] >= 20
+    assert load.locator('[data-load-stem]').count() == 1
+    assert load.locator('[data-load-stem]').bounding_box()['height'] >= 20
     assert page.locator('[data-property-fx]').is_visible()
     page.locator('[data-property-fx]').fill('75')
     page.locator('[data-property-fy]').fill('0')

@@ -195,7 +195,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const target = connection && position(connection, nodePositions);
     if (!target) continue;
     const group = selectable("NodeLoad", load.client_key, labels.label("NODE_LOAD", load.client_key), uiState);
-    group.append(renderLoad(load, target, unit));
+    group.append(renderLoad(load, target, unit, { showLabels: 1 / unit >= 0.3 }));
     layers[4].append(group);
   }
 
