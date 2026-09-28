@@ -79,8 +79,13 @@ function orientationLayer() {
   return group;
 }
 
-function cadPresentationLayer(cad = {}) {
+function cadPresentationLayer(cad = {}, unit = 1) {
   const group = element("g", { "data-cad-presentation": "true", "pointer-events": "none" });
+  if (cad.loadPreview?.point) {
+    const preview = element("g", { "data-cad-load-preview": "true", opacity: .65, "pointer-events": "none" });
+    preview.append(renderLoad(cad.loadPreview, cad.loadPreview.point, unit, { preview: true }));
+    group.append(preview);
+  }
   if (cad.gripPreview) {
     for (const member of cad.gripPreview.members || []) group.append(element("line", {
       "data-cad-grip-preview": "member", x1: member.start.x, y1: member.start.y,
@@ -133,9 +138,9 @@ function cadPresentationLayer(cad = {}) {
   return group;
 }
 
-export function renderCadPresentation(svg, cad = {}) {
+export function renderCadPresentation(svg, cad = {}, uiState = {}) {
   const current = svg.querySelector("[data-cad-presentation]");
-  const next = cadPresentationLayer(cad);
+  const next = cadPresentationLayer(cad, screenUnit(svg, uiState));
   if (current) current.replaceWith(next);
   else svg.querySelector("[data-world-layer]")?.append(next);
 }
@@ -162,7 +167,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   const connectionByKey = new Map(connections.map((connection) => [connection.client_key, connection]));
   const labels = createStudentLabelResolver(draft);
   const grid = gridLayer(unit);
-  const layers = [element("g", { "data-render-layer": "members" }), element("g", { "data-render-layer": "supports-loads" }), element("g", { "data-render-layer": "nodes-connections" })];
+  const layers = [element("g", { "data-render-layer": "members" }), element("g", { "data-render-layer": "supports" }), element("g", { "data-render-layer": "connections" }), element("g", { "data-render-layer": "nodes" }), element("g", { "data-render-layer": "loads" })];
 
   for (const member of members) {
     const start = nodePositions.get(member.start_node_client_key);
@@ -191,7 +196,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     if (!target) continue;
     const group = selectable("NodeLoad", load.client_key, labels.label("NODE_LOAD", load.client_key), uiState);
     group.append(renderLoad(load, target, unit));
-    layers[1].append(group);
+    layers[4].append(group);
   }
 
   for (const connection of connections) {
@@ -205,12 +210,12 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const point = nodePositions.get(node.client_key);
     const group = selectable("GeometryNode", node.client_key, labels.label("GEOMETRY_NODE", node.client_key), uiState);
     group.append(renderNode(node, point, unit));
-    layers[2].append(group);
+    layers[3].append(group);
   }
   if (uiState.cad?.activeCommand === "SELECT" && !uiState.readOnly) for (const item of uiState.selectedObjects || []) {
     if (item.kind !== "GEOMETRY_NODE") continue;
     const point = nodePositions.get(item.clientKey); if (!point) continue;
-    layers[2].append(element("rect", { "data-cad-node-grip": item.clientKey,
+    layers[3].append(element("rect", { "data-cad-node-grip": item.clientKey,
       x: point.x - 5 * unit, y: point.y - 5 * unit, width: 10 * unit, height: 10 * unit,
       fill: "#f59e0b", stroke: "#854d0e", "stroke-width": 1.5 * unit, cursor: "move" }));
   }
@@ -218,6 +223,6 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   const defs = structuralSymbolDefs();
   const world = element("g", { "data-world-layer": "true", transform: viewTransform(uiState.viewTransform) });
   if (uiState.cad?.gridVisible !== false) world.append(grid);
-  world.append(...layers, cadPresentationLayer(uiState.cad));
+  world.append(...layers, cadPresentationLayer(uiState.cad, unit));
   svg.replaceChildren(defs, world, orientationLayer());
 }

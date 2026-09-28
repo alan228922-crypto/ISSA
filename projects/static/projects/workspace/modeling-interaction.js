@@ -102,7 +102,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const current = canvasController.getState();
     const next = { ...current, cad: Object.freeze({ ...cadState(current), ...changes }) };
     canvasController.replaceState(next, notify, false);
-    renderCadPresentation(svg, next.cad);
+    renderCadPresentation(svg, next.cad, next);
   };
   const clearInputs = () => {
     if (commandInput) commandInput.value = "";
@@ -116,7 +116,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     commandState = transition(commandState, { type: "ESC" });
     tool = "SELECT";
     clearInputs();
-    transientCad({ activeCommand: "SELECT", origin: null, preview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false });
+    transientCad({ activeCommand: "SELECT", origin: null, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false });
     if (dynamicOverlay) dynamicOverlay.hidden = true;
     updateUi(root, tool, memberStart, contextualInstruction);
     cadStatus(root, cadState(canvasController.getState()));
@@ -166,7 +166,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const chooseTool = (nextTool) => {
     tool = nextTool; memberStart = null; acquiredSnap = null; contextualInstruction = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
-    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
+    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
     if (dynamicOverlay) dynamicOverlay.hidden = nextTool === "SELECT" || cadState(current).dynamicInput === false;
   };
   for (const button of root.querySelectorAll("[data-workspace-tool]")) button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
@@ -314,6 +314,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const studentLabel = resolution.snapType === "NODE" ? labels.label("GEOMETRY_NODE", resolution.candidateKey?.split(":")[1]) : null;
     transientCad({
       preview: memberStart ? { start: memberOrigin(), end: resolution.point } : null,
+      loadPreview: tool === "LOAD" && resolution.snapType === "NODE" ? { point: resolution.point, fx_N: 0, fy_N: -100 } : null,
       snapFeedback: active && resolution.snapType ? { ...resolution, studentLabel, unconnectedIntersection } : null,
       trackingGuide,
     });
@@ -364,6 +365,6 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const direction = event.key.toLowerCase() === "y" || event.shiftKey ? "REDO" : "UNDO";
     event.preventDefault(); travelHistory(direction);
   });
-  svg.addEventListener("pointerleave", () => transientCad({ preview: null, snapFeedback: null, trackingGuide: null }));
+  svg.addEventListener("pointerleave", () => transientCad({ preview: null, loadPreview: null, snapFeedback: null, trackingGuide: null }));
   updateUi(root, tool, memberStart, contextualInstruction); cadStatus(root, cadState(canvasController.getState())); syncHistory(canvasController.getState()); return Object.freeze({ getTool: () => tool });
 }

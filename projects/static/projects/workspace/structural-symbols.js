@@ -48,12 +48,29 @@ export function renderSupport(support, target, unit) {
   return fragment;
 }
 
-export function renderLoad(load, target, unit) {
-  const dx = load.fx_N === 0 ? 0 : (load.fx_N > 0 ? 36 * unit : -36 * unit);
-  const dy = load.fy_N === 0 ? 0 : (load.fy_N > 0 ? 36 * unit : -36 * unit);
-  const length = Math.hypot(dx, dy);
-  if (!length) return symbol("circle", "load", { cx: target.x, cy: target.y, r: 22 * unit, fill: "none", stroke: "currentColor", "stroke-width": 2.5 * unit });
-  return symbol("line", "load", { x1: target.x - dx, y1: target.y - dy, x2: target.x - dx / length * 8 * unit, y2: target.y - dy / length * 8 * unit, stroke: "currentColor", "stroke-width": 2.5 * unit, "marker-end": "url(#workspace-load-arrow)" });
+export function renderLoad(load, target, unit, visualState = {}) {
+  const fragment = document.createDocumentFragment();
+  const components = [["Fx", load.fx_N, 1, 0], ["Fy", load.fy_N, 0, 1]];
+  for (const [axis, value, basisX, basisY] of components) {
+    if (!value) continue;
+    const sign = value > 0 ? 1 : -1;
+    const dirX = basisX * sign; const dirY = basisY * sign;
+    const tailX = target.x - dirX * 48 * unit; const tailY = target.y - dirY * 48 * unit;
+    const baseX = target.x - dirX * 10 * unit; const baseY = target.y - dirY * 10 * unit;
+    const normalX = -dirY; const normalY = dirX;
+    const part = element("g", { "data-structural-symbol": "load", "data-load-component": axis, "pointer-events": "none" });
+    part.append(element("line", { "data-load-stem": "true", x1: tailX, y1: tailY, x2: target.x, y2: target.y, stroke: "#b91c1c", "stroke-width": 2.5 * unit, "pointer-events": "none" }));
+    part.append(element("polygon", { "data-load-arrowhead": "true", points: `${target.x},${target.y} ${baseX + normalX * 5 * unit},${baseY + normalY * 5 * unit} ${baseX - normalX * 5 * unit},${baseY - normalY * 5 * unit}`, fill: "#b91c1c", "pointer-events": "none" }));
+    const labelX = axis === "Fx" ? (tailX + target.x) / 2 : target.x + 14 * unit;
+    const labelY = axis === "Fx" ? target.y + 15 * unit : (tailY + target.y) / 2;
+    const label = element("text", { "data-load-label": "true", x: labelX, y: -labelY, transform: "scale(1 -1)", fill: "#991b1b", "font-size": 12 * unit, "text-anchor": axis === "Fx" ? "middle" : "start", "pointer-events": "none" });
+    label.textContent = `${Math.abs(value)} N`;
+    part.append(label);
+    fragment.append(part);
+    if (!visualState.preview) fragment.append(element("path", { "data-symbol-hit": "true", d: `M ${tailX} ${tailY} L ${target.x - dirX * 10 * unit} ${target.y - dirY * 10 * unit}`, fill: "none", stroke: "transparent", "stroke-width": 15 * unit, "pointer-events": "stroke" }));
+  }
+  if (!components.some(([, value]) => value)) fragment.append(symbol("circle", "load", { cx: target.x, cy: target.y, r: 22 * unit, fill: "none", stroke: "#b91c1c", "stroke-width": 2.5 * unit, "pointer-events": visualState.preview ? "none" : "stroke" }));
+  return fragment;
 }
 
 export function renderNode(node, point, unit) {

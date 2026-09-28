@@ -150,6 +150,49 @@ def test_structural_support_symbol_roller_wheel_click_does_not_create_node(conte
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_structural_load_symbol_components_point_to_true_anchor_with_magnitude_labels(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {renderWorkspace}=await import('/static/projects/workspace/renderer.js');
+      const svg=document.querySelector('#workspace-canvas');
+      const points=[[0,0],[100,0],[200,0],[300,0],[400,0]];
+      const draft={nodes:points.map(([x,y],i)=>({client_key:`n${i}`,x_mm:x,y_mm:y,label:''})),physical_members:[],connections:points.map((_,i)=>({client_key:`c${i}`,geometry_node_client_key:`n${i}`,participating_member_client_keys:[null]})),supports:[],node_loads:[{client_key:'down',target_connection_client_key:'c0',fx_N:0,fy_N:-20,label:''},{client_key:'up',target_connection_client_key:'c1',fx_N:0,fy_N:15,label:''},{client_key:'right',target_connection_client_key:'c2',fx_N:30,fy_N:0,label:''},{client_key:'left',target_connection_client_key:'c3',fx_N:-25,fy_N:0,label:''},{client_key:'both',target_connection_client_key:'c4',fx_N:40,fy_N:-50,label:''}]};
+      renderWorkspace(svg,draft,{viewTransform:{a:1,b:0,c:0,d:-1,e:0,f:0}});
+      const inspect=key=>{const group=svg.querySelector(`[data-client-key="${key}"]`);return [...group.querySelectorAll('[data-load-component]')].map(part=>({axis:part.getAttribute('data-load-component'),start:[Number(part.querySelector('[data-load-stem]').getAttribute('x1')),Number(part.querySelector('[data-load-stem]').getAttribute('y1'))],tip:[Number(part.querySelector('[data-load-stem]').getAttribute('x2')),Number(part.querySelector('[data-load-stem]').getAttribute('y2'))],head:part.querySelector('[data-load-arrowhead]').getAttribute('points').split(' ')[0],label:part.querySelector('[data-load-label]').textContent,red:part.querySelector('[data-load-stem]').getAttribute('stroke')}));};
+      return {down:inspect('down'),up:inspect('up'),right:inspect('right'),left:inspect('left'),both:inspect('both')};
+    }""")
+    assert result['down'][0]['axis'] == 'Fy' and result['down'][0]['start'][1] > result['down'][0]['tip'][1]
+    assert result['up'][0]['start'][1] < result['up'][0]['tip'][1]
+    assert result['right'][0]['start'][0] < result['right'][0]['tip'][0]
+    assert result['left'][0]['start'][0] > result['left'][0]['tip'][0]
+    assert result['down'][0]['tip'] == [0, 0] and result['down'][0]['head'] == '0,0'
+    assert result['both'][0]['tip'] == [400, 0] and result['both'][1]['tip'] == [400, 0]
+    assert {part['axis'] for part in result['both']} == {'Fx', 'Fy'}
+    assert [part['label'] for part in result['both']] == ['40 N', '50 N']
+    assert result['down'][0]['label'] == '20 N' and result['left'][0]['label'] == '25 N'
+    assert all(part['red'] == '#b91c1c' for parts in result.values() for part in parts)
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_structural_load_symbol_preview_is_transient_and_property_edit_updates_canvas(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="LOAD"]').click()
+    page.locator('[data-client-key="n1"] [data-node-body]').hover(force=True)
+    assert page.locator('[data-cad-load-preview]').count() == 1
+    assert page.locator('[data-object-kind="NodeLoad"]').count() == 1
+    page.locator('#workspace-canvas').dispatch_event('pointerleave')
+    assert page.locator('[data-cad-load-preview]').count() == 0
+    page.locator('[data-draft-object-kind="NODE_LOAD"][data-draft-object-key="l1"]').click()
+    page.locator('[data-property-fy]').fill('-20')
+    page.locator('[data-property-fy]').dispatch_event('change')
+    assert page.locator('[data-client-key="l1"] [data-load-label]').text_content() == '20 N'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_editor_independent_delete_preserves_gaps_and_undo_restores_identity(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)

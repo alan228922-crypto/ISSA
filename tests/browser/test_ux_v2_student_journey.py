@@ -157,7 +157,7 @@ def test_created_support_and_load_show_controls_and_persist(context, workspace_p
 
     page.locator('[data-object-kind="Support"] path').click(force=True)
     assert page.locator('[data-property-support-type]').input_value() == 'ROLLER_Y'
-    page.locator('[data-object-kind="NodeLoad"] line').click(force=True)
+    page.locator('[data-draft-object-kind="NODE_LOAD"]').click()
     assert page.locator('[data-property-fx]').input_value() == '75'
     assert page.locator('[data-property-fy]').input_value() == '0'
 
