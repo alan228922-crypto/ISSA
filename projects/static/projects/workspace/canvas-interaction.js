@@ -178,7 +178,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   svg.addEventListener("click", (event) => {
     if (suppressClick) { suppressClick = false; event.preventDefault(); event.stopImmediatePropagation(); return; }
     closeChooser();
-    const createdSelection = canvasClickHandler?.(event);
+    const createdSelection = canvasClickHandler?.(event, pointerSelection);
     const direct = createdSelection || pointerSelection || selectionFromElement(event.target?.closest?.("[data-object-kind]"));
     pointerSelection = null;
     const point = { x: event.clientX, y: event.clientY };

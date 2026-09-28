@@ -15,6 +15,9 @@ export function structuralSymbolDefs() {
   const marker = element("marker", { id: "workspace-load-arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" });
   marker.append(element("path", { d: "M 0 0 L 8 4 L 0 8 z", fill: "currentColor" }));
   defs.append(marker);
+  const hatch = element("pattern", { id: "workspace-support-hatch", patternUnits: "userSpaceOnUse", width: 6, height: 6 });
+  hatch.append(element("path", { d: "M -2 6 L 4 0 M 4 6 L 10 0", fill: "none", stroke: "#1f2937", "stroke-width": 1.2, "pointer-events": "none" }));
+  defs.append(hatch);
   return defs;
 }
 
@@ -30,8 +33,18 @@ export function renderMember(member, start, end, unit, visualState = {}) {
 
 export function renderSupport(support, target, unit) {
   const fragment = document.createDocumentFragment();
-  fragment.append(symbol("path", "support", { d: `M ${target.x - 14 * unit} ${target.y - 32 * unit} L ${target.x + 14 * unit} ${target.y - 32 * unit} L ${target.x} ${target.y - 10 * unit} Z`, fill: "white", stroke: "currentColor", "stroke-width": 2.5 * unit }));
-  if (support.support_type === "ROLLER") fragment.append(element("line", support.restrained_axis === "X" ? { x1: target.x - 12 * unit, y1: target.y - 38 * unit, x2: target.x + 12 * unit, y2: target.y - 38 * unit, stroke: "currentColor", "stroke-width": 2.5 * unit } : { x1: target.x, y1: target.y - 34 * unit, x2: target.x, y2: target.y - 46 * unit, stroke: "currentColor", "stroke-width": 2.5 * unit }));
+  const roller = support.support_type === "ROLLER";
+  const transform = `translate(${target.x} ${target.y}) scale(${unit})${roller && support.restrained_axis === "X" ? " rotate(-90)" : ""}`;
+  const visual = element("g", { "data-structural-symbol": "support", transform, "pointer-events": "none" });
+  visual.append(element("path", { "data-support-part": "triangle", d: "M 0 -16 L -15 -32 L 15 -32 Z", fill: "white", stroke: "#1f2937", "stroke-width": 2.2, "pointer-events": "none" }));
+  if (roller) for (const x of [-8, 8]) visual.append(element("circle", { "data-support-part": "wheel", cx: x, cy: -38, r: 4, fill: "white", stroke: "#1f2937", "stroke-width": 2, "pointer-events": "none" }));
+  const baseY = roller ? -45 : -36;
+  visual.append(element("line", { "data-support-part": "base", x1: -22, y1: baseY, x2: 22, y2: baseY, stroke: "#1f2937", "stroke-width": 2.2, "pointer-events": "none" }));
+  visual.append(element("rect", { "data-support-part": "hatch", x: -22, y: baseY - 8, width: 44, height: 8, fill: "url(#workspace-support-hatch)", "pointer-events": "none" }));
+  fragment.append(visual);
+  const hit = element("g", { transform, "data-symbol-hit": "true" });
+  hit.append(element("rect", { x: -23, y: roller ? -54 : -45, width: 46, height: roller ? 39 : 30, fill: "transparent", "pointer-events": "all" }));
+  fragment.append(hit);
   return fragment;
 }
 

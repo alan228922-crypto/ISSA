@@ -217,10 +217,11 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const dx = Number(dxText); const dy = Number(dyText);
     if (!origin || dxText === "" || dyText === "" || !Number.isFinite(dx) || !Number.isFinite(dy) || !exactPoint({ x: origin.x + dx, y: origin.y + dy })) showError({ code: "CAD_INPUT_MALFORMED", message: "请先确定基准点，并输入有效的 ΔX、ΔY。" });
   });
-  const handleCanvasClick = (event) => {
+  const handleCanvasClick = (event, pointerSelection) => {
     if (root.dataset.uxStage !== "build") return;
     const current = canvasController.getState(); const target = targetAtClick(event, svg, ["GEOMETRY_NODE", "CONNECTION"]); if (tool === "SELECT") return;
     if (tool === "NODE") {
+      if (pointerSelection?.kind === "SUPPORT") return;
       if (target) {
         const node = nodeTarget(current.draft, target);
         if (node) apply({ type: "CONNECT_NODE", nodeClientKey: node.clientKey });

@@ -116,6 +116,40 @@ def test_structural_node_member_connection_ring_is_hit_outside_node(context, wor
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_structural_support_symbol_pinned_rollers_share_hatch_and_ignore_decoration(context, workspace_page):
+    page = workspace_page(user=context[0], project=context[1])
+    result = page.evaluate("""async () => {
+      const {renderWorkspace}=await import('/static/projects/workspace/renderer.js');
+      const svg=document.querySelector('#workspace-canvas');
+      const draft={nodes:[{client_key:'n1',x_mm:0,y_mm:0,label:''},{client_key:'n2',x_mm:100,y_mm:0,label:''},{client_key:'n3',x_mm:200,y_mm:0,label:''}],physical_members:[],connections:[{client_key:'c1',geometry_node_client_key:'n1',participating_member_client_keys:[null]},{client_key:'c2',geometry_node_client_key:'n2',participating_member_client_keys:[null]},{client_key:'c3',geometry_node_client_key:'n3',participating_member_client_keys:[null]}],supports:[{client_key:'s1',target_connection_client_key:'c1',support_type:'PINNED',restrained_axis:null},{client_key:'s2',target_connection_client_key:'c2',support_type:'ROLLER',restrained_axis:'Y'},{client_key:'s3',target_connection_client_key:'c3',support_type:'ROLLER',restrained_axis:'X'}],node_loads:[]};
+      renderWorkspace(svg,draft,{viewTransform:{a:1,b:0,c:0,d:-1,e:0,f:0}});
+      const support=key=>svg.querySelector(`[data-client-key="${key}"]`);
+      const part=(key,name)=>support(key)?.querySelectorAll(`[data-support-part="${name}"]`).length;
+      const wall=support('s3')?.querySelector('[data-support-part="base"]');
+      const wheel=support('s2')?.querySelector('[data-support-part="wheel"]');
+      return {pinned:[part('s1','triangle'),part('s1','base'),part('s1','hatch')],rollerY:[part('s2','triangle'),part('s2','wheel'),part('s2','base')],rollerX:[part('s3','wheel'),part('s3','base')],wallVertical:wall ? wall.getBoundingClientRect().height>wall.getBoundingClientRect().width : false,hatchDefs:svg.querySelectorAll('#workspace-support-hatch').length,wheelPointer:wheel && getComputedStyle(wheel).pointerEvents,trianglePointer:support('s1')?.querySelector('[data-support-part="triangle"]') && getComputedStyle(support('s1').querySelector('[data-support-part="triangle"]')).pointerEvents};
+    }""")
+    assert result == {'pinned': [1, 1, 1], 'rollerY': [1, 2, 1], 'rollerX': [2, 1], 'wallVertical': True, 'hatchDefs': 1, 'wheelPointer': 'none', 'trianglePointer': 'none'}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_structural_support_symbol_roller_wheel_click_does_not_create_node(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['supports'][0].update(support_type='ROLLER', restrained_axis='Y')
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    before = page.locator('[data-object-kind="GeometryNode"]').count()
+    page.locator('[data-workspace-tool="NODE"]').click()
+    wheel = page.locator('[data-client-key="s1"] [data-support-part="wheel"]').first
+    box = wheel.bounding_box()
+    page.mouse.click(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == before
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_editor_independent_delete_preserves_gaps_and_undo_restores_identity(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
