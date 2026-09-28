@@ -194,17 +194,17 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     layers[1].append(group);
   }
 
-  for (const node of nodes) {
-    const point = nodePositions.get(node.client_key);
-    const group = selectable("GeometryNode", node.client_key, labels.label("GEOMETRY_NODE", node.client_key), uiState);
-    group.append(renderNode(node, point, unit));
-    layers[2].append(group);
-  }
   for (const connection of connections) {
     const target = position(connection, nodePositions);
     if (!target) continue;
     const group = selectable("Connection", connection.client_key, labels.label("CONNECTION", connection.client_key), uiState);
     group.append(renderConnection(connection, target, unit));
+    layers[2].append(group);
+  }
+  for (const node of nodes) {
+    const point = nodePositions.get(node.client_key);
+    const group = selectable("GeometryNode", node.client_key, labels.label("GEOMETRY_NODE", node.client_key), uiState);
+    group.append(renderNode(node, point, unit));
     layers[2].append(group);
   }
   if (uiState.cad?.activeCommand === "SELECT" && !uiState.readOnly) for (const item of uiState.selectedObjects || []) {

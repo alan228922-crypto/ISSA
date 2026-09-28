@@ -26,6 +26,96 @@ def test_structural_symbol_seam_keeps_world_anchors_and_single_shared_defs(conte
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_structural_node_member_connection_textbook_symbols(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""() => {
+      const svg=document.querySelector('#workspace-canvas');
+      const node=svg.querySelector('[data-client-key="n1"] [data-structural-symbol="node"]');
+      const member=svg.querySelector('[data-client-key="m1"] [data-member-body]');
+      const ring=svg.querySelector('[data-client-key="c1"] [data-connection-ring]');
+      const memberScale=Math.abs(svg.querySelector('[data-client-key="m1"]').getScreenCTM().a);
+      return {nodeFill:node?.getAttribute('fill'),nodeStroke:node?.getAttribute('stroke'),nodeWidth:node?.getBoundingClientRect().width,
+        memberWidth:member ? Number(member.getAttribute('stroke-width'))*memberScale : null,
+        memberEnds:member && [member.getAttribute('x1'),member.getAttribute('y1'),member.getAttribute('x2'),member.getAttribute('y2')],
+        ring:Boolean(ring),connectionCount:svg.querySelectorAll('[data-object-kind="Connection"]').length};
+    }""")
+    assert result['nodeFill'] == 'white'
+    assert result['nodeStroke'] in ('#1f2937', '#111827', '#111111', '#171717')
+    assert 12 <= result['nodeWidth'] <= 18
+    assert 2 <= result['memberWidth'] <= 5
+    assert result['memberEnds'] == ['0', '0', '1000', '0']
+    assert result['ring'] is True and result['connectionCount'] == 1
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_structural_node_member_connection_crossing_is_not_joint_and_incomplete_is_listed(context, workspace_page):
+    owner, project, material, section = context
+    draft = valid_payload(material, section)
+    draft['nodes'] += [
+        {'client_key': 'n3', 'x_mm': 0, 'y_mm': 1000, 'label': ''},
+        {'client_key': 'n4', 'x_mm': 1000, 'y_mm': -1000, 'label': ''},
+    ]
+    draft['physical_members'].append({'client_key': 'm2', 'start_node_client_key': 'n3', 'end_node_client_key': 'n4', 'material_id': material.id, 'section_id': section.id, 'label': '', 'is_active': True})
+    draft['physical_members'].append({'client_key': 'm3', 'start_node_client_key': 'n1', 'end_node_client_key': None, 'material_id': material.id, 'section_id': section.id, 'label': '', 'is_active': True})
+    save_physical_draft(actor=owner, project=project, payload=draft)
+    page = workspace_page(user=owner, project=project)
+    assert page.locator('[data-client-key="c1"] [data-connection-ring]').count() == 1
+    assert page.locator('[data-object-kind="Connection"]').count() == 1
+    assert page.locator('[data-client-key="m3"][data-object-kind="PhysicalMember"]').count() == 0
+    assert '尚未完整' in page.locator('[data-draft-object-kind="PHYSICAL_MEMBER"][data-draft-object-key="m3"]').inner_text()
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_structural_node_member_connection_selection_keeps_result_body(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const {renderWorkspace}=await import('/static/projects/workspace/renderer.js');
+      const svg=document.querySelector('#workspace-canvas');
+      const draft=JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft;
+      renderWorkspace(svg,draft,{selectedObject:{kind:'PhysicalMember',clientKey:'m1'},resultOverlay:{m1:{state:'TENSION',color:'#b91c1c',dash:'7 3',label:'受拉'}}});
+      const group=svg.querySelector('[data-client-key="m1"]');
+      const body=group.querySelector('[data-member-body]');
+      return {stroke:body.getAttribute('stroke'),dash:body.getAttribute('stroke-dasharray'),selected:Boolean(group.querySelector('[data-selection-outline]')),hit:Boolean(group.querySelector('[data-symbol-hit]'))};
+    }""")
+    assert result == {'stroke': '#b91c1c', 'dash': '7 3', 'selected': True, 'hit': True}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_structural_node_member_connection_node_remains_top_hit_at_joint(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    top_kind = page.evaluate("""() => {
+      const circle=document.querySelector('[data-client-key="n1"] [data-node-body]');
+      const box=circle.getBoundingClientRect();
+      return document.elementFromPoint(box.x+box.width/2,box.y+box.height/2)?.closest('[data-object-kind]')?.getAttribute('data-object-kind');
+    }""")
+    assert top_kind == 'GeometryNode'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_structural_node_member_connection_ring_is_hit_outside_node(context, workspace_page):
+    owner, project, material, section = context
+    save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    top_kind = page.evaluate("""() => {
+      const ring=document.querySelector('[data-client-key="c1"] [data-connection-ring]');
+      const box=ring.getBoundingClientRect();
+      return document.elementFromPoint(box.right-1,box.y+box.height/2)?.closest('[data-object-kind]')?.getAttribute('data-object-kind');
+    }""")
+    assert top_kind == 'Connection'
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 def test_editor_independent_delete_preserves_gaps_and_undo_restores_identity(context, workspace_page):
     owner, project, material, section = context
     page = workspace_page(user=owner, project=project)
@@ -1165,7 +1255,8 @@ def test_renderer_emits_stable_physical_svg(context, workspace_page):
             })),
                 text: svg.textContent,
                 markup: svg.innerHTML,
-                selectedStrokeDasharray: getComputedStyle(svg.querySelector('[data-client-key="m1"] line')).strokeDasharray,
+                selectedOutline: svg.querySelector('[data-client-key="m1"] [data-selection-outline]') !== null,
+                bodyDash: svg.querySelector('[data-client-key="m1"] [data-member-body]').getAttribute('stroke-dasharray'),
                 loadDirection: [...svg.querySelector('[data-client-key="l1"]').querySelectorAll('line')].map((line) => ({ y1: Number(line.getAttribute('y1')), y2: Number(line.getAttribute('y2')) })),
           };
         }"""
@@ -1179,7 +1270,8 @@ def test_renderer_emits_stable_physical_svg(context, workspace_page):
     }
     assert all(item['tabindex'] == '0' and item['role'] == 'button' and item['label'] for item in rendered['objects'])
     assert any(item['key'] == 'm1' and item['selected'] == 'true' and item['focused'] == 'true' for item in rendered['objects'])
-    assert rendered['selectedStrokeDasharray'] != 'none'
+    assert rendered['selectedOutline'] is True
+    assert rendered['bodyDash'] == 'none'
     assert 'AnalysisElement' not in rendered['markup']
     assert rendered['loadDirection'][0]['y1'] > rendered['loadDirection'][0]['y2']
 
@@ -1735,7 +1827,8 @@ def test_workspace_canvas_shows_orientation_grid_fit_and_pointer_coordinates(con
     assert grid.evaluate("(element) => getComputedStyle(element).pointerEvents") == 'none'
 
     member = page.locator('[data-client-key="m1"] line')
-    assert member.evaluate("(element) => getComputedStyle(element).pointerEvents") != 'none'
+    assert member.evaluate("(element) => getComputedStyle(element).pointerEvents") == 'none'
+    assert page.locator('[data-client-key="m1"] [data-symbol-hit]').evaluate("(element) => getComputedStyle(element).pointerEvents") == 'stroke'
     assert member.bounding_box()['width'] > 200
     canvas.hover(position={'x': 350, 'y': 220})
     assert 'mm' in page.locator('#workspace-pointer-x').text_content()

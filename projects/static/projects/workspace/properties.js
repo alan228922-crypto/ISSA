@@ -261,7 +261,7 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
       button.textContent = labels.label(kind, record.client_key);
       if (kind === "PHYSICAL_MEMBER" && (!record.start_node_client_key || !record.end_node_client_key || !record.material_id || !record.section_id) ||
           kind === "CONNECTION" && (!record.geometry_node_client_key || record.participating_member_client_keys.includes(null)) ||
-          ["SUPPORT", "NODE_LOAD"].includes(kind) && !hasTargetLocation(state.draft, record.target_connection_client_key)) button.textContent += " · 未指定";
+          ["SUPPORT", "NODE_LOAD"].includes(kind) && !hasTargetLocation(state.draft, record.target_connection_client_key)) button.textContent += " · ⚠ 尚未完整 · 未指定";
       button.addEventListener("click", () => { const target = { kind, clientKey: record.client_key }; const current = canvasController.getState(); canvasController.replaceState({ ...current, selectedObject: target, selectedObjects: [target], focusedObject: target }); });
       inventory.append(button);
     }
