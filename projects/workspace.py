@@ -14,6 +14,10 @@ from .services import can_view_project
 
 
 def _draft(project):
+    if project.draft_schema_version == "physical-draft-v2":
+        from modeling.serialization import serialize_draft_v2
+
+        return serialize_draft_v2(project)
     nodes = list(GeometryNode.objects.filter(project=project).order_by("client_key"))
     members = list(
         PhysicalMember.objects.filter(project=project)

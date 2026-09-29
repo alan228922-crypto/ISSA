@@ -17,6 +17,7 @@ class Project(models.Model):
     name = models.CharField(max_length=200)
     analysis_type = models.CharField(max_length=20, choices=AnalysisType.choices, default=AnalysisType.TRUSS_2D)
     draft_version = models.PositiveIntegerField(default=0)
+    draft_schema_version = models.CharField(max_length=32, default="physical-draft-v1")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

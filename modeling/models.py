@@ -74,6 +74,8 @@ class Connection(models.Model):
 
     def clean(self):
         super().clean()
+        if self.project_id and self.project.draft_schema_version != "physical-draft-v1":
+            raise ValidationError("Connection 仅属于旧版 Draft。")
         if self.geometry_node_id and self.geometry_node.project_id != self.project_id:
             raise ValidationError({"geometry_node": "连接节点必须属于同一项目。"})
 
@@ -95,6 +97,39 @@ class ConnectionParticipation(models.Model):
             raise ValidationError({"member": "参与构件必须属于同一项目。"})
 
 
+class MemberJointIncidence(models.Model):
+    """Explicit intermediate participation in a v2 structural Node."""
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="member_joint_incidences")
+    member = models.ForeignKey(PhysicalMember, on_delete=models.CASCADE, related_name="joint_incidences")
+    node = models.ForeignKey(GeometryNode, on_delete=models.CASCADE, related_name="member_joint_incidences")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["member", "node"], name="unique_member_joint_incidence")]
+
+    def clean(self):
+        super().clean()
+        if self.member_id and self.member.project_id != self.project_id:
+            raise ValidationError({"member": "构件必须属于同一项目。"})
+        if self.node_id and self.node.project_id != self.project_id:
+            raise ValidationError({"node": "节点必须属于同一项目。"})
+
+
+class DraftMigrationAudit(models.Model):
+    """Durable per-project v1 conversion evidence; never a client authority."""
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="draft_migration_audits")
+    status = models.CharField(max_length=16)
+    source_draft_version = models.PositiveIntegerField()
+    source_hash = models.CharField(max_length=64)
+    source_payload_json = models.JSONField()
+    node_mapping_json = models.JSONField(default=dict)
+    legacy_exceptions_json = models.JSONField(default=dict)
+    reason_code = models.CharField(max_length=100, blank=True)
+    target_draft_version = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class Support(models.Model):
     class Type(models.TextChoices):
         PINNED = "PINNED", "铰支座"
@@ -103,6 +138,7 @@ class Support(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="supports")
     client_key = models.CharField(max_length=128)
     target_connection = models.ForeignKey(Connection, on_delete=models.SET_NULL, null=True, blank=True, related_name="supports")
+    target_node = models.ForeignKey(GeometryNode, on_delete=models.SET_NULL, null=True, blank=True, related_name="supports")
     support_type = models.CharField(max_length=16, choices=Type.choices)
     restrained_axis = models.CharField(max_length=1, null=True, blank=True)
 
@@ -113,6 +149,12 @@ class Support(models.Model):
         errors = {}
         if self.target_connection_id and self.target_connection.project_id != self.project_id:
             errors["target_connection"] = "支座连接必须属于同一项目。"
+        if self.target_node_id and self.target_node.project_id != self.project_id:
+            errors["target_node"] = "支座节点必须属于同一项目。"
+        if self.project_id and self.project.draft_schema_version == "physical-draft-v2" and self.target_connection_id:
+            errors["target_connection"] = "新版支座只能指向节点。"
+        if self.project_id and self.project.draft_schema_version == "physical-draft-v1" and self.target_node_id:
+            errors["target_node"] = "旧版支座只能指向连接。"
         if self.support_type == self.Type.PINNED and self.restrained_axis is not None:
             errors["restrained_axis"] = "铰支座不设置约束轴。"
         if self.support_type == self.Type.ROLLER and self.restrained_axis not in {"X", "Y"}:
@@ -125,10 +167,11 @@ class Support(models.Model):
 
 
 class NodeLoad(models.Model):
-    # 荷載必須放在 Connection 上，這樣分析時才能知道力量作用在哪個節點。
+    # v1 荷载定位在 Connection；v2 直接定位在 Node。
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="node_loads")
     client_key = models.CharField(max_length=128)
     target_connection = models.ForeignKey(Connection, on_delete=models.SET_NULL, null=True, blank=True, related_name="node_loads")
+    target_node = models.ForeignKey(GeometryNode, on_delete=models.SET_NULL, null=True, blank=True, related_name="node_loads")
     fx_N = models.FloatField()
     fy_N = models.FloatField()
     label = models.CharField(max_length=200, blank=True)
@@ -141,6 +184,12 @@ class NodeLoad(models.Model):
         errors = {}
         if self.target_connection_id and self.target_connection.project_id != self.project_id:
             errors["target_connection"] = "节点荷载连接必须属于同一项目。"
+        if self.target_node_id and self.target_node.project_id != self.project_id:
+            errors["target_node"] = "荷载节点必须属于同一项目。"
+        if self.project_id and self.project.draft_schema_version == "physical-draft-v2" and self.target_connection_id:
+            errors["target_connection"] = "新版荷载只能指向节点。"
+        if self.project_id and self.project.draft_schema_version == "physical-draft-v1" and self.target_node_id:
+            errors["target_node"] = "旧版荷载只能指向连接。"
         if not _finite(self.fx_N) or not _finite(self.fy_N):
             errors["fx_N"] = "节点荷载必须是有限数值。"
         if errors:

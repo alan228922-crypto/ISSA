@@ -6,7 +6,11 @@ from django.db import transaction
 from materials.models import Material, Section
 from projects.services import can_modify_project
 
-from .models import Connection, ConnectionParticipation, GeometryNode, NodeLoad, PhysicalMember, Support
+from .models import (
+    Connection, ConnectionParticipation, DraftMigrationAudit, GeometryNode,
+    MemberJointIncidence, NodeLoad, PhysicalMember, Support,
+)
+from .topology import find_unrepresented_passes, ordered_member_nodes
 
 
 class DraftSaveError(ValueError):
@@ -84,6 +88,8 @@ def save_physical_draft(*, actor, project, payload):
     # ========================================================
     if not can_modify_project(actor, project):
         raise DraftSaveError("PROJECT_WRITE_DENIED")
+    if project.draft_schema_version == "physical-draft-v2":
+        return save_physical_draft_v2(actor=actor, project=project, payload=payload)
     if not isinstance(payload, dict) or payload.get("schema_version") != "physical-draft-v1":
         raise DraftSaveError("UNSUPPORTED_DRAFT_SCHEMA")
     try:
@@ -103,6 +109,8 @@ def save_physical_draft(*, actor, project, payload):
         # 從這裡開始把整份草稿視為一次替換：舊圖刪除、新圖寫入、版本增加要一起成功。
         # 鎖住專案後，檢查版本、刪除舊草稿、寫入新草稿會一起完成，避免只完成一半。
         project = type(project).objects.select_for_update().get(pk=project.pk)
+        if project.draft_schema_version != "physical-draft-v1":
+            raise DraftSaveError("UNSUPPORTED_DRAFT_SCHEMA")
         if project.draft_version != expected_version:
             raise DraftSaveError("STALE_DRAFT")
 
@@ -161,6 +169,141 @@ def save_physical_draft(*, actor, project, payload):
             connection = _reference(connection_objects, data, "target_connection_client_key", "UNKNOWN_CONNECTION")
             _instance(NodeLoad(project=project, client_key=key, target_connection=connection, fx_N=data.get("fx_N"), fy_N=data.get("fy_N"), label=data.get("label", "")))
 
+        project.draft_version += 1
+        project.save(update_fields=["draft_version", "updated_at"])
+    return {"ok": True, "draft_version": project.draft_version, "validation": {"errors": [], "warnings": []}}
+
+
+def _v2_expected_version(payload):
+    if not isinstance(payload, dict) or payload.get("schema_version") != "physical-draft-v2":
+        raise DraftSaveError("UNSUPPORTED_DRAFT_SCHEMA")
+    value = payload.get("expected_draft_version")
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise DraftSaveError("INVALID_DRAFT")
+    if "connections" in payload:
+        raise DraftSaveError("UNSUPPORTED_DRAFT_SCHEMA")
+    return value
+
+
+def _audited_exceptions(project, nodes, members):
+    audit = DraftMigrationAudit.objects.filter(project=project, status="CONVERTED").order_by("-created_at", "-pk").first()
+    if audit is None:
+        return set(), set()
+    legacy = audit.legacy_exceptions_json or {}
+    pair_exemptions = set()
+    for item in legacy.get("same_coordinate_pairs", []):
+        if len(item) != 4:
+            continue
+        first, second, x, y = item
+        if nodes.get(first) == nodes.get(second) == (x, y):
+            pair_exemptions.add(frozenset((first, second)))
+    member_by_key = {row["client_key"]: row for row in members}
+    pass_exemptions = set()
+    for item in legacy.get("nonparticipating_passes", []):
+        if len(item) != 8:
+            continue
+        member_key, node_key, x, y, x1, y1, x2, y2 = item
+        member = member_by_key.get(member_key)
+        if member is None or nodes.get(node_key) != (x, y):
+            continue
+        start = nodes.get(member["start_node_client_key"])
+        end = nodes.get(member["end_node_client_key"])
+        if start == (x1, y1) and end == (x2, y2):
+            pass_exemptions.add((member_key, node_key))
+    return pair_exemptions, pass_exemptions
+
+
+def save_physical_draft_v2(*, actor, project, payload):
+    """Atomically replace a v2 editable graph without inferring incidence."""
+    if not can_modify_project(actor, project):
+        raise DraftSaveError("PROJECT_WRITE_DENIED")
+    expected_version = _v2_expected_version(payload)
+    nodes = _keyed(_items(payload, "nodes"))
+    members = _keyed(_items(payload, "physical_members"))
+    supports = _keyed(_items(payload, "supports"))
+    loads = _keyed(_items(payload, "node_loads"))
+    incidence_rows = _items(payload, "member_joint_incidences")
+    incidences = set()
+    for row in incidence_rows:
+        if not isinstance(row, dict):
+            raise DraftSaveError("INVALID_DRAFT")
+        pair = row.get("member_client_key"), row.get("node_client_key")
+        if pair[0] not in members or pair[1] not in nodes:
+            raise DraftSaveError("UNKNOWN_MEMBER_INCIDENCE")
+        if pair in incidences:
+            raise DraftSaveError("DUPLICATE_MEMBER_INCIDENCE")
+        incidences.add(pair)
+    coordinates = {}
+    for key, row in nodes.items():
+        point = row.get("x_mm"), row.get("y_mm")
+        if any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) for value in point):
+            raise DraftSaveError("INVALID_NUMERIC_VALUE")
+        coordinates[key] = point
+    with transaction.atomic():
+        project = type(project).objects.select_for_update().get(pk=project.pk)
+        if project.draft_schema_version != "physical-draft-v2":
+            raise DraftSaveError("UNSUPPORTED_DRAFT_SCHEMA")
+        if project.draft_version != expected_version:
+            raise DraftSaveError("STALE_DRAFT")
+        pair_exemptions, pass_exemptions = _audited_exceptions(project, coordinates, list(members.values()))
+        by_point = {}
+        for key, point in coordinates.items():
+            for other in by_point.get(point, []):
+                if frozenset((key, other)) not in pair_exemptions:
+                    raise DraftSaveError("DUPLICATE_NODE_COORDINATE")
+            by_point.setdefault(point, []).append(key)
+        for key, row in members.items():
+            if "start_node_client_key" not in row or "end_node_client_key" not in row:
+                raise DraftSaveError("INVALID_DRAFT")
+            for field in ("start_node_client_key", "end_node_client_key"):
+                if row[field] is not None and row[field] not in nodes:
+                    raise DraftSaveError("UNKNOWN_NODE")
+            try:
+                ordered_member_nodes(row, coordinates, incidences)
+            except (ValueError, KeyError) as exc:
+                raise DraftSaveError(str(exc)) from exc
+        if find_unrepresented_passes(nodes=coordinates, members=list(members.values()), incidences=incidences, exemptions=pass_exemptions):
+            raise DraftSaveError("MEMBER_PASSES_THROUGH_NODE_WITHOUT_INCIDENCE")
+
+        Support.objects.filter(project=project).delete()
+        NodeLoad.objects.filter(project=project).delete()
+        MemberJointIncidence.objects.filter(project=project).delete()
+        Connection.objects.filter(project=project).delete()
+        PhysicalMember.objects.filter(project=project).delete()
+        GeometryNode.objects.filter(project=project).delete()
+        node_objects = {}
+        for key, row in nodes.items():
+            node_objects[key] = _instance(GeometryNode(
+                project=project, client_key=key, x_mm=row["x_mm"], y_mm=row["y_mm"], label=row.get("label", ""),
+            ))
+        member_objects = {}
+        for key, row in members.items():
+            member_objects[key] = _instance(PhysicalMember(
+                project=project, client_key=key,
+                start_geometry_node=_reference(node_objects, row, "start_node_client_key", "UNKNOWN_NODE"),
+                end_geometry_node=_reference(node_objects, row, "end_node_client_key", "UNKNOWN_NODE"),
+                material=_owned(Material, row.get("material_id"), project.owner_user_id, "FOREIGN_MATERIAL"),
+                section=_owned(Section, row.get("section_id"), project.owner_user_id, "FOREIGN_SECTION"),
+                label=row.get("label", ""), is_active=row.get("is_active", True),
+            ))
+        for member_key, node_key in sorted(incidences):
+            _instance(MemberJointIncidence(project=project, member=member_objects[member_key], node=node_objects[node_key]))
+        for key, row in supports.items():
+            if not isinstance(row, dict) or "target_connection_client_key" in row:
+                raise DraftSaveError("UNSUPPORTED_DRAFT_SCHEMA")
+            _instance(Support(
+                project=project, client_key=key,
+                target_node=_reference(node_objects, row, "target_node_client_key", "UNKNOWN_NODE"),
+                support_type=row.get("support_type"), restrained_axis=row.get("restrained_axis"),
+            ))
+        for key, row in loads.items():
+            if not isinstance(row, dict) or "target_connection_client_key" in row:
+                raise DraftSaveError("UNSUPPORTED_DRAFT_SCHEMA")
+            _instance(NodeLoad(
+                project=project, client_key=key,
+                target_node=_reference(node_objects, row, "target_node_client_key", "UNKNOWN_NODE"),
+                fx_N=row.get("fx_N"), fy_N=row.get("fy_N"), label=row.get("label", ""),
+            ))
         project.draft_version += 1
         project.save(update_fields=["draft_version", "updated_at"])
     return {"ok": True, "draft_version": project.draft_version, "validation": {"errors": [], "warnings": []}}

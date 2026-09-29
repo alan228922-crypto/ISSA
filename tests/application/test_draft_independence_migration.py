@@ -24,15 +24,19 @@ def test_existing_connection_participants_survive_through_migration(context):
     save_physical_draft(actor=owner, project=project, payload=payload)
     connection_id = Connection.objects.get(project=project, client_key="c1").pk
 
-    MigrationExecutor(connection).migrate([("modeling", "0002_support_client_key")])
-    old = MigrationExecutor(connection)
-    OldConnection = old.loader.project_state([("modeling", "0002_support_client_key")]).apps.get_model("modeling", "Connection")
-    assert list(OldConnection.objects.get(pk=connection_id).participating_members.order_by("client_key").values_list("client_key", flat=True)) == ["m1", "m2"]
+    latest = MigrationExecutor(connection).loader.graph.leaf_nodes()
+    try:
+        MigrationExecutor(connection).migrate([("modeling", "0002_support_client_key")])
+        old = MigrationExecutor(connection)
+        OldConnection = old.loader.project_state([("modeling", "0002_support_client_key")]).apps.get_model("modeling", "Connection")
+        assert list(OldConnection.objects.get(pk=connection_id).participating_members.order_by("client_key").values_list("client_key", flat=True)) == ["m1", "m2"]
 
-    MigrationExecutor(connection).migrate([("modeling", "0003_alter_connection_geometry_node_and_more")])
-    current = MigrationExecutor(connection)
-    Slot = current.loader.project_state([("modeling", "0003_alter_connection_geometry_node_and_more")]).apps.get_model("modeling", "ConnectionParticipation")
-    assert list(Slot.objects.filter(connection_id=connection_id).order_by("position").values_list("member__client_key", flat=True)) == ["m1", "m2"]
+        MigrationExecutor(connection).migrate([("modeling", "0003_alter_connection_geometry_node_and_more")])
+        current = MigrationExecutor(connection)
+        Slot = current.loader.project_state([("modeling", "0003_alter_connection_geometry_node_and_more")]).apps.get_model("modeling", "ConnectionParticipation")
+        assert list(Slot.objects.filter(connection_id=connection_id).order_by("position").values_list("member__client_key", flat=True)) == ["m1", "m2"]
+    finally:
+        MigrationExecutor(connection).migrate(latest)
 
 
 @pytest.mark.django_db(transaction=True)
