@@ -18,6 +18,10 @@ class IdealizationResult:
     physical_member_to_analysis: dict
 
 def idealize(snapshot):
+    if snapshot.get('schema_version') == 'physical-snapshot-v2':
+        from .truss2d_v2 import idealize_v2
+
+        return idealize_v2(snapshot)
     # ========================================================
     # 函數用途：把 physical-snapshot-v1 翻譯成 truss2d-input-v1。
     #

@@ -235,6 +235,9 @@ def _check_issue_physical_object(entity_refs, snapshot, analysis_member_to_physi
     member_id = analysis_member_to_physical.get(ref)
     if member_id is not None and member_id in {member['id'] for member in snapshot['physical_members']}:
         return {'kind': 'PHYSICAL_MEMBER', 'client_key': member_id}
+    if snapshot.get('schema_version') == 'physical-snapshot-v2':
+        matches = [node['id'] for node in snapshot['nodes'] if ref == f"node:{node['id']}"]
+        return {'kind': 'NODE', 'client_key': matches[0]} if len(matches) == 1 else None
     matches = [connection['id'] for connection in snapshot['connections'] if ref == f"connection:{connection['id']}"]
     if len(matches) == 1:
         return {'kind': 'CONNECTION', 'client_key': matches[0]}
