@@ -91,10 +91,16 @@ def _model(package):
     for field, code in (
         ("nodes", "MISSING_GEOMETRY_EVIDENCE"),
         ("physical_members", "MISSING_GEOMETRY_EVIDENCE"),
-        ("connections", "MISSING_CONNECTION_EVIDENCE"),
         ("analysis_member_mapping", "MISSING_ANALYSIS_MAPPING"),
     ):
         issue = _required_mapping(model, field, code) if field == "analysis_member_mapping" else _required_list(model, field, code)
+        if issue:
+            issues.append(issue)
+    if isinstance(model, dict) and "member_joint_incidences" in model:
+        if not isinstance(model["member_joint_incidences"], list):
+            issues.append(_issue("MISSING_INCIDENCE_EVIDENCE", field="member_joint_incidences"))
+    else:
+        issue = _required_list(model, "connections", "MISSING_CONNECTION_EVIDENCE")
         if issue:
             issues.append(issue)
     return _block(issues)

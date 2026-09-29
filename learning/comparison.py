@@ -91,7 +91,9 @@ def _segment_evidence(*, result, idealization):
 def _prediction_node_id(*, point, idealization):
     if not isinstance(point, dict):
         _fail("COMPARE_POINT_UNMAPPABLE")
-    if point.get("kind") == "CONNECTION" and isinstance(point.get("connection_client_key"), str):
+    if point.get("kind") == "NODE" and isinstance(point.get("node_client_key"), str):
+        expected = {"kind": "node", "id": point["node_client_key"]}
+    elif point.get("kind") == "CONNECTION" and isinstance(point.get("connection_client_key"), str):
         expected = {"kind": "connection", "id": f"connection:{point['connection_client_key']}"}
     elif (
         point.get("kind") == "MEMBER_ENDPOINT"
@@ -223,7 +225,8 @@ def build_comparison(*, run):
         _fail("COMPARE_SOURCE_MISMATCH")
     if run.status != "SUCCESS" or run.result_schema_version != "truss2d-result-v1":
         _fail("COMPARE_RUN_NOT_SUCCESS")
-    if prediction.status != "COMPLETED" or prediction.prediction_schema_version != "prediction-v1":
+    expected_schema = "prediction-v2" if revision.physical_snapshot_json.get("schema_version") == "physical-snapshot-v2" else "prediction-v1"
+    if prediction.status != "COMPLETED" or prediction.prediction_schema_version != expected_schema:
         _fail("COMPARE_PREDICTION_NOT_ELIGIBLE")
     result, payload = run.result_json, prediction.payload_json
     if not isinstance(result, dict) or result.get("schema_version") != "truss2d-result-v1" or not isinstance(payload, dict):

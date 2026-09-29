@@ -210,6 +210,10 @@ def _load_path(path, members, connections):
 
 def validate_prediction_payload(project, payload):
     """Validate only stored prediction-v1 shape and physical topology."""
+    if project.draft_schema_version == "physical-draft-v2":
+        from .prediction_v2 import validate_prediction_v2
+
+        return validate_prediction_v2(project, payload)
     # 預測記錄的是學生看得到的物理構件，不直接使用 Solver 內部切出的分析節點。
     if not isinstance(payload, dict) or payload.get("schema_version") != "prediction-v1":
         _schema_error()
@@ -361,7 +365,8 @@ def discover_current_prediction(project, actor=None):
     predictions = _current_predictions(project)
     if not predictions:
         return {"state": "NONE", "source_draft_version": project.draft_version}
-    if len(predictions) != 1 or predictions[0].status not in {Prediction.Status.DRAFT, Prediction.Status.COMPLETED}:
+    expected_schema = "prediction-v2" if project.draft_schema_version == "physical-draft-v2" else "prediction-v1"
+    if len(predictions) != 1 or predictions[0].status not in {Prediction.Status.DRAFT, Prediction.Status.COMPLETED} or predictions[0].prediction_schema_version != expected_schema:
         raise PredictionError("PREDICTION_AMBIGUOUS", 409)
     return {"state": predictions[0].status, "prediction": predictions[0]}
 
@@ -382,7 +387,7 @@ def _create_prediction_once(*, project, actor, expected_draft_version):
                     project=project,
                     source_draft_version=project.draft_version,
                     created_by=actor,
-                    prediction_schema_version="prediction-v1",
+                    prediction_schema_version="prediction-v2" if project.draft_schema_version == "physical-draft-v2" else "prediction-v1",
                     payload_json={},
                 )
                 prediction._created_for_current_draft = True
@@ -432,6 +437,9 @@ def complete_prediction(*, prediction, actor, expected_draft_version, payload):
         ).exists():
             raise PredictionError("PREDICTION_AFTER_RESULT_REVEAL", 409)
         else:
+            expected_schema = "prediction-v2" if project.draft_schema_version == "physical-draft-v2" else "prediction-v1"
+            if prediction.prediction_schema_version != expected_schema:
+                raise PredictionError("PREDICTION_INVALID_SCHEMA", 409)
             prediction.payload_json = validate_prediction_payload(project, payload)
             prediction.status = Prediction.Status.COMPLETED
             prediction.completed_at = timezone.now()

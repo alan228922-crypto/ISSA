@@ -37,7 +37,9 @@ export function renderReport(root, payload, { runNumber = null } = {}) {
   if (issues.length) { const list = document.createElement("ul"); issues.forEach((issue) => { const item = document.createElement("li"); item.dataset.completenessCode = issue.code; item.textContent = ISSUE_TEXT[issue.code] || "有一项工程资料需要补齐。"; list.append(item); }); summary.append(list); }
   const euler = document.createElement("p"); euler.textContent = "限制：当前版本未提供 Euler 稳定性自动报告；不能作为规范符合性审查或正式工程签字。"; summary.append(euler); root.append(summary);
   const main = document.createElement("details"); main.append(heading("summary", "展开材料、截面、支座、荷载与主要结果"));
-  const model = report.geometry_connectivity || {}; main.append(table("模型信息", ["节点", "实体构件", "显式连接"], [[(model.nodes || []).length, (model.physical_members || []).length, (model.connections || []).length]]));
+  const model = report.geometry_connectivity || {};
+  if (Object.hasOwn(model, "member_joint_incidences")) main.append(table("模型信息", ["结构节点", "实体构件", "构件—节点参与"], [[(model.nodes || []).length, (model.physical_members || []).length, (model.member_joint_incidences || []).length]]));
+  else main.append(table("模型信息", ["节点", "实体构件", "显式连接"], [[(model.nodes || []).length, (model.physical_members || []).length, (model.connections || []).length]]));
   const materialRows = (report.materials_sections?.materials || []).map((item) => [value(item, "name"), value(item, "E_MPa"), value(item, "density_g_per_mm3")]);
   const sectionRows = (report.materials_sections?.sections || []).map((item) => [value(item, "name"), value(item, "A_mm2"), value(item, "Ix_mm4")]);
   main.append(table("材料", ["材料", "E (MPa)", "密度 (g/mm³)"], materialRows)); main.append(table("截面", ["截面", "A (mm²)", "Ix (mm⁴)"], sectionRows));

@@ -113,6 +113,16 @@ def build_report_package(*, run, actor, project=None):
     source_draft_version = revision.source_draft_version
     validation_logs = _validation_logs(run, revision)
     material_section_data = _materials_sections(snapshot)
+    geometry_connectivity = {
+        "status": "READY",
+        "nodes": snapshot.get("nodes"),
+        "physical_members": snapshot.get("physical_members"),
+        "analysis_member_mapping": solver_input.get("physical_member_mapping"),
+    }
+    if snapshot.get("schema_version") == "physical-snapshot-v2":
+        geometry_connectivity["member_joint_incidences"] = snapshot.get("member_joint_incidences")
+    else:
+        geometry_connectivity["connections"] = snapshot.get("connections")
 
     return {
         "metadata": {
@@ -137,13 +147,7 @@ def build_report_package(*, run, actor, project=None):
             "sections": material_section_data["sections"],
             "items": material_section_data["materials"] + material_section_data["sections"],
         },
-        "geometry_connectivity": {
-            "status": "READY",
-            "nodes": snapshot.get("nodes"),
-            "physical_members": snapshot.get("physical_members"),
-            "connections": snapshot.get("connections"),
-            "analysis_member_mapping": solver_input.get("physical_member_mapping"),
-        },
+        "geometry_connectivity": geometry_connectivity,
         "supports_loads": {
             "status": "READY",
             "supports": snapshot.get("supports"),

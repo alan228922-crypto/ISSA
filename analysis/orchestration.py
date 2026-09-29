@@ -164,7 +164,8 @@ def analyze_project(*,project,actor,expected_draft_version,prediction_id=None,so
             except (TypeError,ValueError):
                 prediction=None
             if prediction is None: raise AnalysisError('PREDICTION_NOT_FOUND',404)
-            if prediction.status!=Prediction.Status.COMPLETED or prediction.created_by_id!=project.owner_user_id or prediction.prediction_schema_version!='prediction-v1': raise AnalysisError('PREDICTION_NOT_ELIGIBLE',409)
+            expected_prediction_schema = 'prediction-v2' if project.draft_schema_version == 'physical-draft-v2' else 'prediction-v1'
+            if prediction.status!=Prediction.Status.COMPLETED or prediction.created_by_id!=project.owner_user_id or prediction.prediction_schema_version!=expected_prediction_schema: raise AnalysisError('PREDICTION_NOT_ELIGIBLE',409)
             if prediction.source_draft_version!=expected_draft_version or prediction.source_draft_version!=project.draft_version: raise AnalysisError('PREDICTION_STALE_DRAFT',409)
         # 鎖定後再次比對版本，確保 Revision 不會建立在過期的草稿上。
             from learning.services import PredictionError, discover_current_prediction
@@ -237,7 +238,7 @@ def _check_issue_physical_object(entity_refs, snapshot, analysis_member_to_physi
         return {'kind': 'PHYSICAL_MEMBER', 'client_key': member_id}
     if snapshot.get('schema_version') == 'physical-snapshot-v2':
         matches = [node['id'] for node in snapshot['nodes'] if ref == f"node:{node['id']}"]
-        return {'kind': 'NODE', 'client_key': matches[0]} if len(matches) == 1 else None
+        return {'kind': 'GEOMETRY_NODE', 'client_key': matches[0]} if len(matches) == 1 else None
     matches = [connection['id'] for connection in snapshot['connections'] if ref == f"connection:{connection['id']}"]
     if len(matches) == 1:
         return {'kind': 'CONNECTION', 'client_key': matches[0]}

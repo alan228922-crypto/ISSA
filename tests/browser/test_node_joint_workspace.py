@@ -83,3 +83,30 @@ def test_real_pointer_crossing_click_persists_explicit_incidences(context, works
     page.reload()
     incidences = page.evaluate("""() => JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft.member_joint_incidences""")
     assert {(row["member_client_key"], row["node_client_key"]) for row in incidences} == {(key, "node-1") for key in (["horizontal", "vertical", "diagonal"][:member_count])}
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_v2_prediction_browser_authoring_uses_nodes_not_connections(context, workspace_page):
+    from modeling.services import save_physical_draft
+    from tests.application.test_node_joint_draft import v2_payload, v2_project
+
+    owner, project, material, section = context
+    v2_project(project)
+    save_physical_draft(actor=owner, project=project, payload=v2_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const {createPredictionWorkspace}=await import('/static/projects/workspace/prediction.js');
+      const {predictionCanvasSelection}=await import('/static/projects/workspace/state.js');
+      const draft=JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft;
+      const workspace=createPredictionWorkspace({urls:{current:'',create:'',completeTemplate:'/predictions/{prediction_id}/'},draft,
+        get:async()=>({response:{ok:true},body:{state:'NONE'}}),
+        post:async()=>({response:{ok:true},body:{ok:true,status:'DRAFT',prediction:{prediction_id:1}}})});
+      await workspace.loadPrediction(); await workspace.startPrediction();
+      workspace.selectMaximumDisplacement(predictionCanvasSelection({draft,selectedObject:{kind:'GEOMETRY_NODE',clientKey:'n2'}}));
+      for (const selection of [{kind:'GEOMETRY_NODE',clientKey:'n1'},{kind:'PHYSICAL_MEMBER',clientKey:'m1'},{kind:'GEOMETRY_NODE',clientKey:'n2'}]) workspace.appendRepresentativePath(predictionCanvasSelection({draft,selectedObject:selection}));
+      return workspace.predictionPayload();
+    }""")
+    assert result["schema_version"] == "prediction-v2"
+    assert result["max_displacement_location"] == {"kind": "NODE", "node_client_key": "n2"}
+    assert [item["kind"] for item in result["representative_load_path"]] == ["NODE", "PHYSICAL_MEMBER", "NODE"]

@@ -82,6 +82,11 @@ export function focusWorkspaceIssue(state, issue) {
 
 export function predictionCanvasSelection(state) {
   const selected = state?.selectedObject;
+  if (state?.draft?.schema_version === "physical-draft-v2") {
+    if (selected?.kind === "GEOMETRY_NODE") return Object.freeze({ kind: "NODE", clientKey: selected.clientKey });
+    if (selected?.kind === "PHYSICAL_MEMBER") return Object.freeze({ kind: "PHYSICAL_MEMBER", clientKey: selected.clientKey });
+    return null;
+  }
   if (selected?.kind === "GEOMETRY_NODE") {
     const matches = state.draft.connections.filter((item) => item.geometry_node_client_key === selected.clientKey);
     return matches.length === 1 ? Object.freeze({ kind: "CONNECTION", clientKey: matches[0].client_key }) : null;
