@@ -2,6 +2,7 @@ export const GRID_ORIGIN = Object.freeze({ x: 0, y: 0 });
 export { GRID_SPACING } from "./grid.js";
 import { objectsInMarquee } from "./selection-geometry.js";
 import { createStudentLabelResolver } from "./labels.js";
+import { candidateMembersAtNode } from "./joint-candidates.js";
 
 const POINT_TOLERANCE = 10;
 const SEGMENT_TOLERANCE = 8;
@@ -133,7 +134,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   let lastMiddleClick = null;
   const visibleIdentity = (item) => {
     if (item?.kind !== "CONNECTION") return item;
-    const connection = state.draft.connections.find((record) => record.client_key === item.clientKey);
+    const connection = state.draft.connections?.find((record) => record.client_key === item.clientKey);
     return connection ? { kind: "GEOMETRY_NODE", clientKey: connection.geometry_node_client_key } : item;
   };
   const notifyStateChange = () => { for (const handler of stateChangeHandlers) handler(state); };
@@ -167,9 +168,27 @@ export function bindCanvasInteractions(svg, initialState, render) {
     panel.setAttribute("role", "group"); panel.setAttribute("aria-label", "选择重叠对象");
     panel.style.left = `${Math.max(0, Math.min(bounds.width - 150, point.x - bounds.left + 12))}px`;
     panel.style.top = `${Math.max(0, Math.min(bounds.height - 130, point.y - bounds.top + 12))}px`;
+    const v2 = state.draft.schema_version === "physical-draft-v2";
+    const nodeChoices = candidates.filter((item) => item.kind === "GEOMETRY_NODE");
+    if (v2 && nodeChoices.length > 1) {
+      const warning = document.createElement("p"); warning.textContent = "这里有多个位置相同但彼此不连接的旧模型节点。请选择具体节点。"; panel.append(warning);
+    }
     for (const candidate of candidates) {
       const button = document.createElement("button"); button.type = "button";
       button.textContent = labels.label(candidate.kind, candidate.clientKey);
+      if (v2 && candidate.kind === "GEOMETRY_NODE") {
+        const target = state.draft.nodes.find((row) => row.client_key === candidate.clientKey);
+        const passing = target ? candidateMembersAtNode(state.draft, target) : [];
+        const joined = passing.filter((memberKey) => {
+          const member = state.draft.physical_members.find((row) => row.client_key === memberKey);
+          return [member.start_node_client_key, member.end_node_client_key].includes(candidate.clientKey)
+            || state.draft.member_joint_incidences.some((row) => row.member_client_key === memberKey && row.node_client_key === candidate.clientKey);
+        });
+        const unjoined = passing.filter((memberKey) => !joined.includes(memberKey));
+        const supportCount = state.draft.supports.filter((row) => row.target_node_client_key === candidate.clientKey).length;
+        const loadCount = state.draft.node_loads.filter((row) => row.target_node_client_key === candidate.clientKey).length;
+        button.textContent += ` · 连接构件 ${joined.join("、") || "无"} · 未连接 ${unjoined.join("、") || "无"} · 支座 ${supportCount} · 荷载 ${loadCount}`;
+      }
       button.addEventListener("click", () => { closeChooser(); select(candidate, true, additive); });
       panel.append(button);
     }

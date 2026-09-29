@@ -14,9 +14,10 @@ const propertyEditing = new WeakSet();
 const propertyRenderers = new WeakMap();
 let deleteFeedback = "";
 
-function hasTargetLocation(draft, targetConnectionKey) {
-  if (!targetConnectionKey) return false;
-  return Boolean(draft.connections.find((item) => item.client_key === targetConnectionKey)?.geometry_node_client_key);
+function hasTargetLocation(draft, targetKey) {
+  if (!targetKey) return false;
+  if (draft.schema_version === "physical-draft-v2") return draft.nodes.some((item) => item.client_key === targetKey);
+  return Boolean(draft.connections.find((item) => item.client_key === targetKey)?.geometry_node_client_key);
 }
 
 function selectedRecord(state) {
@@ -166,8 +167,11 @@ function supportValue(support) {
 }
 
 function appendSupportControls(root, selected, support, canvasController, draft, labels) {
-  appendChoice(root, { text: "作用位置", value: support.target_connection_client_key, choices: draft.connections.map((item) => ({ id: item.client_key, name: labels.label("CONNECTION", item.client_key) })), dataName: "propertySupportTarget", allowNull: true, onChange: (select) => {
-    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { target_connection_client_key: select.value || null } });
+  const v2 = draft.schema_version === "physical-draft-v2";
+  const field = v2 ? "target_node_client_key" : "target_connection_client_key";
+  const choices = v2 ? draft.nodes.map((item) => ({ id: item.client_key, name: labels.label("GEOMETRY_NODE", item.client_key) })) : draft.connections.map((item) => ({ id: item.client_key, name: labels.label("CONNECTION", item.client_key) }));
+  appendChoice(root, { text: "作用位置", value: support[field], choices, dataName: "propertySupportTarget", allowNull: true, onChange: (select) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: select.value || null } });
   } });
   const label = document.createElement("label");
   label.textContent = "支座类型";
@@ -185,8 +189,11 @@ function appendSupportControls(root, selected, support, canvasController, draft,
 }
 
 function appendLoadControls(root, selected, load, canvasController, draft, labels) {
-  appendChoice(root, { text: "作用位置", value: load.target_connection_client_key, choices: draft.connections.map((item) => ({ id: item.client_key, name: labels.label("CONNECTION", item.client_key) })), dataName: "propertyLoadTarget", allowNull: true, onChange: (select) => {
-    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { target_connection_client_key: select.value || null } });
+  const v2 = draft.schema_version === "physical-draft-v2";
+  const field = v2 ? "target_node_client_key" : "target_connection_client_key";
+  const choices = v2 ? draft.nodes.map((item) => ({ id: item.client_key, name: labels.label("GEOMETRY_NODE", item.client_key) })) : draft.connections.map((item) => ({ id: item.client_key, name: labels.label("CONNECTION", item.client_key) }));
+  appendChoice(root, { text: "作用位置", value: load[field], choices, dataName: "propertyLoadTarget", allowNull: true, onChange: (select) => {
+    updateState(canvasController, { type: "UPDATE_OBJECT", target: selected, changes: { [field]: select.value || null } });
   } });
   for (const [field, text, dataName] of [["fx_N", "水平力 Fx (N)", "propertyFx"], ["fy_N", "竖向力 Fy (N)", "propertyFy"]]) {
     labeledInput(root, { text, value: load[field], type: "number", dataName, onChange: (input) => {
@@ -208,12 +215,12 @@ function deleteSelection(canvasController, showError, explicitTargets = null) {
         const prior = state.draft.physical_members.find((old) => old.client_key === item.client_key);
         return prior && ((prior.start_node_client_key && !item.start_node_client_key) || (prior.end_node_client_key && !item.end_node_client_key));
       }),
-      ...next.draft.connections.filter((item) => {
+      ...(next.draft.connections || []).filter((item) => {
         const prior = state.draft.connections.find((old) => old.client_key === item.client_key);
         return prior && ((prior.geometry_node_client_key && !item.geometry_node_client_key) || item.participating_member_client_keys.some((key, index) => key === null && prior.participating_member_client_keys[index]));
       }),
-      ...next.draft.supports.filter((item) => state.draft.supports.some((old) => old.client_key === item.client_key && hasTargetLocation(state.draft, old.target_connection_client_key) && !hasTargetLocation(next.draft, item.target_connection_client_key))),
-      ...next.draft.node_loads.filter((item) => state.draft.node_loads.some((old) => old.client_key === item.client_key && hasTargetLocation(state.draft, old.target_connection_client_key) && !hasTargetLocation(next.draft, item.target_connection_client_key))),
+      ...next.draft.supports.filter((item) => state.draft.supports.some((old) => old.client_key === item.client_key && hasTargetLocation(state.draft, old.target_node_client_key ?? old.target_connection_client_key) && !hasTargetLocation(next.draft, item.target_node_client_key ?? item.target_connection_client_key))),
+      ...next.draft.node_loads.filter((item) => state.draft.node_loads.some((old) => old.client_key === item.client_key && hasTargetLocation(state.draft, old.target_node_client_key ?? old.target_connection_client_key) && !hasTargetLocation(next.draft, item.target_node_client_key ?? item.target_connection_client_key))),
     ];
     if (newlyIncomplete.length && !window.confirm(`删除后，${newlyIncomplete.length} 个其他对象需要重新指定。这些对象不会被删除。继续？`)) return;
     deleteFeedback = newlyIncomplete.length ? `已删除所选对象；${newlyIncomplete.length} 个对象需要重新指定，且不会被删除。` : "已删除所选对象。";
@@ -326,8 +333,8 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     if (kind === "GEOMETRY_NODE") note(`结构上的一个位置：X ${current.record.x_mm} mm，Y ${current.record.y_mm} mm。`);
     if (kind === "PHYSICAL_MEMBER") { const from = current.record.start_node_client_key ? labels.label("GEOMETRY_NODE", current.record.start_node_client_key) : "未指定"; const to = current.record.end_node_client_key ? labels.label("GEOMETRY_NODE", current.record.end_node_client_key) : "未指定"; note(`从 ${from} 到 ${to}。材料与截面决定它的基本刚度。`); }
     if (kind === "CONNECTION") note("这里明确连接参与的构件；构件相交不等于连接。");
-    if (kind === "SUPPORT") { note(current.record.support_type === "PINNED" ? "铰支座限制水平和竖直位移。" : `滚动支座限制 ${current.record.restrained_axis} 方向位移。`); if (!hasTargetLocation(state.draft, current.record.target_connection_client_key)) note("作用位置未指定，请重新指定连接或修复该连接的位置节点。"); }
-    if (kind === "NODE_LOAD") { note(`作用在连接点上的荷载：水平 ${current.record.fx_N} N，竖直 ${current.record.fy_N} N。正负号表示方向。`); if (!hasTargetLocation(state.draft, current.record.target_connection_client_key)) note("作用位置未指定，请重新指定连接或修复该连接的位置节点。"); }
+    if (kind === "SUPPORT") { note(current.record.support_type === "PINNED" ? "铰支座限制水平和竖直位移。" : `滚动支座限制 ${current.record.restrained_axis} 方向位移。`); if (!hasTargetLocation(state.draft, current.record.target_node_client_key ?? current.record.target_connection_client_key)) note("作用位置未指定，请重新指定节点。"); }
+    if (kind === "NODE_LOAD") { note(`作用在节点上的荷载：水平 ${current.record.fx_N} N，竖直 ${current.record.fy_N} N。正负号表示方向。`); if (!hasTargetLocation(state.draft, current.record.target_node_client_key ?? current.record.target_connection_client_key)) note("作用位置未指定，请重新指定节点。"); }
     heading("可以做什么");
     if (current.selected.kind === "CONNECTION") appendConnectionDetails(root, current.record, labels, current.selected, canvasController, state.draft, !state.readOnly, showError);
     if (!state.readOnly) {

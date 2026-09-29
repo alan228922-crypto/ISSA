@@ -2,6 +2,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 import { GRID_SPACING, visibleGridLevels } from "./grid.js";
 import { createStudentLabelResolver } from "./labels.js";
 import { structuralSymbolDefs, renderNode, renderMember, renderConnection, renderSupport, renderLoad } from "./structural-symbols.js";
+import { candidateMembersAtNode } from "./joint-candidates.js";
 
 function element(name, attributes = {}) {
   const node = document.createElementNS(SVG_NS, name);
@@ -157,10 +158,11 @@ export function predictionSelectableObject(selection) {
 }
 
 export function renderWorkspace(svg, draft, uiState = {}) {
+  const v2 = draft.schema_version === "physical-draft-v2";
   const unit = screenUnit(svg, uiState);
   const nodes = ordered(draft.nodes || []);
   const members = ordered(draft.physical_members || []);
-  const connections = ordered(draft.connections || []);
+  const connections = v2 ? [] : ordered(draft.connections || []);
   const loads = ordered(draft.node_loads || []);
   const supports = ordered(draft.supports || []);
   const nodePositions = pointMap(nodes);
@@ -182,7 +184,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
 
   for (const support of supports) {
     const connection = connectionByKey.get(support.target_connection_client_key);
-    const target = connection && position(connection, nodePositions);
+    const target = v2 ? nodePositions.get(support.target_node_client_key) : connection && position(connection, nodePositions);
     if (!target) continue;
     const label = support.support_type === "ROLLER" ? `${labels.label("SUPPORT", support.client_key)}，滚动支座，限制 ${support.restrained_axis}` : `${labels.label("SUPPORT", support.client_key)}，铰支座`;
     const group = selectable("Support", support.client_key, label, uiState);
@@ -192,7 +194,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
 
   for (const load of loads) {
     const connection = connectionByKey.get(load.target_connection_client_key);
-    const target = connection && position(connection, nodePositions);
+    const target = v2 ? nodePositions.get(load.target_node_client_key) : connection && position(connection, nodePositions);
     if (!target) continue;
     const group = selectable("NodeLoad", load.client_key, labels.label("NODE_LOAD", load.client_key), uiState);
     group.append(renderLoad(load, target, unit, { showLabels: 1 / unit >= 0.3 }));
@@ -210,6 +212,23 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const point = nodePositions.get(node.client_key);
     const group = selectable("GeometryNode", node.client_key, labels.label("GEOMETRY_NODE", node.client_key), uiState);
     group.append(renderNode(node, point, unit));
+    if (v2 && nodes.some((other) => other.client_key !== node.client_key && other.x_mm === node.x_mm && other.y_mm === node.y_mm)) {
+      group.dataset.legacyDuplicateIdentity = "true";
+      group.append(element("circle", { cx: point.x, cy: point.y, r: 15 * unit, fill: "none", stroke: "#b45309", "stroke-width": 2 * unit, "stroke-dasharray": `${3 * unit} ${2 * unit}`, "pointer-events": "none" }));
+      const warning = element("title"); warning.textContent = "这里有多个位置相同但彼此不连接的旧模型节点。"; group.append(warning);
+    }
+    if (v2) {
+      const unjoined = candidateMembersAtNode(draft, node).filter((memberKey) => {
+        const member = members.find((row) => row.client_key === memberKey);
+        return ![member.start_node_client_key, member.end_node_client_key].includes(node.client_key)
+          && !(draft.member_joint_incidences || []).some((row) => row.member_client_key === memberKey && row.node_client_key === node.client_key);
+      });
+      if (unjoined.length) {
+        group.dataset.legacyUnjoinedPass = unjoined.join(" ");
+        group.append(element("path", { d: `M ${point.x + 12 * unit} ${point.y - 12 * unit} l ${8 * unit} ${-8 * unit} m ${-8 * unit} 0 l ${8 * unit} ${8 * unit}`, fill: "none", stroke: "#b45309", "stroke-width": 2 * unit, "pointer-events": "none" }));
+        const warning = element("title"); warning.textContent = `旧模型中构件 ${unjoined.join("、")} 穿过此节点，但彼此不连接。`; group.append(warning);
+      }
+    }
     layers[3].append(group);
   }
   if (uiState.cad?.activeCommand === "SELECT" && !uiState.readOnly) for (const item of uiState.selectedObjects || []) {

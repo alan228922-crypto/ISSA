@@ -24,6 +24,11 @@ export function bindTabKeys(tablist) {
 function buildTask(draft) {
   if (!draft.nodes.length) return "放置第一个节点";
   if (!draft.physical_members.length) return "添加第二个节点，再用构件连接";
+  if (draft.schema_version === "physical-draft-v2") {
+    if (!draft.supports.length) return "为结构添加支座";
+    if (!draft.node_loads.length) return "为结构添加荷载";
+    return "保存模型，然后检查";
+  }
   if (!draft.connections.length) return "标明构件端点的连接";
   if (!draft.supports.length) return "为结构添加支座";
   if (!draft.node_loads.length) return "为结构添加荷载";

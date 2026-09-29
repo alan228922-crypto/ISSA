@@ -216,6 +216,10 @@ function deleteObjectsAtomically(draft, targets) {
 
 export function applyEditorAction(draft, action) {
   if (!object(draft) || !object(action)) fail("EDITOR_INVALID_ACTION");
+  if (draft.schema_version === "physical-draft-v2") {
+    try { return applyEditorActionV2(draft, action); }
+    catch (error) { if (error?.code) fail(error.code); throw error; }
+  }
   switch (action.type) {
     case "CREATE_NODE": return add(draft, "GEOMETRY_NODE", action.node);
     case "PLACE_JOINT_NODE": {
@@ -248,3 +252,4 @@ export function applyEditorAction(draft, action) {
     default: return fail("EDITOR_INVALID_ACTION");
   }
 }
+import { applyEditorActionV2 } from "./editor-v2.js";

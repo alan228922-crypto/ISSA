@@ -32,7 +32,7 @@ function nextKey(items, prefix) {
 function nodeTarget(draft, target) {
   if (target?.kind === "GEOMETRY_NODE") return target;
   if (target?.kind !== "CONNECTION") return null;
-  const connection = draft.connections.find((item) => item.client_key === target.clientKey);
+  const connection = draft.connections?.find((item) => item.client_key === target.clientKey);
   return connection ? { kind: "GEOMETRY_NODE", clientKey: connection.geometry_node_client_key } : null;
 }
 
@@ -305,6 +305,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     onCancel: clearGrip,
   });
   const hasConnectionAt = (draft, point) => {
+    if (draft.schema_version === "physical-draft-v2") return draft.nodes.some((node) => Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
     const connectedNodes = new Set(draft.connections.map((connection) => connection.geometry_node_client_key));
     return draft.nodes.some((node) => connectedNodes.has(node.client_key) && Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
   };

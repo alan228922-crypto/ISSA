@@ -26,6 +26,7 @@ export function studentObjectName(draft, kind, key) {
 }
 
 export function incompleteDraftObjects(draft) {
+  const v2 = draft.schema_version === "physical-draft-v2";
   const result = [];
   const nodes = new Set((draft.nodes || []).map((item) => item.client_key));
   const members = new Set((draft.physical_members || []).map((item) => item.client_key));
@@ -47,9 +48,9 @@ export function incompleteDraftObjects(draft) {
     if ((record.participating_member_client_keys || []).some((key) => !members.has(key))) codes.push("MISSING_CONNECTION_PARTICIPANT");
     collect("CONNECTION", record, codes);
   }
-  const hasLocation = (key) => nodes.has(connectionByKey.get(key)?.geometry_node_client_key);
-  for (const record of draft.supports || []) if (!hasLocation(record.target_connection_client_key)) collect("SUPPORT", record, ["MISSING_SUPPORT_NODE"]);
-  for (const record of draft.node_loads || []) if (!hasLocation(record.target_connection_client_key)) collect("NODE_LOAD", record, ["MISSING_LOAD_NODE"]);
+  const hasLocation = (record) => v2 ? nodes.has(record.target_node_client_key) : nodes.has(connectionByKey.get(record.target_connection_client_key)?.geometry_node_client_key);
+  for (const record of draft.supports || []) if (!hasLocation(record)) collect("SUPPORT", record, ["MISSING_SUPPORT_NODE"]);
+  for (const record of draft.node_loads || []) if (!hasLocation(record)) collect("NODE_LOAD", record, ["MISSING_LOAD_NODE"]);
   return result.sort((a, b) => a.kind === b.kind ? a.clientKey.localeCompare(b.clientKey, undefined, { numeric: true }) : 0);
 }
 
