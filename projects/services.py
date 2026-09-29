@@ -15,6 +15,8 @@ def can_modify_project(actor, project):
     """复用既有项目写入策略；经理只能查看学生项目。"""
     if project.event.status == CompetitionEvent.Status.PURGED:
         return False
+    if project.draft_schema_version == "physical-draft-v1" and project.draft_migration_audits.filter(status="BLOCKED").exists():
+        return False
     return _can_modify_project(actor, event_id=project.event_id, owner_user_id=project.owner_user_id)
 
 
@@ -31,7 +33,7 @@ def purge_project_operational_data(*, project_id, actor_id=None):
 
     from analysis.models import AnalysisRun, ModelRevision, ValidationLog
     from learning.models import CalculationReportReasoning, Prediction, Reflection, StudentResultReveal
-    from modeling.models import Connection, GeometryNode, NodeLoad, PhysicalMember, Support
+    from modeling.models import Connection, DraftMigrationAudit, GeometryNode, MemberJointIncidence, NodeLoad, PhysicalMember, Support
     from projects.models import Project, ProjectOperationalPurgeAudit
 
     with transaction.atomic():
@@ -51,7 +53,8 @@ def purge_project_operational_data(*, project_id, actor_id=None):
         counts.update(deleted_counts)
         for model in (
             StudentResultReveal, ValidationLog, AnalysisRun, Prediction, ModelRevision,
-            Support, NodeLoad, Connection, PhysicalMember, GeometryNode,
+            Support, NodeLoad, MemberJointIncidence, Connection, PhysicalMember, GeometryNode,
+            DraftMigrationAudit,
         ):
             _, deleted_counts = model.objects.filter(project_id=project_id).delete()
             counts.update(deleted_counts)

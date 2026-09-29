@@ -141,7 +141,8 @@ def workspace(request, project_id):
         or not can_view_project(request.user, project)
     ):
         raise Http404
-    read_only = request.user.id != project.owner_user_id
+    blocked_audit = project.draft_migration_audits.filter(status="BLOCKED").order_by("-created_at", "-pk").first()
+    read_only = request.user.id != project.owner_user_id or blocked_audit is not None
     bootstrap = {
         "schema_version": "workspace-bootstrap-v1",
         "project": {"id": project.id, "name": project.name, "analysis_type": project.analysis_type},
@@ -152,7 +153,7 @@ def workspace(request, project_id):
             "owner": {"id": project.owner_user_id, "username": project.owner_user.username},
             "event": {"id": project.event_id, "name": project.event.name},
             "editable": not read_only,
-            "read_only_reason": "你正在以只读身份查看此项目。" if read_only else "",
+            "read_only_reason": (f"旧模型转换已暂停：{blocked_audit.reason_code}。请先导出并核对旧草稿。" if blocked_audit else "你正在以只读身份查看此项目。" if read_only else ""),
         },
         "materials": _available_materials(project.owner_user),
         "sections": _available_sections(project.owner_user),

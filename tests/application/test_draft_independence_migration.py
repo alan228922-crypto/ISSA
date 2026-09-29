@@ -48,6 +48,10 @@ def test_migration_rollback_refuses_to_silently_discard_participation_gap(contex
     payload = valid_payload(material, section)
     payload["connections"][0]["participating_member_client_keys"] = [None]
     save_physical_draft(actor=owner, project=project, payload=payload)
-    with pytest.raises(IrreversibleError, match="participation gap"):
-        MigrationExecutor(connection).migrate([("modeling", "0002_support_client_key")])
-    assert ConnectionParticipation.objects.filter(connection__project=project, member__isnull=True).exists()
+    latest = MigrationExecutor(connection).loader.graph.leaf_nodes()
+    try:
+        with pytest.raises(IrreversibleError, match="participation gap"):
+            MigrationExecutor(connection).migrate([("modeling", "0002_support_client_key")])
+        assert ConnectionParticipation.objects.filter(connection__project=project, member__isnull=True).exists()
+    finally:
+        MigrationExecutor(connection).migrate(latest)
