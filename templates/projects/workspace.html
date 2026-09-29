@@ -164,6 +164,7 @@
     import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
     import { bindModelingInteractions } from "{% static 'projects/workspace/modeling-interaction.js' %}";
     import { bindPropertyPanel } from "{% static 'projects/workspace/properties.js' %}";
+    import { groupDraftCheckIssues } from "{% static 'projects/workspace/incomplete-objects.js' %}";
     import { createWorkspaceWorkflow } from "{% static 'projects/workspace/workflow.js' %}";
     import { bindPredictionWorkspace } from "{% static 'projects/workspace/prediction.js' %}";
     import { createResultsWorkspace, renderComparison, renderExplanation, renderLevelOne, renderResultActions, showLevelOne, showEngineeringDetails, renderEngineeringDetails } from "{% static 'projects/workspace/results.js' %}";
@@ -296,7 +297,29 @@
       try {
         const result = await workflow.checkModel(current.draftVersion); errorPanel.hidden = true; issuePanel.replaceChildren();
         if (result.ok) { issuePanel.textContent = "模型检查通过。下一步可以预测，也可以直接分析。"; return; }
-        for (const issue of result.issues || []) {
+        const grouped = groupDraftCheckIssues(current.draft, result.issues || []);
+        if (grouped.objects.length) {
+          const summary = document.createElement("section"); summary.dataset.incompleteCheckSummary = "";
+          const title = document.createElement("h3"); title.textContent = `发现 ${grouped.objects.length} 个未完成物件`; summary.append(title);
+          const counts = new Map();
+          for (const object of grouped.objects) counts.set(object.kind, (counts.get(object.kind) || 0) + 1);
+          const kindNames = { PHYSICAL_MEMBER: "构件", CONNECTION: "连接", SUPPORT: "支座", NODE_LOAD: "荷载" };
+          const breakdown = document.createElement("p"); breakdown.textContent = [...counts].map(([kind, count]) => `${count} 个${kindNames[kind]}`).join(" · "); summary.append(breakdown);
+          const explanation = document.createElement("p"); explanation.textContent = "无真实位置的物件不会显示；有真实位置的部分仍可能显示，但缺漏补齐前不能分析。"; summary.append(explanation);
+          const resolve = document.createElement("button"); resolve.type = "button"; resolve.textContent = "处理未完成物件";
+          resolve.addEventListener("click", () => { studentShell.selectStage("build"); document.querySelector("[data-incomplete-inventory]").open = true; document.querySelector("[data-incomplete-inventory]").scrollIntoView({ block: "nearest" }); }); summary.append(resolve);
+          issuePanel.append(summary);
+          for (const object of grouped.objects) {
+            const card = document.createElement("article"); card.className = "ux-check-issue"; card.dataset.incompleteCheckCard = "";
+            const heading = document.createElement("h3"); heading.textContent = `${object.name} 尚未完整`;
+            const missing = document.createElement("p"); missing.textContent = `缺少：${object.fields.join("、")}`;
+            card.append(heading, missing);
+            const rebind = document.createElement("button"); rebind.type = "button"; rebind.textContent = "重新指定";
+            rebind.addEventListener("click", () => { studentShell.selectStage("build"); canvasController.replaceState(focusWorkspaceIssue(canvasController.getState(), object.issue)); document.querySelector("[data-incomplete-inventory]").open = true; }); card.append(rebind);
+            issuePanel.append(card);
+          }
+        }
+        for (const issue of grouped.other) {
           const card = document.createElement("article"); card.className = "ux-check-issue";
           const title = document.createElement("h3"); title.textContent = "发现一个需要检查的地方";
           const message = document.createElement("p"); message.textContent = issue.human_message || "模型需要进一步检查。";

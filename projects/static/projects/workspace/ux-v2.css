@@ -68,6 +68,19 @@
 #workspace-properties-panel h3 { margin:16px 0 6px; font-size:16px; }
 #workspace-properties-panel p { margin:5px 0 10px; line-height:1.45; }
 #workspace-properties-panel [data-property-delete] { margin:9px 0; }
+[data-incomplete-inventory] { margin:0 0 14px; border:1px solid #e9b96e; border-radius:9px; background:#fff9eb; padding:9px; }
+[data-incomplete-inventory] summary { cursor:pointer; color:#825014; font-weight:750; }
+[data-incomplete-inventory] > p { margin:8px 0; font-size:13px; }
+[data-incomplete-inventory] article { margin:8px 0; padding:9px; border:1px solid #eed4a5; border-radius:7px; background:#fff; }
+[data-incomplete-inventory] article h4 { display:inline; margin:0 0 0 6px; font-size:14px; }
+[data-incomplete-inventory] article p { margin:6px 0; font-size:13px; }
+[data-incomplete-inventory] button { margin:3px 5px 3px 0; min-height:34px; padding:5px 8px; border:1px solid #c9a76e; border-radius:6px; background:#fff; color:#4d3416; cursor:pointer; }
+[data-incomplete-check-summary] { padding:11px; border:1px solid #e9b96e; border-radius:9px; background:#fff9eb; }
+[data-incomplete-check-summary] h3 { margin:0 0 5px; }
+[data-incomplete-check-summary] p { margin:5px 0; }
+[data-draft-object-list] { max-height:140px; overflow:auto; margin-bottom:12px; padding-bottom:4px; }
+[data-draft-object-list] h3 { position:sticky; top:0; margin-top:0; padding:3px 0; background:#fff; }
+[data-draft-object-list] button { margin:2px; padding:5px 7px; border:1px solid var(--ux-line); border-radius:6px; background:#f8fafc; color:var(--ux-ink); font:inherit; font-size:12px; cursor:pointer; }
 .ux-advanced-properties { margin:12px 0; padding:9px; border:1px solid var(--ux-line); border-radius:7px; }
 #workspace-check-issues { display:grid; gap:10px; margin-top:12px; }
 #workspace-check-issues button { text-align:left; padding:12px; border:1px solid var(--ux-line); border-radius:8px; background:#fff; }

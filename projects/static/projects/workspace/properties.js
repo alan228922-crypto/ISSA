@@ -1,6 +1,7 @@
 import { EditorActionError } from "./editor.js";
 import { applyWorkspaceEditorAction } from "./state.js";
 import { createStudentLabelResolver } from "./labels.js";
+import { incompleteDraftObjects } from "./incomplete-objects.js";
 
 const OBJECTS = Object.freeze({
   GEOMETRY_NODE: { collection: "nodes", label: "节点" },
@@ -10,6 +11,7 @@ const OBJECTS = Object.freeze({
   NODE_LOAD: { collection: "node_loads", label: "荷载" },
 });
 const propertyEditing = new WeakSet();
+const propertyRenderers = new WeakMap();
 let deleteFeedback = "";
 
 function hasTargetLocation(draft, targetConnectionKey) {
@@ -33,6 +35,7 @@ function updateState(canvasController, action, showError = null) {
       propertyEditing.add(canvasController);
       try { canvasController.replaceState(next); }
       finally { propertyEditing.delete(canvasController); }
+      propertyRenderers.get(canvasController)?.(next);
     }
     document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无";
   } catch (error) {
@@ -194,9 +197,9 @@ function appendLoadControls(root, selected, load, canvasController, draft, label
   appendLabelControl(root, selected, load, canvasController);
 }
 
-function deleteSelection(canvasController, showError) {
+function deleteSelection(canvasController, showError, explicitTargets = null) {
   const state = canvasController.getState();
-  const targets = state.selectedObjects?.length ? state.selectedObjects : state.selectedObject ? [state.selectedObject] : [];
+  const targets = explicitTargets || (state.selectedObjects?.length ? state.selectedObjects : state.selectedObject ? [state.selectedObject] : []);
   if (!targets.length) return;
   try {
     const next = applyWorkspaceEditorAction(state, { type: "DELETE_OBJECTS", targets });
@@ -235,6 +238,8 @@ function appendDelete(root, selected, canvasController, showError) {
 }
 
 export function bindPropertyPanel({ root, canvasController, materials = [], sections = [], showError = () => {} }) {
+  let incompleteExpanded = false;
+  const checkedIncomplete = new Set();
   canvasController.setPropertiesHandler(() => {
     root.scrollIntoView({ block: "nearest", behavior: "smooth" });
     (root.querySelector("input, select, [data-property-delete]") || root).focus({ preventScroll: true });
@@ -248,20 +253,55 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     event.preventDefault();
     deleteSelection(canvasController, showError);
   });
+  const renderIncomplete = (state) => {
+    const incomplete = incompleteDraftObjects(state.draft);
+    const inventoryKeys = new Set(incomplete.map((item) => `${item.kind}:${item.clientKey}`));
+    for (const key of checkedIncomplete) if (!inventoryKeys.has(key)) checkedIncomplete.delete(key);
+    const incompletePanel = document.createElement("details"); incompletePanel.dataset.incompleteInventory = ""; incompletePanel.open = incompleteExpanded;
+    const incompleteSummary = document.createElement("summary"); incompleteSummary.textContent = `⚠ 未完成物件 ${incomplete.length}`; incompletePanel.append(incompleteSummary);
+    incompletePanel.addEventListener("toggle", () => { if (incompletePanel.isConnected) incompleteExpanded = incompletePanel.open; });
+    if (incomplete.length) {
+      const explanation = document.createElement("p"); explanation.textContent = "无真实位置的物件不会显示；有真实位置的部分仍可能显示，但缺漏补齐前不能分析。请重新指定或删除。"; incompletePanel.append(explanation);
+      const countByKind = new Map();
+      for (const item of incomplete) countByKind.set(item.kind, (countByKind.get(item.kind) || 0) + 1);
+      const counts = document.createElement("p"); counts.dataset.incompleteCounts = "";
+      counts.textContent = [...countByKind].map(([kind, count]) => `${count} 个${OBJECTS[kind].label}`).join(" · "); incompletePanel.append(counts);
+      for (const item of incomplete) {
+        const card = document.createElement("article"); card.dataset.incompleteObjectKind = item.kind; card.dataset.incompleteObjectKey = item.clientKey;
+        const title = document.createElement("h4"); title.textContent = `${item.name} · 尚未完整`; card.append(title);
+        const missing = document.createElement("p"); missing.textContent = `缺少：${item.fields.join("、")}`; card.append(missing);
+        if (!state.readOnly) {
+          const check = document.createElement("input"); check.type = "checkbox"; check.checked = checkedIncomplete.has(`${item.kind}:${item.clientKey}`); check.setAttribute("aria-label", `选择${item.name}`);
+          check.addEventListener("change", () => { const key = `${item.kind}:${item.clientKey}`; if (check.checked) checkedIncomplete.add(key); else checkedIncomplete.delete(key); }); card.prepend(check);
+          const rebind = document.createElement("button"); rebind.type = "button"; rebind.textContent = "重新指定";
+          rebind.addEventListener("click", () => { const target = { kind: item.kind, clientKey: item.clientKey }; const current = canvasController.getState(); canvasController.replaceState({ ...current, selectedObject: target, selectedObjects: [target], focusedObject: target }); root.querySelector("[data-property-connection-node], [data-property-start-node], [data-property-support-target], [data-property-load-target]")?.focus({ preventScroll: true }); }); card.append(rebind);
+          const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "删除"; remove.dataset.incompleteDelete = "";
+          remove.addEventListener("click", () => deleteSelection(canvasController, showError, [{ kind: item.kind, clientKey: item.clientKey }])); card.append(remove);
+        }
+        incompletePanel.append(card);
+      }
+      if (!state.readOnly) {
+        const removeSelected = document.createElement("button"); removeSelected.type = "button"; removeSelected.textContent = "删除所选未完成物件";
+        removeSelected.addEventListener("click", () => { const targets = incomplete.filter((item) => checkedIncomplete.has(`${item.kind}:${item.clientKey}`)).map((item) => ({ kind: item.kind, clientKey: item.clientKey })); if (targets.length) deleteSelection(canvasController, showError, targets); }); incompletePanel.append(removeSelected);
+      }
+    }
+    return incompletePanel;
+  };
   const render = (state) => {
     if (propertyEditing.has(canvasController)) return;
+    incompleteExpanded = root.querySelector("[data-incomplete-inventory]")?.open ?? incompleteExpanded;
     root.replaceChildren();
     if (deleteFeedback) { const feedback = document.createElement("p"); feedback.dataset.deleteFeedback = ""; feedback.setAttribute("role", "status"); feedback.textContent = deleteFeedback; root.append(feedback); }
     const labels = createStudentLabelResolver(state.draft);
+    const incompleteKeys = new Set(incompleteDraftObjects(state.draft).map((item) => `${item.kind}:${item.clientKey}`));
+    root.append(renderIncomplete(state));
     const inventory = document.createElement("section"); inventory.dataset.draftObjectList = "";
     const inventoryHeading = document.createElement("h3"); inventoryHeading.textContent = "草稿对象"; inventory.append(inventoryHeading);
     for (const [kind, definition] of Object.entries(OBJECTS)) for (const record of state.draft[definition.collection] || []) {
       const button = document.createElement("button"); button.type = "button";
       button.dataset.draftObjectKind = kind; button.dataset.draftObjectKey = record.client_key;
       button.textContent = labels.label(kind, record.client_key);
-      if (kind === "PHYSICAL_MEMBER" && (!record.start_node_client_key || !record.end_node_client_key || !record.material_id || !record.section_id) ||
-          kind === "CONNECTION" && (!record.geometry_node_client_key || record.participating_member_client_keys.includes(null)) ||
-          ["SUPPORT", "NODE_LOAD"].includes(kind) && !hasTargetLocation(state.draft, record.target_connection_client_key)) button.textContent += " · ⚠ 尚未完整 · 未指定";
+      if (incompleteKeys.has(`${kind}:${record.client_key}`)) button.textContent += " · ⚠ 尚未完整 · 未指定";
       button.addEventListener("click", () => { const target = { kind, clientKey: record.client_key }; const current = canvasController.getState(); canvasController.replaceState({ ...current, selectedObject: target, selectedObjects: [target], focusedObject: target }); });
       inventory.append(button);
     }
@@ -300,6 +340,17 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     heading("下一步");
     note(kind === "GEOMETRY_NODE" ? "继续放置节点，再用构件连接。" : kind === "PHYSICAL_MEMBER" ? "检查材料与截面，必要时调整。" : kind === "CONNECTION" ? "需要时添加支座或荷载。" : "保存模型，再运行检查。 ");
   };
+  propertyRenderers.set(canvasController, (state) => {
+    const current = root.querySelector("[data-incomplete-inventory]");
+    incompleteExpanded = current?.open ?? incompleteExpanded;
+    current?.replaceWith(renderIncomplete(state));
+    const labels = createStudentLabelResolver(state.draft);
+    const incompleteKeys = new Set(incompleteDraftObjects(state.draft).map((item) => `${item.kind}:${item.clientKey}`));
+    for (const button of root.querySelectorAll("[data-draft-object-kind]")) {
+      const { draftObjectKind: kind, draftObjectKey: key } = button.dataset;
+      button.textContent = labels.label(kind, key) + (incompleteKeys.has(`${kind}:${key}`) ? " · ⚠ 尚未完整 · 未指定" : "");
+    }
+  });
   canvasController.subscribeStateChange(render);
   render(canvasController.getState());
 }
