@@ -166,6 +166,11 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   const loads = ordered(draft.node_loads || []);
   const supports = ordered(draft.supports || []);
   const nodePositions = pointMap(nodes);
+  const coordinateCounts = new Map();
+  if (v2) for (const node of nodes) {
+    const key = JSON.stringify([node.x_mm, node.y_mm]);
+    coordinateCounts.set(key, (coordinateCounts.get(key) || 0) + 1);
+  }
   const connectionByKey = new Map(connections.map((connection) => [connection.client_key, connection]));
   const labels = createStudentLabelResolver(draft);
   const grid = gridLayer(unit);
@@ -212,7 +217,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
     const point = nodePositions.get(node.client_key);
     const group = selectable("GeometryNode", node.client_key, labels.label("GEOMETRY_NODE", node.client_key), uiState);
     group.append(renderNode(node, point, unit));
-    if (v2 && nodes.some((other) => other.client_key !== node.client_key && other.x_mm === node.x_mm && other.y_mm === node.y_mm)) {
+    if (v2 && coordinateCounts.get(JSON.stringify([node.x_mm, node.y_mm])) > 1) {
       group.dataset.legacyDuplicateIdentity = "true";
       group.append(element("circle", { cx: point.x, cy: point.y, r: 15 * unit, fill: "none", stroke: "#b45309", "stroke-width": 2 * unit, "stroke-dasharray": `${3 * unit} ${2 * unit}`, "pointer-events": "none" }));
       const warning = element("title"); warning.textContent = "这里有多个位置相同但彼此不连接的旧模型节点。"; group.append(warning);

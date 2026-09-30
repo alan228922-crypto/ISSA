@@ -93,13 +93,7 @@ function update(draft, target, changes) {
   const collection = COLLECTIONS[target?.kind];
   if (!collection || !find(draft, target.kind, target.clientKey) || !changes || "client_key" in changes) fail("EDITOR_INVALID_ACTION");
   for (const field of ["start_node_client_key", "end_node_client_key", "target_node_client_key"]) if (field in changes && changes[field] !== null && !node(draft, changes[field])) fail("EDITOR_REFERENCE_NOT_FOUND");
-  let next = { ...draft, [collection]: draft[collection].map(row => row.client_key === target.clientKey ? { ...row, ...changes } : row) };
-  if (target.kind === "PHYSICAL_MEMBER" && ("start_node_client_key" in changes || "end_node_client_key" in changes)) {
-    next = { ...next, member_joint_incidences: next.member_joint_incidences.filter(row => row.member_client_key !== target.clientKey) };
-    const changed = find(next, "PHYSICAL_MEMBER", target.clientKey);
-    next = { ...next, physical_members: next.physical_members.filter(row => row.client_key !== target.clientKey) };
-    next = createMember(next, changed);
-  }
+  const next = { ...draft, [collection]: draft[collection].map(row => row.client_key === target.clientKey ? { ...row, ...changes } : row) };
   return validate(next, draft);
 }
 

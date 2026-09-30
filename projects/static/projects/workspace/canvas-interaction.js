@@ -124,6 +124,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   let pointerSelection = null;
   let marqueeAnchor = null;
   let canvasClickHandler = null;
+  let lastPointerUp = null;
   const stateChangeHandlers = new Set();
   let pointerMoveHandler = null;
   let fitHandler = null;
@@ -195,9 +196,11 @@ export function bindCanvasInteractions(svg, initialState, render) {
     parent.append(panel); overlapChooser = panel;
   };
   svg.addEventListener("click", (event) => {
-    if (suppressClick) { suppressClick = false; event.preventDefault(); event.stopImmediatePropagation(); return; }
+    if (suppressClick) { suppressClick = false; lastPointerUp = null; event.preventDefault(); event.stopImmediatePropagation(); return; }
     closeChooser();
-    const createdSelection = canvasClickHandler?.(event, pointerSelection);
+    const precisePoint = lastPointerUp && Math.abs(lastPointerUp.x - event.clientX) <= 1 && Math.abs(lastPointerUp.y - event.clientY) <= 1 ? lastPointerUp : null;
+    lastPointerUp = null;
+    const createdSelection = canvasClickHandler?.(event, pointerSelection, precisePoint);
     const direct = createdSelection || pointerSelection || selectionFromElement(event.target?.closest?.("[data-object-kind]"));
     pointerSelection = null;
     const point = { x: event.clientX, y: event.clientY };
@@ -302,6 +305,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   });
   svg.addEventListener("pointerup", (event) => {
     if (!gesture) return;
+    lastPointerUp = { x: event.clientX, y: event.clientY };
     if (gesture.gripTarget && gesture.moved) {
       suppressClick = true;
       gripHandlers?.onCommit?.(gesture.gripTarget, worldPointFromEvent(svg, event), { x: event.clientX, y: event.clientY });
@@ -323,7 +327,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
     gesture = null; removeMarquee();
     if (svg.hasPointerCapture?.(event.pointerId)) svg.releasePointerCapture(event.pointerId);
   });
-  svg.addEventListener("pointercancel", () => { if (gesture?.gripTarget) gripHandlers?.onCancel?.(); gesture = null; removeMarquee(); });
+  svg.addEventListener("pointercancel", () => { if (gesture?.gripTarget) gripHandlers?.onCancel?.(); gesture = null; lastPointerUp = null; removeMarquee(); });
   svg.addEventListener("pointerleave", () => { hoveredElement?.removeAttribute("data-hovered"); hoveredElement = null; });
   const replaceState = (nextState, notify = true, redrawState = true) => {
     if (nextState.cad?.activeCommand !== "SELECT") { marqueeAnchor = null; removeMarquee(); closeChooser(); }

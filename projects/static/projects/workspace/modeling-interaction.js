@@ -6,6 +6,7 @@ import { resolvePointerPoint } from "./geometry.js";
 import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction, undoWorkspaceEdit, redoWorkspaceEdit } from "./state.js";
 import { createStudentLabelResolver } from "./labels.js";
+import { candidateMembersAtNode, nodesOnMember } from "./joint-candidates.js";
 
 const TOOL_INSTRUCTIONS = Object.freeze({ SELECT: "点击结构查看或修改", NODE: "在画布放置节点；交叉处放置节点即形成桁架铰接", MEMBER: "选择起点，再选择终点", SUPPORT: "选择构件节点放置支座", LOAD: "选择构件节点施加荷载" });
 const COMPLETED = Object.freeze({ CREATE_NODE: "已放置节点", PLACE_JOINT_NODE: "已放置节点", CREATE_MEMBER: "已添加构件", CREATE_MEMBER_WITH_ENDPOINT: "已添加构件", CREATE_SUPPORT_AT_NODE: "已放置支座", CREATE_NODE_LOAD_AT_NODE: "已施加荷载" });
@@ -47,7 +48,7 @@ function updateUi(root, tool, memberStart, contextualInstruction = null) {
     button.dataset.active = active ? "true" : "false"; button.setAttribute("aria-pressed", active ? "true" : "false");
   }
   const instruction = root.querySelector("[data-modeling-instruction]");
-  if (instruction) instruction.textContent = memberStart ? "请选择构件的终点节点。按 Esc 可取消。" : contextualInstruction || TOOL_INSTRUCTIONS[tool];
+  if (instruction) instruction.textContent = contextualInstruction || (memberStart ? "请选择构件的终点节点。按 Esc 可取消。" : TOOL_INSTRUCTIONS[tool]);
   for (const input of root.querySelectorAll("[data-cad-distance], [data-cad-angle]")) input.disabled = !(tool === "MEMBER" && memberStart);
 }
 
@@ -96,7 +97,7 @@ function cadStatus(root, cad, resolution = null) {
 
 export function bindModelingInteractions({ root, svg, canvasController, showError, readOnly }) {
   if (readOnly) return Object.freeze({ getTool: () => "SELECT" });
-  let tool = "SELECT"; let memberStart = null; let contextualInstruction = null; let lastCompletedTool = null; let commandState = { state: "SELECTING", fieldIndex: null };
+  let tool = "SELECT"; let memberStart = null; let contextualInstruction = null; let pendingNumeric = null; let lastCompletedTool = null; let commandState = { state: "SELECTING", fieldIndex: null };
   let supportChoice = "PINNED";
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
   const commandInput = root.querySelector("[data-cad-command-input]");
@@ -116,6 +117,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const cancelCommand = () => {
     memberStart = null;
+    pendingNumeric = null;
     acquiredSnap = null;
     contextualInstruction = null;
     commandState = transition(commandState, { type: "ESC" });
@@ -160,17 +162,50 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (!Number.isInteger(materialId) || materialId <= 0 || !Number.isInteger(sectionId) || sectionId <= 0) { showError({ code: "MEMBER_PROPERTIES_REQUIRED", message: "请选择新构件使用的材料和截面。" }); return null; }
     return { materialId, sectionId };
   };
+  const existingEndpointAt = (draft, point) => draft.nodes.find((node) => Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
   const completeMemberAt = (point) => {
     const profile = memberProfile(); if (!memberStart || !profile) return false;
-    const current = canvasController.getState(); let endpoint = current.draft.nodes.find((node) => Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
+    const current = canvasController.getState(); let endpoint = existingEndpointAt(current.draft, point);
     const newNode = endpoint ? null : { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" };
     endpoint ||= newNode;
     if (endpoint.client_key === memberStart) return false;
     if (!apply({ type: "CREATE_MEMBER_WITH_ENDPOINT", node: newNode, member: { client_key: nextKey(current.draft.physical_members, "member"), start_node_client_key: memberStart, end_node_client_key: endpoint.client_key, material_id: profile.materialId, section_id: profile.sectionId, label: "", is_active: true } }, { origin: point, preview: null, snapFeedback: null })) return false;
     updateDynamics(point); memberStart = null; commandState = transition(commandState, { type: "ENTER", valid: true, point }); distanceInput.value = ""; angleInput.value = ""; updateUi(root, tool, memberStart); return true;
   };
+  const placementEffects = (point, confirmation = "再次确认。") => {
+    const draft = canvasController.getState().draft;
+    if (draft.schema_version !== "physical-draft-v2") return null;
+    if (tool === "NODE") {
+      const members = candidateMembersAtNode(draft, { x_mm: point.x, y_mm: point.y });
+      return members.length ? `在此建立节点，将连接 ${members.length} 条构件：${members.join("、")}。${confirmation}` : null;
+    }
+    if (tool !== "MEMBER" || !memberStart) return null;
+    const start = draft.nodes.find((node) => node.client_key === memberStart);
+    const existingEndpoint = existingEndpointAt(draft, point);
+    if (!start || existingEndpoint?.client_key === memberStart) return null;
+    const passed = nodesOnMember(draft, start, { x_mm: point.x, y_mm: point.y }).filter((key) => key !== memberStart && key !== existingEndpoint?.client_key);
+    const endpointMembers = existingEndpoint ? [] : candidateMembersAtNode(draft, { x_mm: point.x, y_mm: point.y });
+    const messages = [];
+    if (passed.length) messages.push(`构件经过 ${passed.length} 个已有节点：${passed.join("、")}，将在这里形成连接`);
+    if (endpointMembers.length) messages.push(`终点将在 ${endpointMembers.length} 条既有构件上建立节点：${endpointMembers.join("、")}`);
+    return messages.length ? `${messages.join("；")}。${confirmation}` : null;
+  };
+  const numericPlacement = (point, commit) => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return "INVALID";
+    const summary = placementEffects(point);
+    const signature = JSON.stringify([tool, memberStart, point.x, point.y, summary]);
+    if (summary && pendingNumeric !== signature) {
+      pendingNumeric = signature;
+      contextualInstruction = summary;
+      updateUi(root, tool, memberStart, contextualInstruction);
+      return "PENDING";
+    }
+    pendingNumeric = null;
+    contextualInstruction = null;
+    return commit() ? "COMMITTED" : "INVALID";
+  };
   const chooseTool = (nextTool) => {
-    tool = nextTool; memberStart = null; acquiredSnap = null; contextualInstruction = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
+    tool = nextTool; memberStart = null; acquiredSnap = null; contextualInstruction = null; pendingNumeric = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
     const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
     if (dynamicOverlay) dynamicOverlay.hidden = nextTool === "SELECT" || cadState(current).dynamicInput === false;
   };
@@ -195,7 +230,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       if (input === angleInput && !event.shiftKey) { event.preventDefault(); distanceInput.focus(); }
       return;
     }
-    if (event.key === "Enter") { event.preventDefault(); const point = dynamicPoint(); if (!point || !completeMemberAt(point)) showError({ code: "CAD_INPUT_MALFORMED", message: "请输入大于 0 的距离和有效角度。" }); }
+    if (event.key === "Enter") { event.preventDefault(); const point = dynamicPoint(); if (numericPlacement(point, () => completeMemberAt(point)) === "INVALID") showError({ code: "CAD_INPUT_MALFORMED", message: "请输入大于 0 的距离和有效角度。" }); }
   });
   commandInput?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return; event.preventDefault();
@@ -203,17 +238,25 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const current = canvasController.getState(); const parsed = parseCadInput(commandInput.value, tool === "MEMBER" ? memberOrigin() : cadState(current).origin);
     if (!parsed.ok) { showError({ code: `CAD_INPUT_${parsed.code}`, message: "坐标格式无效，请输入 x,y、@dx,dy 或 长度<角度。" }); return; }
     const point = resolvePointerPoint({ worldPointer: parsed.point, screenPointer: parsed.point, candidates: [], viewTransform: current.viewTransform, origin: (tool === "MEMBER" ? memberOrigin() : cadState(current).origin) || parsed.point, ortho: false, gridEnabled: false, explicitNumeric: true }).point;
-    if (tool === "MEMBER") completeMemberAt(point); else { apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point }); commandState = transition(commandState, { type: "ENTER", valid: true, point }); }
-    commandInput.value = ""; cadStatus(root, cadState(canvasController.getState()));
+    const result = numericPlacement(point, () => {
+      if (tool === "MEMBER") return completeMemberAt(point);
+      const placed = apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point });
+      if (placed) commandState = transition(commandState, { type: "ENTER", valid: true, point });
+      return placed;
+    });
+    if (result === "COMMITTED") commandInput.value = "";
+    cadStatus(root, cadState(canvasController.getState()));
   });
   const exactPoint = (point) => {
     if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
-    if (tool === "MEMBER" && memberStart) return completeMemberAt(point);
+    if (tool === "MEMBER" && memberStart) return numericPlacement(point, () => completeMemberAt(point)) !== "INVALID";
     if (tool !== "NODE") return false;
     const current = canvasController.getState();
-    const placed = apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point });
-    if (placed) commandState = transition(commandState, { type: "ENTER", valid: true, point });
-    return placed;
+    return numericPlacement(point, () => {
+      const placed = apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point });
+      if (placed) commandState = transition(commandState, { type: "ENTER", valid: true, point });
+      return placed;
+    }) !== "INVALID";
   };
   for (const input of [xInput, yInput]) input?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
@@ -226,9 +269,13 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const dx = Number(dxText); const dy = Number(dyText);
     if (!origin || dxText === "" || dyText === "" || !Number.isFinite(dx) || !Number.isFinite(dy) || !exactPoint({ x: origin.x + dx, y: origin.y + dy })) showError({ code: "CAD_INPUT_MALFORMED", message: "请先确定基准点，并输入有效的 ΔX、ΔY。" });
   });
-  const handleCanvasClick = (event, pointerSelection) => {
+  const handleCanvasClick = (event, pointerSelection, precisePoint = null) => {
     if (root.dataset.uxStage !== "build") return;
+    pendingNumeric = null;
+    contextualInstruction = null;
     const current = canvasController.getState(); const target = targetAtClick(event, svg, ["GEOMETRY_NODE", "CONNECTION"]); if (tool === "SELECT") return;
+    const screen = precisePoint || { x: event.clientX, y: event.clientY };
+    const locationEvent = { clientX: screen.x, clientY: screen.y };
     if (tool === "NODE") {
       if (pointerSelection?.kind === "SUPPORT") return;
       if (target) {
@@ -236,9 +283,9 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
         if (node) apply({ type: "CONNECT_NODE", nodeClientKey: node.clientKey });
         return;
       }
-      const world = worldPointFromEvent(svg, event); const cad = cadState(current);
-      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
-      const point = resolved?.point && { x: Math.round(resolved.point.x * 1e9) / 1e9, y: Math.round(resolved.point.y * 1e9) / 1e9 }; if (!point) return;
+      const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current);
+      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+      const point = resolved?.point; if (!point) return;
       if (resolved.candidateKey?.startsWith("NODE:")) {
         apply({ type: "CONNECT_NODE", nodeClientKey: resolved.candidateKey.slice(5) });
         cadStatus(root, cad, resolved); return;
@@ -248,9 +295,9 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (tool === "MEMBER") {
       const node = nodeTarget(current.draft, target);
       if (!node && memberStart && ["DRAW_MEMBER_WAIT_END", "DYNAMIC_INPUT"].includes(commandState.state)) {
-        const world = worldPointFromEvent(svg, event); const cad = cadState(current); if (!world) return;
-        const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, { x: event.clientX, y: event.clientY }), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: memberOrigin(), ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
-        completeMemberAt({ x: Math.round(resolved.point.x * 1e9) / 1e9, y: Math.round(resolved.point.y * 1e9) / 1e9 }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
+        const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current); if (!world) return;
+        const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: memberOrigin(), ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+        completeMemberAt(resolved.point); cadStatus(root, cadState(canvasController.getState()), resolved); return;
       }
       if (!node) return;
       if (!memberStart) { memberStart = node.clientKey; const start = current.draft.nodes.find((item) => item.client_key === memberStart); commandState = transition(commandState, { type: "POINTER_POINT", point: { x: start.x_mm, y: start.y_mm } }); updateUi(root, tool, memberStart); return; }
@@ -335,8 +382,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
         const center = svg.closest(".workspace-center").getBoundingClientRect();
         dynamicOverlay.style.left = `${Math.min(center.width - 160, Math.max(0, screen.x - center.left + 20))}px`;
         dynamicOverlay.style.top = `${Math.min(center.height - 80, Math.max(0, screen.y - center.top + 20))}px`;
-        if (document.activeElement !== xInput) xInput.value = String(Math.round(resolution.point.x * 1000) / 1000);
-        if (document.activeElement !== yInput) yInput.value = String(Math.round(resolution.point.y * 1000) / 1000);
+        if (document.activeElement !== xInput) xInput.value = String(resolution.point.x);
+        if (document.activeElement !== yInput) yInput.value = String(resolution.point.y);
         const origin = memberOrigin();
         dynamicOverlay.querySelector("[data-cad-xy-fields]").hidden = tool !== "NODE";
         dynamicOverlay.querySelector("[data-cad-preview-distance]").textContent = origin ? `长度 ${Math.round(Math.hypot(resolution.point.x - origin.x, resolution.point.y - origin.y) * 1000) / 1000} mm` : "";
@@ -345,7 +392,10 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     }
     cadStatus(root, cadState(canvasController.getState()), resolution);
     updateUi(root, tool, memberStart, contextualInstruction);
-    if (unconnectedIntersection && active && !contextualInstruction) root.querySelector("[data-modeling-instruction]").textContent = "这里有构件交叉，但尚未建立连接。";
+    if (state.draft.schema_version === "physical-draft-v2" && active && !contextualInstruction) {
+      const previewInstruction = placementEffects(resolution.point, "点击确认。");
+      if (previewInstruction) root.querySelector("[data-modeling-instruction]").textContent = previewInstruction;
+    } else if (unconnectedIntersection && active && !contextualInstruction) root.querySelector("[data-modeling-instruction]").textContent = "这里有构件交叉，但尚未建立连接。";
     if (memberStart) updateDynamics(resolution.point);
   });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && tool !== "SELECT") { event.preventDefault(); event.stopPropagation(); cancelCommand(); } });

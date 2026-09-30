@@ -50,7 +50,7 @@ export function showLevelOne(run, data, currentDraftVersion, draft = null) {
   const segments = (data?.result_json?.member_results || []).flatMap((item) => {
     if (!item?.physical_member_id || !STATE_LABELS[item.state]) return [];
     const member = { physicalMemberClientKey: item.physical_member_id, state: item.state };
-    if (draft && data.source_draft_version === currentDraftVersion) member.displayLabel = labels.label("PHYSICAL_MEMBER", item.physical_member_id);
+    if (draft) member.displayLabel = labels.label("PHYSICAL_MEMBER", item.physical_member_id);
     return [member];
   });
   const states = new Map();
@@ -58,7 +58,7 @@ export function showLevelOne(run, data, currentDraftVersion, draft = null) {
   const members = [...states].map(([key, values]) => ({
     physicalMemberClientKey: key,
     state: new Set(values).size === 1 ? values[0] : "MIXED",
-    ...(draft && data.source_draft_version === currentDraftVersion ? { displayLabel: labels.label("PHYSICAL_MEMBER", key) } : {}),
+    ...(draft ? { displayLabel: labels.label("PHYSICAL_MEMBER", key) } : {}),
   }));
   const overlay = Object.fromEntries([...states].map(([key, values]) => [key, new Set(values).size === 1 ? values[0] : "MIXED"]));
   return Object.freeze({
@@ -68,7 +68,7 @@ export function showLevelOne(run, data, currentDraftVersion, draft = null) {
     predictionUsed: run.predictionId !== null,
     maximum: data.level_one?.maximum_displacement ? {
       ...data.level_one.maximum_displacement,
-      ...(draft && data.source_draft_version === currentDraftVersion ? { displayCandidateLabels: (data.level_one.maximum_displacement.candidate_analysis_node_ids || []).map((id) => {
+      ...(draft ? { displayCandidateLabels: (data.level_one.maximum_displacement.candidate_analysis_node_ids || []).map((id) => {
         const key = String(id).replace(/^connection:|^node:/, "");
         return labels.label(String(id).startsWith("node:") ? "GEOMETRY_NODE" : "CONNECTION", key);
       }) } : {}),

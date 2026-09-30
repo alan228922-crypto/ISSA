@@ -80,7 +80,7 @@ def test_v2_missing_endpoint_remains_savable(context):
     payload = v2_payload(material, section)
     payload["physical_members"][0]["end_node_client_key"] = None
     save_physical_draft(actor=owner, project=project, payload=payload)
-    assert {issue["code"] for issue in draft_completeness_issues(project)} == {"MISSING_MEMBER_END_NODE"}
+    assert {issue["code"] for issue in draft_completeness_issues(project)} == {"MISSING_MEMBER_END_NODE", "UNATTACHED_LOAD_NODE"}
 
 
 @pytest.mark.django_db
@@ -128,6 +128,8 @@ def test_v2_rejects_new_same_coordinate_identity_but_keeps_audited_legacy_pair(c
     )
     save_physical_draft(actor=owner, project=project, payload=payload)
     assert project.geometry_nodes.filter(x_mm=0.0, y_mm=0.0).count() == 2
+    from modeling.completeness import draft_completeness_issues
+    assert "DUPLICATE_NODE_COORDINATE" not in {issue["code"] for issue in draft_completeness_issues(project)}
 
 
 @pytest.mark.django_db

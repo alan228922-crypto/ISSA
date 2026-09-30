@@ -55,6 +55,113 @@ def test_node_joint_editor_authors_crossing_incidence_and_keeps_independent_dele
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
+def test_v2_endpoint_edit_preserves_valid_incidences_and_rejects_invalid_rebind(context, workspace_page):
+    owner, project, _, _ = context
+    project.draft_schema_version = "physical-draft-v2"
+    project.save(update_fields=["draft_schema_version"])
+    page = workspace_page(user=owner, project=project)
+    result = page.evaluate("""async () => {
+      const {applyEditorAction}=await import('/static/projects/workspace/editor.js');
+      const node=(key,x,y)=>({client_key:key,x_mm:x,y_mm:y,label:''});
+      const draft={schema_version:'physical-draft-v2',version:0,nodes:[node('a',0,0),node('mid',50,0),node('b',100,0),node('c',80,0),node('off',150,50)],physical_members:[{client_key:'m',start_node_client_key:'a',end_node_client_key:'b',material_id:null,section_id:null,label:'',is_active:true}],member_joint_incidences:[{member_client_key:'m',node_client_key:'mid'}],supports:[],node_loads:[]};
+      const action=(key)=>({type:'UPDATE_OBJECT',target:{kind:'PHYSICAL_MEMBER',clientKey:'m'},changes:{end_node_client_key:key}});
+      let invalidCode=null;try{applyEditorAction(draft,action('off'));}catch(error){invalidCode=error.code;}
+      const valid=applyEditorAction(draft,action('c'));
+      return {invalidCode,incidences:valid.member_joint_incidences};
+    }""")
+    assert result["invalidCode"] == "EDITOR_INVALID_TOPOLOGY"
+    assert result["incidences"] == [{"member_client_key": "m", "node_client_key": "mid"}]
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_numeric_node_placement_previews_affected_member_before_second_enter(context, workspace_page):
+    from modeling.services import save_physical_draft
+    from tests.application.test_node_joint_draft import v2_payload, v2_project
+
+    owner, project, material, section = context
+    v2_project(project)
+    save_physical_draft(actor=owner, project=project, payload=v2_payload(material, section))
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('.ux-precision summary').click()
+    command = page.locator('[data-cad-command-input]')
+    command.fill('500,0')
+    command.press('Enter')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 2
+    assert 'm1' in page.locator('[data-modeling-instruction]').text_content()
+    command.press('Enter')
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 3
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("numeric", [False, True])
+def test_member_endpoint_on_existing_member_previews_new_joint_before_commit(context, workspace_page, numeric):
+    from modeling.services import save_physical_draft
+    from tests.application.test_node_joint_draft import v2_payload, v2_project
+
+    owner, project, material, section = context
+    v2_project(project)
+    payload = v2_payload(material, section)
+    payload["nodes"].append({"client_key": "start", "x_mm": 500.0, "y_mm": 100.0, "label": ""})
+    save_physical_draft(actor=owner, project=project, payload=payload)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-object-kind="GeometryNode"][data-client-key="start"]').click(force=True)
+    if numeric:
+        page.locator('.ux-precision summary').click()
+        command = page.locator('[data-cad-command-input]')
+        command.fill('500,0')
+        command.press('Enter')
+        assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
+        assert 'm1' in page.locator('[data-modeling-instruction]').text_content()
+        command.press('Enter')
+    else:
+        point = page.evaluate("""() => { const matrix=document.querySelector('[data-world-layer]').getScreenCTM(); const point=new DOMPoint(500,0).matrixTransform(matrix); return {x:point.x,y:point.y}; }""")
+        page.mouse.move(point['x'], point['y'])
+        assert 'm1' in page.locator('[data-modeling-instruction]').text_content()
+        assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
+        page.mouse.click(point['x'], point['y'])
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == 2
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    draft = page.evaluate("""() => JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft""")
+    candidates = [node for node in draft['nodes'] if abs(node['x_mm'] - 500) < 1e-6 and abs(node['y_mm']) < 1e-6]
+    assert candidates, draft['nodes']
+    new_joint = candidates[0]
+    assert {'member_client_key': 'm1', 'node_client_key': new_joint['client_key']} in draft['member_joint_incidences']
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
+def test_numeric_near_existing_endpoint_reuses_identity_without_false_new_joint_preview(context, workspace_page):
+    from modeling.services import save_physical_draft
+    from tests.application.test_node_joint_draft import v2_payload, v2_project
+
+    owner, project, material, section = context
+    v2_project(project)
+    payload = v2_payload(material, section)
+    payload["nodes"].extend([
+        {"client_key": "mid", "x_mm": 500.0, "y_mm": 0.0, "label": ""},
+        {"client_key": "start", "x_mm": 500.0, "y_mm": 100.0, "label": ""},
+    ])
+    payload["member_joint_incidences"] = [{"member_client_key": "m1", "node_client_key": "mid"}]
+    save_physical_draft(actor=owner, project=project, payload=payload)
+    page = workspace_page(user=owner, project=project)
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-object-kind="GeometryNode"][data-client-key="start"]').click(force=True)
+    page.locator('.ux-precision summary').click()
+    command = page.locator('[data-cad-command-input]')
+    command.fill('500.0000000005,0')
+    command.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == 2
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 4
+
+
+@pytest.mark.browser
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("member_count", [2, 3])
 def test_real_pointer_crossing_click_persists_explicit_incidences(context, workspace_page, member_count):
     from modeling.services import save_physical_draft
@@ -73,6 +180,13 @@ def test_real_pointer_crossing_click_persists_explicit_incidences(context, works
     assert page.locator('[data-object-kind="Connection"]').count() == 0
     page.locator('[data-workspace-tool="NODE"]').click()
     point = page.evaluate("""() => { const matrix=document.querySelector('[data-world-layer]').getScreenCTM(); const point=new DOMPoint(0,0).matrixTransform(matrix); return {x:point.x,y:point.y}; }""")
+    page.mouse.move(point["x"], point["y"])
+    instruction = page.locator('[data-modeling-instruction]').text_content()
+    assert f"{member_count} 条构件" in instruction
+    assert "horizontal" in instruction and "vertical" in instruction
+    if member_count == 3:
+        assert "diagonal" in instruction
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 2 * member_count
     page.mouse.click(point["x"], point["y"])
     assert page.locator('[data-object-kind="GeometryNode"]').count() == 2 * member_count + 1
     evidence = Path(__file__).resolve().parents[2] / '.superpowers/sdd/2026-09-29-node-as-joint-architecture/screenshots'

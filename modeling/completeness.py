@@ -1,6 +1,6 @@
 """Current-draft reference preflight; canonical snapshots remain strict."""
 
-from .models import Connection, NodeLoad, PhysicalMember, Support
+from .models import Connection, GeometryNode, NodeLoad, PhysicalMember, Support
 
 
 def draft_completeness_issues(project):
@@ -32,7 +32,8 @@ def draft_completeness_issues(project):
         from .services import _audited_exceptions
         from .topology import find_unrepresented_passes, ordered_member_nodes
 
-        nodes = {row.client_key: (row.x_mm, row.y_mm) for row in project.geometry_nodes.all()}
+        node_rows = list(GeometryNode.objects.filter(project=project).order_by("client_key"))
+        nodes = {row.client_key: (row.x_mm, row.y_mm) for row in node_rows}
         members = list(PhysicalMember.objects.filter(project=project).select_related("start_geometry_node", "end_geometry_node"))
         member_rows = [{
             "client_key": row.client_key,
@@ -40,7 +41,16 @@ def draft_completeness_issues(project):
             "end_node_client_key": row.end_geometry_node.client_key if row.end_geometry_node_id else None,
         } for row in members]
         pairs = set(project.member_joint_incidences.values_list("member__client_key", "node__client_key"))
-        _, exceptions = _audited_exceptions(project, nodes, member_rows)
+        attached = {key for row in member_rows for key in (row["start_node_client_key"], row["end_node_client_key"]) if key is not None}
+        attached.update(node_key for _, node_key in pairs)
+        pair_exemptions, exceptions = _audited_exceptions(project, nodes, member_rows)
+        by_point = {}
+        for node_row in node_rows:
+            point = nodes[node_row.client_key]
+            for other in by_point.get(point, []):
+                if frozenset((node_row.client_key, other)) not in pair_exemptions:
+                    add("DUPLICATE_NODE_COORDINATE", "GEOMETRY_NODE", node_row, f"节点 {node_row.client_key} 与 {other} 位于同一位置，但没有经审核的独立身份。")
+            by_point.setdefault(point, []).append(node_row.client_key)
         for row, member in zip(member_rows, members):
             if row["start_node_client_key"] is None or row["end_node_client_key"] is None:
                 continue
@@ -55,9 +65,13 @@ def draft_completeness_issues(project):
         for support in Support.objects.filter(project=project).order_by("client_key"):
             if support.target_node_id is None:
                 add("MISSING_SUPPORT_NODE", "SUPPORT", support, f"支座 {support.client_key} 还没有指定作用位置。")
+            elif support.target_node.client_key not in attached:
+                add("UNATTACHED_SUPPORT_NODE", "SUPPORT", support, f"支座 {support.client_key} 所在节点尚未参与任何构件。")
         for load in NodeLoad.objects.filter(project=project).order_by("client_key"):
             if load.target_node_id is None:
                 add("MISSING_LOAD_NODE", "NODE_LOAD", load, f"荷载 {load.client_key} 还没有指定作用位置。")
+            elif load.target_node.client_key not in attached:
+                add("UNATTACHED_LOAD_NODE", "NODE_LOAD", load, f"荷载 {load.client_key} 所在节点尚未参与任何构件。")
         return issues
 
     for connection in Connection.objects.filter(project=project).prefetch_related("participation_slots").order_by("client_key"):
