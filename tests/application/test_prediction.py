@@ -55,6 +55,7 @@ def project(owner):
         event=EventMembership.objects.get(user=owner).event,
         owner_user=owner,
         name="预测",
+        draft_schema_version="physical-draft-v1",
     )
 
 

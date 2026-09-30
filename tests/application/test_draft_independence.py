@@ -189,7 +189,7 @@ def test_shared_material_delete_updates_each_affected_project_once_and_audits(co
     from projects.models import Project
 
     owner, project, material, section = context
-    second = Project.objects.create(event=project.event, owner_user=owner, name="第二项目")
+    second = Project.objects.create(event=project.event, owner_user=owner, name="第二项目", draft_schema_version="physical-draft-v1")
     for current in (project, second):
         payload = valid_payload(material, section)
         if current == project:

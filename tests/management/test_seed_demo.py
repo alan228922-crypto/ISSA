@@ -71,9 +71,10 @@ def test_seed_demo_creates_analyzable_project_without_learning_or_analysis_recor
         analysis_type=Project.AnalysisType.TRUSS_2D,
     )
     owner = project.owner_user
+    assert project.draft_schema_version == "physical-draft-v2"
     assert demo_counts() == {
         "users": 1, "events": 1, "memberships": 1, "projects": 1, "blank_projects": 1,
-        "nodes": 2, "members": 1, "connections": 2, "supports": 2, "loads": 1,
+        "nodes": 2, "members": 1, "connections": 0, "supports": 2, "loads": 1,
         "runs": 0, "predictions": 0, "reflections": 0,
     }
     assert can_view_project(owner, project) is True

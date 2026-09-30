@@ -14,6 +14,7 @@
     <header id="workspace-project-header">
       <div><p class="ux-eyebrow">结构学习工作区 · {{ bootstrap.access.event.name }}</p><h1>{{ bootstrap.project.name }}</h1></div>
       <p id="workspace-read-only"{% if not bootstrap.read_only %} hidden{% endif %}>只读查看</p>
+      {% if bootstrap.migration_blocked %}<p data-legacy-migration-blocked role="alert">{{ bootstrap.access.read_only_reason }} <a data-legacy-draft-export href="{{ bootstrap.urls.legacy_export }}" download="legacy-draft.json">导出保留的旧草稿</a></p>{% endif %}
       <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>保存模型</button>
     </header>
     <nav class="ux-stage-nav" data-ux-stage-nav aria-label="学习阶段">

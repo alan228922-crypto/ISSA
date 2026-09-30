@@ -1,7 +1,7 @@
 """M5 Workspace page delivery; persistence and mechanics remain in existing services."""
 
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.http import require_GET
@@ -148,6 +148,7 @@ def workspace(request, project_id):
         "project": {"id": project.id, "name": project.name, "analysis_type": project.analysis_type},
         "draft": _draft(project),
         "read_only": read_only,
+        "migration_blocked": blocked_audit is not None,
         "access": {
             "current_user": {"id": request.user.id, "username": request.user.username, "role": request.user.role},
             "owner": {"id": project.owner_user_id, "username": project.owner_user.username},
@@ -159,4 +160,25 @@ def workspace(request, project_id):
         "sections": _available_sections(project.owner_user),
         "urls": _urls(project),
     }
+    if blocked_audit:
+        bootstrap["urls"]["legacy_export"] = reverse("projects:legacy_draft_export", kwargs={"project_id": project.id})
     return render(request, "projects/workspace.html", {"bootstrap": bootstrap})
+
+
+@login_required
+@require_GET
+def legacy_draft_export(request, project_id):
+    project = Project.objects.select_related("event", "owner_user").filter(pk=project_id).first()
+    if project is None or not can_view_project(request.user, project):
+        raise Http404
+    audit = project.draft_migration_audits.filter(status="BLOCKED").order_by("-created_at", "-pk").first()
+    if audit is None:
+        raise Http404
+    return JsonResponse({
+        "schema_version": "legacy-draft-recovery-v1",
+        "project_id": project.pk,
+        "source_draft_version": audit.source_draft_version,
+        "source_hash": audit.source_hash,
+        "source_payload": audit.source_payload_json,
+        "reason_code": audit.reason_code,
+    }, json_dumps_params={"ensure_ascii": False})

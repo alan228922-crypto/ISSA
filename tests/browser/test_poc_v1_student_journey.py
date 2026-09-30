@@ -15,7 +15,7 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
     event = make_event(name="POC V1 验收赛事", code="POC-V1-JOURNEY")
     CompetitionEvent.objects.filter(pk=event.id).update(status=CompetitionEvent.Status.ACTIVE)
     add_membership(user=student, event=event, membership_type=EventMembership.Type.PARTICIPANT)
-    Project.objects.create(event=event, owner_user=student, name="学生空白桁架")
+    Project.objects.create(event=event, owner_user=student, name="学生空白桁架", draft_schema_version="physical-draft-v1")
 
     runtime = playwright.sync_playwright().start()
     browser = runtime.chromium.launch()

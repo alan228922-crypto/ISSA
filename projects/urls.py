@@ -7,6 +7,7 @@ app_name = 'projects'
 
 urlpatterns = [
     path('<int:project_id>/workspace/', workspace.workspace, name='workspace'),
+    path('<int:project_id>/model/legacy-export/', workspace.legacy_draft_export, name='legacy_draft_export'),
     path('<int:project_id>/model/save/', views.model_save, name='model_save'),
     path('<int:project_id>/model/check/', views.model_check, name='model_check'),
     path('<int:project_id>/analyze/', views.analyze, name='analyze'),

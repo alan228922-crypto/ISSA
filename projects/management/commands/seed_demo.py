@@ -19,10 +19,10 @@ DEMO_MATERIAL_NAME = "Demo B/T01 竹材"
 DEMO_SECTION_NAME = "Demo B/T01 矩形截面"
 
 
-def _bt01_payload(material, section, version):
+def _bt01_payload(material, section, version, schema_version="physical-draft-v2"):
     """Reuse the existing B/T01 benchmark inputs: P=100 N, L=1000 mm, E=2000 MPa, A=6 mm²."""
-    return {
-        "schema_version": "physical-draft-v1",
+    payload = {
+        "schema_version": schema_version,
         "expected_draft_version": version,
         "nodes": [
             {"client_key": "n1", "x_mm": 0.0, "y_mm": 0.0, "label": "左支座"},
@@ -51,6 +51,15 @@ def _bt01_payload(material, section, version):
             {"client_key": "l1", "target_connection_client_key": "c2", "fx_N": 100.0, "fy_N": 0.0, "label": "100 N 水平荷载"},
         ],
     }
+    if schema_version == "physical-draft-v2":
+        payload["member_joint_incidences"] = []
+        payload.pop("connections")
+        for row, node_key in zip(payload["supports"], ("n1", "n2")):
+            row["target_node_client_key"] = node_key
+            row.pop("target_connection_client_key")
+        payload["node_loads"][0]["target_node_client_key"] = "n2"
+        payload["node_loads"][0].pop("target_connection_client_key")
+    return payload
 
 
 class Command(BaseCommand):
@@ -157,7 +166,7 @@ class Command(BaseCommand):
                 save_physical_draft(
                     actor=account,
                     project=project,
-                    payload=_bt01_payload(material, section, project.draft_version),
+                    payload=_bt01_payload(material, section, project.draft_version, project.draft_schema_version),
                 )
                 project.refresh_from_db()
 

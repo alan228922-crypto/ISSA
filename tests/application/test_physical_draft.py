@@ -18,7 +18,7 @@ def context(db):
     owner = User.objects.create_user("physical-owner")
     event = CompetitionEvent.objects.create(name="赛事", event_code="PD", competition_date=date(2026, 11, 7), starts_at=timezone.make_aware(datetime(2026, 11, 7)), ends_at=timezone.make_aware(datetime(2026, 11, 8)))
     EventMembership.objects.create(user=owner, event=event, membership_type=EventMembership.Type.PARTICIPANT)
-    project = Project.objects.create(event=event, owner_user=owner, name="物理草稿")
+    project = Project.objects.create(event=event, owner_user=owner, name="物理草稿", draft_schema_version="physical-draft-v1")
     material = Material.objects.create(owner_user=owner, name="竹材", E_MPa=Decimal("2000"), density_g_per_mm3=Decimal("0.0007"), source_type="MEASURED")
     section = create_section(owner=owner, name="矩形", definition={"schema_version": "section-definition-v1", "type": "rectangle", "width_mm": 1.0, "height_mm": 6.0, "density_g_per_mm3": 0.0007})
     return owner, project, material, section
