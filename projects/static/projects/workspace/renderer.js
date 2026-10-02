@@ -3,6 +3,7 @@ import { GRID_SPACING, visibleGridLevels } from "./grid.js";
 import { createStudentLabelResolver } from "./labels.js";
 import { structuralSymbolDefs, renderNode, renderMember, renderConnection, renderSupport, renderLoad } from "./structural-symbols.js";
 import { candidateMembersAtNode } from "./joint-candidates.js";
+import { readCoordinateSpace, cssPixelsPerWorldUnit } from './coordinate-space.js';
 
 function element(name, attributes = {}) {
   const node = document.createElementNS(SVG_NS, name);
@@ -39,9 +40,7 @@ function viewTransform(view = {}) {
 }
 
 function screenUnit(svg, uiState) {
-  const viewBox = svg.viewBox.baseVal;
-  const viewportScale = Math.min(svg.clientWidth / (viewBox.width || 1000), svg.clientHeight / (viewBox.height || 600));
-  return 1 / Math.max(0.001, viewportScale * Math.abs(uiState.viewTransform?.a ?? 1));
+  return 1 / Math.max(.001,cssPixelsPerWorldUnit(readCoordinateSpace(svg,uiState.viewTransform || {a:1,b:0,c:0,d:-1,e:0,f:0})));
 }
 
 function position(connection, nodePositions) {

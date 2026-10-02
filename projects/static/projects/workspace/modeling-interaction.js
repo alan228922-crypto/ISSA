@@ -2,7 +2,9 @@ import { EditorActionError } from "./editor.js";
 import { pickAt, renderedObjectsFromSvg, worldPointFromEvent } from "./canvas-interaction.js";
 import { parseCadInput } from "./cad-input.js";
 import { transition } from "./cad-state.js";
-import { resolvePointerPoint } from "./geometry.js";
+import { resolvePointerPoint as resolveGeometry } from "./geometry.js";
+import { readCoordinateSpace } from './coordinate-space.js';
+import { createInteractionController } from './interaction-controller.js';
 import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction, undoWorkspaceEdit, redoWorkspaceEdit } from "./state.js";
 import { createStudentLabelResolver } from "./labels.js";
@@ -84,10 +86,7 @@ function cadState(state) { return state.cad || { ortho: false, gridSnap: true, g
 const effectiveOrtho = (cad) => Boolean(cad.ortho) !== Boolean(cad.temporaryOrtho);
 const snapCandidates = (draft, cad) => cad.objectSnap === false ? [] : drawingCandidates(draft);
 function localScreenPoint(svg, point) {
-  const matrix = svg.getScreenCTM?.();
-  if (!matrix) return point;
-  const local = new DOMPoint(point.x, point.y).matrixTransform(matrix.inverse());
-  return { x: local.x, y: local.y };
+  return point; // Resolver now measures browser client pixels through CoordinateSpace.
 }
 function cadStatus(root, cad, resolution = null) {
   const indicator = root.querySelector("#workspace-snap-indicator"); if (!indicator) return;
@@ -97,6 +96,8 @@ function cadStatus(root, cad, resolution = null) {
 
 export function bindModelingInteractions({ root, svg, canvasController, showError, readOnly }) {
   if (readOnly) return Object.freeze({ getTool: () => "SELECT" });
+  const interaction = createInteractionController({resolvePointer:resolveGeometry,inspectEndpoint:()=>({passingMemberClientKeys:[],collocatedNodeClientKeys:[]})});
+  const resolvePointerPoint = (args) => interaction.dispatch({type:'POINTER_RESOLVE',...args,clientPointer:args.screenPointer,coordinates:readCoordinateSpace(svg,args.viewTransform)}, {draft:canvasController.getState().draft,settings:{ortho:args.ortho,gridSnap:args.gridEnabled}}).state.snapResolution;
   let tool = "SELECT"; let memberStart = null; let contextualInstruction = null; let pendingNumeric = null; let lastCompletedTool = null; let commandState = { state: "SELECTING", fieldIndex: null };
   let supportChoice = "PINNED";
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
@@ -205,6 +206,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     return commit() ? "COMMITTED" : "INVALID";
   };
   const chooseTool = (nextTool) => {
+    interaction.dispatch({type:'SELECT_TOOL',tool:nextTool},{draft:canvasController.getState().draft});
     tool = nextTool; memberStart = null; acquiredSnap = null; contextualInstruction = null; pendingNumeric = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
     const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
     if (dynamicOverlay) dynamicOverlay.hidden = nextTool === "SELECT" || cadState(current).dynamicInput === false;
@@ -278,11 +280,6 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const locationEvent = { clientX: screen.x, clientY: screen.y };
     if (tool === "NODE") {
       if (pointerSelection?.kind === "SUPPORT") return;
-      if (target) {
-        const node = nodeTarget(current.draft, target);
-        if (node) apply({ type: "CONNECT_NODE", nodeClientKey: node.clientKey });
-        return;
-      }
       const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current);
       const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
       const point = resolved?.point; if (!point) return;
@@ -293,15 +290,10 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point, preview: null, snapFeedback: null }); commandState = transition(commandState, { type: "POINTER_POINT", point }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
     }
     if (tool === "MEMBER") {
-      const node = nodeTarget(current.draft, target);
-      if (!node && memberStart && ["DRAW_MEMBER_WAIT_END", "DYNAMIC_INPUT"].includes(commandState.state)) {
-        const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current); if (!world) return;
-        const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: memberOrigin(), ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
-        completeMemberAt(resolved.point); cadStatus(root, cadState(canvasController.getState()), resolved); return;
-      }
-      if (!node) return;
-      if (!memberStart) { memberStart = node.clientKey; const start = current.draft.nodes.find((item) => item.client_key === memberStart); commandState = transition(commandState, { type: "POINTER_POINT", point: { x: start.x_mm, y: start.y_mm } }); updateUi(root, tool, memberStart); return; }
-      const endpoint = current.draft.nodes.find((item) => item.client_key === node.clientKey); completeMemberAt({ x: endpoint.x_mm, y: endpoint.y_mm }); return;
+      const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current); if (!world) return true;
+      const resolved = resolvePointerPoint({worldPointer:world,screenPointer:screen,candidates:snapCandidates(current.draft,cad),viewTransform:current.viewTransform,origin:memberOrigin(),ortho:effectiveOrtho(cad),gridEnabled:cad.gridSnap,explicitNumeric:false});
+      if (!memberStart) { if(!resolved.nodeClientKey)return true; memberStart=resolved.nodeClientKey;commandState=transition(commandState,{type:'POINTER_POINT',point:resolved.worldPoint});updateUi(root,tool,memberStart);return true; }
+      completeMemberAt(resolved.worldPoint);cadStatus(root,cadState(canvasController.getState()),resolved);return true;
     }
     const node = nodeTarget(current.draft, target);
     if (!node) {
@@ -319,7 +311,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       if (apply({ type: "CREATE_NODE_LOAD_AT_NODE", nodeClientKey: node.clientKey, nodeLoad: { client_key: clientKey, fx_N: 0, fy_N: -100, label: "" } })) return { kind: "NODE_LOAD", clientKey };
     }
   };
-  canvasController.setCanvasClickHandler(handleCanvasClick);
+  canvasController.setCanvasClickHandler((...args)=>{try{return handleCanvasClick(...args);}catch(error){showError({code:error.code||'CAD_INTERACTION_ERROR',message:error.message});return true;}});
+  svg.addEventListener('cad-coordinate-error',event=>{cancelCommand();showError({code:event.detail.code,message:event.detail.message});});
   const gripPosition = (clientKey, world, screen) => {
     if (!world) return null;
     const state = canvasController.getState(); const cad = cadState(state);

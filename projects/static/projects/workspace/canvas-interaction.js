@@ -3,6 +3,7 @@ export { GRID_SPACING } from "./grid.js";
 import { objectsInMarquee } from "./selection-geometry.js";
 import { createStudentLabelResolver } from "./labels.js";
 import { candidateMembersAtNode } from "./joint-candidates.js";
+import { readCoordinateSpace, clientToWorld, worldToClient, clientPointToSvgLocal, clientDeltaToSvgLocal } from './coordinate-space.js';
 
 const POINT_TOLERANCE = 10;
 const SEGMENT_TOLERANCE = 8;
@@ -59,12 +60,12 @@ function precise(value) {
 }
 
 export function reduceView(view, event) {
-  if (event.type === "PAN") return { ...view, e: view.e + event.deltaScreen.x, f: view.f + event.deltaScreen.y };
+  if (event.type === "PAN") { const delta=event.deltaSvgLocal || event.deltaScreen; return { ...view, e: view.e + delta.x, f: view.f + delta.y }; }
   if (event.type === "ZOOM") {
     if (!Number.isFinite(event.factor) || event.factor <= 0) throw new Error("ZOOM_FACTOR_INVALID");
     const scale = clamp(Math.abs(view.a) * event.factor, 0.05, 20);
     const ratio = scale / Math.abs(view.a);
-    const anchor = event.anchorScreen;
+    const anchor = event.anchorSvgLocal || event.anchorScreen;
     return { a: precise(view.a * ratio), b: precise(view.b * ratio), c: precise(view.c * ratio), d: precise(view.d * ratio), e: precise(anchor.x - ratio * (anchor.x - view.e)), f: precise(anchor.y - ratio * (anchor.y - view.f)) };
   }
   if (event.type === "FIT_VIEW") {
@@ -77,7 +78,7 @@ export function reduceView(view, event) {
     const scale = clamp(Math.min((event.viewport.width - 80) / width, (event.viewport.height - 80) / height), 0.05, 20);
     const a = view.a < 0 ? -scale : scale;
     const d = view.d < 0 ? -scale : scale;
-    return { a: precise(a), b: 0, c: 0, d: precise(d), e: precise(event.viewport.width / 2 - a * centerX), f: precise(event.viewport.height / 2 - d * centerY) };
+    return { a: precise(a), b: 0, c: 0, d: precise(d), e: precise((event.viewport.left || 0) + event.viewport.width / 2 - a * centerX), f: precise((event.viewport.top || 0) + event.viewport.height / 2 - d * centerY) };
   }
   throw new Error("VIEW_EVENT_INVALID");
 }
@@ -88,17 +89,9 @@ export function selectionFromElement(element) {
   return kind && clientKey ? { kind, clientKey } : null;
 }
 
-function screenPoint(matrix, x, y) {
-  const point = new DOMPoint(x, y).matrixTransform(matrix);
-  return { x: point.x, y: point.y };
-}
-
 export function worldPointFromEvent(svg, event) {
-  const world = svg.querySelector("[data-world-layer]");
-  const matrix = world?.getScreenCTM?.();
-  if (!matrix) return null;
-  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
-  return Number.isFinite(point.x) && Number.isFinite(point.y) ? { x: point.x, y: point.y } : null;
+  try { return clientToWorld({x:event.clientX,y:event.clientY},readCoordinateSpace(svg)); }
+  catch(error){svg.dispatchEvent(new CustomEvent('cad-coordinate-error',{detail:error}));return null;}
 }
 
 export function renderedObjectsFromSvg(svg) {
@@ -106,9 +99,9 @@ export function renderedObjectsFromSvg(svg) {
     const selection = selectionFromElement(group);
     if (!selection) return [];
     const line = group.querySelector("line");
-    if (selection.kind === "PHYSICAL_MEMBER" && line?.getScreenCTM()) {
-      const matrix = line.getScreenCTM();
-      return [{ ...selection, hit: { type: "SEGMENT", start: screenPoint(matrix, Number(line.getAttribute("x1")), Number(line.getAttribute("y1"))), end: screenPoint(matrix, Number(line.getAttribute("x2")), Number(line.getAttribute("y2"))) } }];
+    if (selection.kind === "PHYSICAL_MEMBER" && line) {
+      const space = readCoordinateSpace(svg);
+      return [{ ...selection, hit: { type: "SEGMENT", start: worldToClient({x:Number(line.getAttribute('x1')),y:Number(line.getAttribute('y1'))},space), end: worldToClient({x:Number(line.getAttribute('x2')),y:Number(line.getAttribute('y2'))},space) } }];
     }
     const bounds = group.getBoundingClientRect();
     return [{ ...selection, hit: { type: "POINT", point: { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 } } }];
@@ -201,6 +194,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
     const precisePoint = lastPointerUp && Math.abs(lastPointerUp.x - event.clientX) <= 1 && Math.abs(lastPointerUp.y - event.clientY) <= 1 ? lastPointerUp : null;
     lastPointerUp = null;
     const createdSelection = canvasClickHandler?.(event, pointerSelection, precisePoint);
+    if (createdSelection === true) { pointerSelection=null; return; }
     const direct = createdSelection || pointerSelection || selectionFromElement(event.target?.closest?.("[data-object-kind]"));
     pointerSelection = null;
     const point = { x: event.clientX, y: event.clientY };
@@ -236,19 +230,19 @@ export function bindCanvasInteractions(svg, initialState, render) {
   svg.addEventListener("keydown", (event) => {
     if (event.key === "Enter") select(selectionFromElement(event.target));
     const delta = { ArrowLeft: { x: -24, y: 0 }, ArrowRight: { x: 24, y: 0 }, ArrowUp: { x: 0, y: -24 }, ArrowDown: { x: 0, y: 24 } }[event.key];
-    if (event.target === svg && delta) { event.preventDefault(); dispatchViewEvent({ type: "PAN", deltaScreen: delta }); }
+    if (event.target === svg && delta) { event.preventDefault(); dispatchViewEvent({ type: "PAN", deltaSvgLocal: clientDeltaToSvgLocal({x:0,y:0},delta,readCoordinateSpace(svg,state.viewTransform)) }); }
   });
   svg.addEventListener("wheel", (event) => {
     event.preventDefault();
-    dispatchViewEvent({ type: "ZOOM", factor: event.deltaY < 0 ? 1.1 : 1 / 1.1, anchorScreen: { x: event.clientX, y: event.clientY } });
+    try { dispatchViewEvent({ type: "ZOOM", factor: event.deltaY < 0 ? 1.1 : 1 / 1.1, anchorSvgLocal: clientPointToSvgLocal({ x: event.clientX, y: event.clientY },readCoordinateSpace(svg,state.viewTransform)) }); }
+    catch(error){svg.dispatchEvent(new CustomEvent('cad-coordinate-error',{detail:error}));}
   }, { passive: false });
   const removeMarquee = () => svg.querySelector("[data-selection-marquee]")?.remove();
   const drawMarquee = (start, end) => {
     removeMarquee();
-    const matrix = svg.getScreenCTM()?.inverse();
-    if (!matrix) return;
-    const a = new DOMPoint(start.x, start.y).matrixTransform(matrix);
-    const b = new DOMPoint(end.x, end.y).matrixTransform(matrix);
+    const space = readCoordinateSpace(svg,state.viewTransform);
+    const a = clientPointToSvgLocal(start,space);
+    const b = clientPointToSvgLocal(end,space);
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     const crossing = end.x < start.x;
     for (const [key, value] of Object.entries({ x: Math.min(a.x,b.x), y: Math.min(a.y,b.y), width: Math.abs(b.x-a.x), height: Math.abs(b.y-a.y), fill: crossing ? "#0f766e33" : "#3273dc22", stroke: crossing ? "#0f766e" : "#3273dc", "stroke-dasharray": crossing ? "8 3" : "none", "pointer-events": "none", "data-selection-marquee": "true", "data-selection-mode": crossing ? "CROSSING" : "WINDOW" })) rect.setAttribute(key, String(value));
@@ -299,7 +293,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
     if (!gesture) return;
     const point = { x: event.clientX, y: event.clientY };
     if (distance(point, gesture.start) >= 4) gesture.moved = true;
-    if (gesture.moved && gesture.pan) dispatchViewEvent({ type: "PAN", deltaScreen: { x: point.x - gesture.last.x, y: point.y - gesture.last.y } });
+    if (gesture.moved && gesture.pan) dispatchViewEvent({ type: "PAN", deltaSvgLocal: clientDeltaToSvgLocal(gesture.last,point,readCoordinateSpace(svg,state.viewTransform)) });
     if (gesture.moved && gesture.select) drawMarquee(gesture.start, point);
     gesture.last = point;
   });

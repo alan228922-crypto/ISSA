@@ -163,6 +163,7 @@
     import { applyWorkspaceSaveSuccess, createWorkspaceState, focusWorkspaceIssue, readWorkspaceBootstrap } from "{% static 'projects/workspace/state.js' %}";
     import { renderWorkspace, workspaceWorldBounds } from "{% static 'projects/workspace/renderer.js' %}";
     import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
+    import { readCoordinateSpace, visibleSvgViewport } from "{% static 'projects/workspace/coordinate-space.js' %}";
     import { bindModelingInteractions } from "{% static 'projects/workspace/modeling-interaction.js' %}";
     import { bindPropertyPanel } from "{% static 'projects/workspace/properties.js' %}";
     import { groupDraftCheckIssues } from "{% static 'projects/workspace/incomplete-objects.js' %}";
@@ -183,16 +184,14 @@
     renderWorkspace(canvas, state.draft, state);
     const canvasController = bindCanvasInteractions(canvas, state, renderWorkspace);
     const studentShell = bindStudentShell({ root: document.getElementById("workspace-root"), canvasController });
-    const canvasRect = canvas.getBoundingClientRect();
-    canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(state.draft), viewport: { width: canvasRect.width, height: canvasRect.height } });
+    canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(state.draft), viewport: visibleSvgViewport(canvas,readCoordinateSpace(canvas,state.viewTransform)) });
     const fitCanvas = () => {
       const current = canvasController.getState();
-      const rect = canvas.getBoundingClientRect();
-      canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(current.draft), viewport: { width: rect.width, height: rect.height } });
+      canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(current.draft), viewport: visibleSvgViewport(canvas,readCoordinateSpace(canvas,current.viewTransform)) });
     };
     canvasController.setFitHandler(fitCanvas);
     document.querySelector("[data-cad-fit]")?.addEventListener("click", fitCanvas);
-    const zoomCanvas = (factor) => canvasController.dispatchViewEvent({ type: "ZOOM", factor, anchorScreen: { x: 500, y: 300 } });
+    const zoomCanvas = (factor) => { const viewport=visibleSvgViewport(canvas,readCoordinateSpace(canvas,canvasController.getState().viewTransform)); canvasController.dispatchViewEvent({ type: "ZOOM", factor, anchorSvgLocal: { x: viewport.left+viewport.width/2, y: viewport.top+viewport.height/2 } }); };
     document.querySelector("[data-cad-zoom-in]")?.addEventListener("click", () => zoomCanvas(1.25));
     document.querySelector("[data-cad-zoom-out]")?.addEventListener("click", () => zoomCanvas(0.8));
     const workflow = createWorkspaceWorkflow({ urls: bootstrap.urls });
