@@ -65,7 +65,9 @@ def test_numeric_member_completion_previews_existing_node_before_second_enter(co
     page.locator('[data-object-kind="GeometryNode"][data-client-key="a"]').click(force=True)
     page.locator('.ux-precision summary').click()
     command = page.locator('[data-cad-command-input]')
-    command.fill('100,0')
+    # A precise provisional endpoint is not an implicit reference to Node b.
+    # Continue beyond b to retain numeric intermediate-incidence confirmation.
+    command.fill('150,0')
     command.press('Enter')
     assert page.locator('[data-object-kind="PhysicalMember"]').count() == 0
     assert 'mid' in page.locator('[data-modeling-instruction]').text_content()

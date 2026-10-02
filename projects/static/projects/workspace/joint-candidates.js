@@ -36,3 +36,12 @@ export function candidateMembersAtNode(draft, point) {
 export function nodesOnMember(draft, start, end) {
   return index(draft).nodes.filter(node => node.x_mm >= Math.min(start.x_mm, end.x_mm) - 1e-9 && node.x_mm <= Math.max(start.x_mm, end.x_mm) + 1e-9 && segmentParameter(node, start, end) !== null).map(node => node.client_key);
 }
+
+// Discovery is feedback/validation only, never an identity-selection rule.
+export function inspectEndpointCandidates(draft, endpoint) {
+  const p=endpoint.worldPoint;
+  return {
+    passingMemberClientKeys:candidateMembersAtNode(draft,{x_mm:p.x,y_mm:p.y}),
+    collocatedNodeClientKeys:draft.nodes.filter(n=>n.x_mm===p.x&&n.y_mm===p.y).map(n=>n.client_key),
+  };
+}

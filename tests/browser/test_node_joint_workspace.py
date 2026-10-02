@@ -136,7 +136,7 @@ def test_member_endpoint_on_existing_member_previews_new_joint_before_commit(con
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_numeric_near_existing_endpoint_reuses_identity_without_false_new_joint_preview(context, workspace_page):
+def test_numeric_member_does_not_relookup_nearby_node(context, workspace_page):
     from modeling.services import save_physical_draft
     from tests.application.test_node_joint_draft import v2_payload, v2_project
 
@@ -156,7 +156,10 @@ def test_numeric_near_existing_endpoint_reuses_identity_without_false_new_joint_
     command = page.locator('[data-cad-command-input]')
     command.fill('500.0000000005,0')
     command.press('Enter')
-    assert page.locator('[data-object-kind="PhysicalMember"]').count() == 2
+    command.press('Enter')
+    # Strict topology rejects the almost-coincident endpoint; it must never
+    # silently reinterpret the precise point as the existing "mid" identity.
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
     assert page.locator('[data-object-kind="GeometryNode"]').count() == 4
 
 

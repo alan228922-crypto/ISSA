@@ -1,4 +1,4 @@
-import { candidateMembersAtNode, nodesOnMember, segmentParameter } from "./joint-candidates.js";
+import { candidateMembersAtNode, nodesOnMember, segmentParameter, inspectEndpointCandidates } from "./joint-candidates.js";
 
 const COLLECTIONS = { GEOMETRY_NODE: "nodes", PHYSICAL_MEMBER: "physical_members", SUPPORT: "supports", NODE_LOAD: "node_loads" };
 
@@ -53,6 +53,28 @@ function createMember(draft, value) {
     next = incidence(next, value.client_key, nodeKey);
   }
   return next;
+}
+
+function createMemberBetweenPoints(draft, action) {
+  if (!action.member || ![action.member.material_id,action.member.section_id].every(v=>Number.isInteger(v)&&v>0)) fail('EDITOR_INVALID_ACTION');
+  // Inspect BOTH endpoints against the untouched pre-action Draft.
+  const endpoints=[action.start,action.end].map(endpoint=>{
+    if(endpoint?.kind==='EXISTING_NODE') {
+      const target=node(draft,endpoint.nodeClientKey);
+      if(!target)fail('EDITOR_REFERENCE_NOT_FOUND');
+      return {key:target.client_key,target,newNode:false};
+    }
+    if(endpoint?.kind!=='PROVISIONAL_POINT'||!Number.isFinite(endpoint.worldPoint?.x)||!Number.isFinite(endpoint.worldPoint?.y))fail('EDITOR_INVALID_ACTION');
+    const effects=inspectEndpointCandidates(draft,endpoint);
+    if(effects.collocatedNodeClientKeys.length)fail('EDITOR_EXPLICIT_NODE_REQUIRED');
+    if(effects.passingMemberClientKeys.length>=2)fail('EDITOR_UNJOINED_CROSSING_ENDPOINT');
+    return {key:endpoint.newNodeClientKey,target:{client_key:endpoint.newNodeClientKey,x_mm:endpoint.worldPoint.x,y_mm:endpoint.worldPoint.y,label:''},newNode:true};
+  });
+  if(endpoints[0].key===endpoints[1].key||same(endpoints[0].target,endpoints[1].target))fail('EDITOR_INVALID_TOPOLOGY');
+  let proposed=draft;
+  for(const endpoint of endpoints)if(endpoint.newNode)proposed=add(proposed,'GEOMETRY_NODE',endpoint.target);
+  for(const endpoint of endpoints)proposed=authorAtNode(proposed,endpoint.key);
+  return createMember(proposed,{...action.member,start_node_client_key:endpoints[0].key,end_node_client_key:endpoints[1].key});
 }
 
 function structuralIssues(draft) {
@@ -121,6 +143,7 @@ export function applyEditorActionV2(draft, action) {
     case "CREATE_NODE": case "PLACE_JOINT_NODE": next = placeNode(draft, action.node); break;
     case "CONNECT_NODE": next = authorAtNode(draft, action.nodeClientKey); break;
     case "CREATE_MEMBER": next = createMember(draft, action.member); break;
+    case "CREATE_MEMBER_BETWEEN_POINTS": next = createMemberBetweenPoints(draft, action); break;
     case "CREATE_MEMBER_WITH_ENDPOINT": next = createMember(action.node ? placeNode(draft, action.node) : draft, action.member); break;
     case "CREATE_SUPPORT_AT_NODE": case "CREATE_NODE_LOAD_AT_NODE": {
       if (!node(draft, action.nodeClientKey)) fail("EDITOR_REFERENCE_NOT_FOUND");

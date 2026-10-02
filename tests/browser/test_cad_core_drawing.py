@@ -118,3 +118,117 @@ def test_core_singular_canvas_coordinate_cancels_without_commit(context, workspa
     assert page.locator('[data-workspace-tool="SELECT"]').get_attribute('aria-pressed') == 'true'
     assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
     assert '无' in page.locator('#workspace-save-status').inner_text()
+
+
+@pytest.mark.parametrize('start_existing,end_existing,count', [(False,False,2),(True,False,1),(False,True,1),(True,True,0)])
+def test_core_atomic_member_endpoint_combinations(context, workspace_page, start_existing, end_existing, count):
+    page, _ = open_core(context, workspace_page, [('a',0,0),('b',100,0)])
+    result = page.evaluate("""async ([se,ee])=>{
+      const {createWorkspaceState,applyWorkspaceEditorAction,undoWorkspaceEdit,redoWorkspaceEdit}=await import('/static/projects/workspace/state.js');
+      const s=createWorkspaceState(JSON.parse(document.querySelector('#workspace-bootstrap').textContent));
+      const start=se?{kind:'EXISTING_NODE',nodeClientKey:'a'}:{kind:'PROVISIONAL_POINT',newNodeClientKey:'new-a',worldPoint:{x:0,y:50}};
+      const end=ee?{kind:'EXISTING_NODE',nodeClientKey:'b'}:{kind:'PROVISIONAL_POINT',newNodeClientKey:'new-b',worldPoint:{x:100,y:50}};
+      try{const n=applyWorkspaceEditorAction(s,{type:'CREATE_MEMBER_BETWEEN_POINTS',start,end,member:{client_key:'new-member',material_id:1,section_id:1,label:'',is_active:true}});
+      return {added:n.draft.nodes.length-s.draft.nodes.length,history:n.history.past.length,member:n.draft.physical_members[0],undo:undoWorkspaceEdit(n).draft.nodes.length,redo:redoWorkspaceEdit(undoWorkspaceEdit(n)).draft};}catch(e){return {error:e.code}}
+    }""", [start_existing,end_existing])
+    assert result.get('added') == count, result
+    assert result['history'] == 1
+    assert result['member']['start_node_client_key'] == ('a' if start_existing else 'new-a')
+    assert result['member']['end_node_client_key'] == ('b' if end_existing else 'new-b')
+    assert result['undo'] == 2
+    assert result['redo']['physical_members'][0] == result['member']
+
+
+def test_core_atomic_member_incidence_and_crossing_guard(context, workspace_page):
+    page, _ = open_core(context, workspace_page)
+    result=page.evaluate("""async()=>{
+      const {applyEditorActionV2:apply}=await import('/static/projects/workspace/editor-v2.js');
+      const empty={schema_version:'physical-draft-v2',nodes:[],physical_members:[],member_joint_incidences:[],supports:[],node_loads:[]};
+      const node=(key,x,y)=>({client_key:key,x_mm:x,y_mm:y,label:''});
+      const member=(key,a,b)=>({client_key:key,start_node_client_key:a,end_node_client_key:b,material_id:1,section_id:1,is_active:true,label:''});
+      const point=(key,x,y)=>({kind:'PROVISIONAL_POINT',newNodeClientKey:key,worldPoint:{x,y}});
+      const action=(start,end)=>({type:'CREATE_MEMBER_BETWEEN_POINTS',start,end,member:{client_key:'new',material_id:1,section_id:1,is_active:true,label:''}});
+      const crossing={...empty,nodes:[node('a',-100,0),node('b',100,0),node('c',0,-100),node('d',0,100)],physical_members:[member('h','a','b'),member('v','c','d')]};
+      const run=(draft,a)=>{const before=JSON.stringify(draft);try{return {draft:apply(draft,a),unchanged:before===JSON.stringify(draft)}}catch(e){return {error:e.code,unchanged:before===JSON.stringify(draft)}}};
+      return {crossStart:run(crossing,action(point('p',0,0),point('q',50,50))),crossEnd:run(crossing,action(point('p',50,50),point('q',0,0))),
+        one:run({...crossing,physical_members:[crossing.physical_members[0]]},action(point('p',0,0),point('q',50,50))),
+        through:run({...empty,nodes:[node('mid',50,0)]},action(point('p',0,0),point('q',100,0))),
+        crossNoJoint:run(crossing,action(point('p',-50,-50),point('q',50,50))),
+        collide:run(crossing,action(point('p',-100,0),point('q',50,50))),
+        stale:run(crossing,action({kind:'EXISTING_NODE',nodeClientKey:'gone'},point('q',50,50))),
+        zero:run(empty,action(point('p',0,0),point('q',0,0)))};
+    }""")
+    assert result['crossStart'].get('error') == 'EDITOR_UNJOINED_CROSSING_ENDPOINT', result
+    assert result['crossEnd']['error'] == 'EDITOR_UNJOINED_CROSSING_ENDPOINT'
+    assert result['one']['draft']['member_joint_incidences'] == [{'member_client_key':'h','node_client_key':'p'}]
+    assert result['through']['draft']['member_joint_incidences'] == [{'member_client_key':'new','node_client_key':'mid'}]
+    assert result['crossNoJoint']['draft']['member_joint_incidences'] == []
+    assert result['collide']['error'] == 'EDITOR_EXPLICIT_NODE_REQUIRED'
+    assert result['stale']['error'] == 'EDITOR_REFERENCE_NOT_FOUND'
+    assert result['zero']['error'] == 'EDITOR_INVALID_TOPOLOGY'
+    assert all(r['unchanged'] for r in result.values())
+
+
+def test_core_blank_start_pending_cancel_and_atomic_commit(context, workspace_page):
+    page, _ = open_core(context, workspace_page)
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    move_world(page, 200, -100, click=True)
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+    assert '无' in page.locator('#workspace-save-status').inner_text()
+    page.keyboard.press('Escape')
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    move_world(page, 200, -100, click=True)
+    move_world(page, 500, -100, click=True)
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 2
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
+    page.locator('[data-cad-undo]').click()
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+    page.locator('[data-cad-redo]').click()
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 2
+
+
+def test_core_node_endpoint_identity_and_no_chaining(context, workspace_page):
+    page, _ = open_core(context, workspace_page, [('a',0,0),('b',100,0)])
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    move_world(page, 0, 0, click=True)
+    move_world(page, 100, 0, click=True)
+    move_world(page, 50, 50, click=True)
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == 2
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    draft=page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    assert draft['physical_members'][0]['start_node_client_key'] == 'a'
+    assert draft['physical_members'][0]['end_node_client_key'] == 'b'
+
+
+def test_core_crossing_requires_node_tool(context, workspace_page):
+    page, _=open_core(context,workspace_page,[('a',-100,0),('b',100,0),('c',0,-100),('d',0,100)], [('h','a','b'),('v','c','d')])
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    move_world(page,0,0,click=True)
+    move_world(page,50,50,click=True)
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==2
+    assert page.locator('[data-object-kind="GeometryNode"]').count()==4
+    page.locator('[data-workspace-tool="NODE"]').click()
+    move_world(page,0,0,click=True)
+    assert page.locator('[data-object-kind="GeometryNode"]').count()==5
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    draft=page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    assert len(draft['member_joint_incidences'])==2
+
+
+def test_core_pending_start_invalidated_by_save_undo_and_tool_change(context, workspace_page):
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',100,100)])
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    move_world(page,0,0,click=True)
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    move_world(page,100,100,click=True)
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==0
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    move_world(page,0,0,click=True)
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==0

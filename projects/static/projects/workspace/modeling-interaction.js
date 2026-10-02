@@ -8,7 +8,7 @@ import { createInteractionController } from './interaction-controller.js';
 import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction, undoWorkspaceEdit, redoWorkspaceEdit } from "./state.js";
 import { createStudentLabelResolver } from "./labels.js";
-import { candidateMembersAtNode, nodesOnMember } from "./joint-candidates.js";
+import { candidateMembersAtNode, nodesOnMember, inspectEndpointCandidates } from "./joint-candidates.js";
 
 const TOOL_INSTRUCTIONS = Object.freeze({ SELECT: "点击结构查看或修改", NODE: "在画布放置节点；交叉处放置节点即形成桁架铰接", MEMBER: "选择起点，再选择终点", SUPPORT: "选择构件节点放置支座", LOAD: "选择构件节点施加荷载" });
 const COMPLETED = Object.freeze({ CREATE_NODE: "已放置节点", PLACE_JOINT_NODE: "已放置节点", CREATE_MEMBER: "已添加构件", CREATE_MEMBER_WITH_ENDPOINT: "已添加构件", CREATE_SUPPORT_AT_NODE: "已放置支座", CREATE_NODE_LOAD_AT_NODE: "已施加荷载" });
@@ -96,9 +96,11 @@ function cadStatus(root, cad, resolution = null) {
 
 export function bindModelingInteractions({ root, svg, canvasController, showError, readOnly }) {
   if (readOnly) return Object.freeze({ getTool: () => "SELECT" });
-  const interaction = createInteractionController({resolvePointer:resolveGeometry,inspectEndpoint:()=>({passingMemberClientKeys:[],collocatedNodeClientKeys:[]})});
+  const interaction = createInteractionController({resolvePointer:resolveGeometry,inspectEndpoint:inspectEndpointCandidates});
   const resolvePointerPoint = (args) => interaction.dispatch({type:'POINTER_RESOLVE',...args,clientPointer:args.screenPointer,coordinates:readCoordinateSpace(svg,args.viewTransform)}, {draft:canvasController.getState().draft,settings:{ortho:args.ortho,gridSnap:args.gridEnabled}}).state.snapResolution;
-  let tool = "SELECT"; let memberStart = null; let contextualInstruction = null; let pendingNumeric = null; let lastCompletedTool = null; let commandState = { state: "SELECTING", fieldIndex: null };
+  let tool = "SELECT"; let contextualInstruction = null; let pendingNumeric = null; let lastCompletedTool = null; let commandState = { state: "SELECTING", fieldIndex: null };
+  const pendingStart=()=>interaction.getState().pendingMemberStart;
+  const refreshUi=()=>updateUi(root,tool,pendingStart(),contextualInstruction);
   let supportChoice = "PINNED";
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
   const commandInput = root.querySelector("[data-cad-command-input]");
@@ -117,7 +119,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (angleInput) angleInput.value = "";
   };
   const cancelCommand = () => {
-    memberStart = null;
+    interaction.dispatch({type:'CANCEL'},{draft:canvasController.getState().draft});
     pendingNumeric = null;
     acquiredSnap = null;
     contextualInstruction = null;
@@ -126,7 +128,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     clearInputs();
     transientCad({ activeCommand: "SELECT", origin: null, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false });
     if (dynamicOverlay) dynamicOverlay.hidden = true;
-    updateUi(root, tool, memberStart, contextualInstruction);
+    refreshUi();
     cadStatus(root, cadState(canvasController.getState()));
   };
   const apply = (action, cadChanges = null) => {
@@ -145,13 +147,13 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       return true;
     } catch (error) {
       if (error instanceof EditorActionError) {
-        const messages = { NODE_NOT_ON_MEMBER: "此节点未连接构件；请先绘制构件。", MULTIPLE_JOINTS_AT_NODE: "此节点有多个旧连接，无法确定支座或荷载目标；请先整理模型。", EDITOR_NODE_MOVE_BREAKS_CONNECTION: "移动会使连接脱离构件，原节点未移动。", EDITOR_NODE_MOVE_ZERO_LENGTH: "此位置会使构件长度为零，原节点未移动。" };
+        const messages = { EDITOR_UNJOINED_CROSSING_ENDPOINT:"此处是尚未连接的构件交点；请先用「节点」工具建立连接", EDITOR_EXPLICIT_NODE_REQUIRED:"此处已有节点，请通过节点捕捉明确选择节点。", NODE_NOT_ON_MEMBER: "此节点未连接构件；请先绘制构件。", MULTIPLE_JOINTS_AT_NODE: "此节点有多个旧连接，无法确定支座或荷载目标；请先整理模型。", EDITOR_NODE_MOVE_BREAKS_CONNECTION: "移动会使连接脱离构件，原节点未移动。", EDITOR_NODE_MOVE_ZERO_LENGTH: "此位置会使构件长度为零，原节点未移动。" };
         showError({ code: error.code, message: messages[error.code] || "当前工具目标不满足建模条件。" }); return false;
       }
       throw error;
     }
   };
-  const memberOrigin = () => { const node = canvasController.getState().draft.nodes.find((item) => item.client_key === memberStart); return node && { x: node.x_mm, y: node.y_mm }; };
+  const memberOrigin = () => pendingStart()?.worldPoint || null;
   const updateDynamics = (point) => {
     const origin = memberOrigin(); if (!origin || !point) return;
     const dx = point.x - origin.x; const dy = point.y - origin.y;
@@ -164,26 +166,40 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     return { materialId, sectionId };
   };
   const existingEndpointAt = (draft, point) => draft.nodes.find((node) => Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
-  const completeMemberAt = (point) => {
-    const profile = memberProfile(); if (!memberStart || !profile) return false;
-    const current = canvasController.getState(); let endpoint = existingEndpointAt(current.draft, point);
+  const completeMemberAt = (point, resolution = {kind:'PRECISE',worldPoint:point}) => {
+    const profile = memberProfile(); if (!pendingStart() || !profile) return false;
+    const current = canvasController.getState();
+    if(current.draft.schema_version==='physical-draft-v2'){
+      const response=interaction.dispatch({type:'CONFIRM_POINT',resolution},{draft:current.draft,readOnly:false});
+      const error=response.effects.find(e=>e.type==='ERROR');if(error){showError(error);return false;}
+      const request=response.effects.find(e=>e.type==='REQUEST_MEMBER_COMMIT');if(!request)return false;
+      const allocated=[...current.draft.nodes];
+      const endpoint=e=>{if(e.kind==='EXISTING_NODE')return {kind:e.kind,nodeClientKey:e.nodeClientKey};const key=nextKey(allocated,'node');allocated.push({client_key:key});return {...e,newNodeClientKey:key};};
+      const action={type:'CREATE_MEMBER_BETWEEN_POINTS',start:endpoint(request.start),end:endpoint(request.end),member:{client_key:nextKey(current.draft.physical_members,'member'),material_id:profile.materialId,section_id:profile.sectionId,label:'',is_active:true}};
+      const ok=apply(action,{origin:null,preview:null,snapFeedback:null});
+      interaction.dispatch({type:'EDITOR_RESULT',ok},{draft:canvasController.getState().draft});
+      if(ok){lastCompletedTool=tool;distanceInput.value='';angleInput.value='';refreshUi();}
+      return ok;
+    }
+    const memberStart=pendingStart().nodeClientKey; let endpoint = existingEndpointAt(current.draft, point);
     const newNode = endpoint ? null : { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" };
     endpoint ||= newNode;
     if (endpoint.client_key === memberStart) return false;
     if (!apply({ type: "CREATE_MEMBER_WITH_ENDPOINT", node: newNode, member: { client_key: nextKey(current.draft.physical_members, "member"), start_node_client_key: memberStart, end_node_client_key: endpoint.client_key, material_id: profile.materialId, section_id: profile.sectionId, label: "", is_active: true } }, { origin: point, preview: null, snapFeedback: null })) return false;
-    updateDynamics(point); memberStart = null; commandState = transition(commandState, { type: "ENTER", valid: true, point }); distanceInput.value = ""; angleInput.value = ""; updateUi(root, tool, memberStart); return true;
+    updateDynamics(point); interaction.dispatch({type:'EDITOR_RESULT',ok:true},{draft:canvasController.getState().draft}); commandState = transition(commandState, { type: "ENTER", valid: true, point }); distanceInput.value = ""; angleInput.value = ""; refreshUi(); return true;
   };
-  const placementEffects = (point, confirmation = "再次确认。") => {
+  const placementEffects = (point, confirmation = "再次确认。", resolution = null) => {
     const draft = canvasController.getState().draft;
     if (draft.schema_version !== "physical-draft-v2") return null;
     if (tool === "NODE") {
       const members = candidateMembersAtNode(draft, { x_mm: point.x, y_mm: point.y });
       return members.length ? `在此建立节点，将连接 ${members.length} 条构件：${members.join("、")}。${confirmation}` : null;
     }
-    if (tool !== "MEMBER" || !memberStart) return null;
-    const start = draft.nodes.find((node) => node.client_key === memberStart);
-    const existingEndpoint = existingEndpointAt(draft, point);
-    if (!start || existingEndpoint?.client_key === memberStart) return null;
+    if (tool !== "MEMBER" || !pendingStart()) return null;
+    const memberStart=pendingStart().nodeClientKey;
+    const start = {x_mm:memberOrigin().x,y_mm:memberOrigin().y};
+    const existingEndpoint = draft.schema_version==='physical-draft-v2'?draft.nodes.find(n=>n.client_key===resolution?.nodeClientKey):existingEndpointAt(draft, point);
+    if (existingEndpoint?.client_key === memberStart) return null;
     const passed = nodesOnMember(draft, start, { x_mm: point.x, y_mm: point.y }).filter((key) => key !== memberStart && key !== existingEndpoint?.client_key);
     const endpointMembers = existingEndpoint ? [] : candidateMembersAtNode(draft, { x_mm: point.x, y_mm: point.y });
     const messages = [];
@@ -194,11 +210,11 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   const numericPlacement = (point, commit) => {
     if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return "INVALID";
     const summary = placementEffects(point);
-    const signature = JSON.stringify([tool, memberStart, point.x, point.y, summary]);
+    const signature = JSON.stringify([tool, pendingStart(), point.x, point.y, summary]);
     if (summary && pendingNumeric !== signature) {
       pendingNumeric = signature;
       contextualInstruction = summary;
-      updateUi(root, tool, memberStart, contextualInstruction);
+      refreshUi();
       return "PENDING";
     }
     pendingNumeric = null;
@@ -207,8 +223,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const chooseTool = (nextTool) => {
     interaction.dispatch({type:'SELECT_TOOL',tool:nextTool},{draft:canvasController.getState().draft});
-    tool = nextTool; memberStart = null; acquiredSnap = null; contextualInstruction = null; pendingNumeric = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
-    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); updateUi(root, tool, memberStart, contextualInstruction);
+    tool = nextTool; acquiredSnap = null; contextualInstruction = null; pendingNumeric = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
+    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); refreshUi();
     if (dynamicOverlay) dynamicOverlay.hidden = nextTool === "SELECT" || cadState(current).dynamicInput === false;
   };
   for (const button of root.querySelectorAll("[data-workspace-tool]")) button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
@@ -236,7 +252,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   });
   commandInput?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return; event.preventDefault();
-    if (tool !== "NODE" && !(tool === "MEMBER" && memberStart)) { showError({ code: "CAD_COMMAND_CONTEXT", message: "请先选择节点工具，或先选择构件起点。" }); return; }
+    if (tool !== "NODE" && !(tool === "MEMBER" && pendingStart())) { showError({ code: "CAD_COMMAND_CONTEXT", message: "请先选择节点工具，或先选择构件起点。" }); return; }
     const current = canvasController.getState(); const parsed = parseCadInput(commandInput.value, tool === "MEMBER" ? memberOrigin() : cadState(current).origin);
     if (!parsed.ok) { showError({ code: `CAD_INPUT_${parsed.code}`, message: "坐标格式无效，请输入 x,y、@dx,dy 或 长度<角度。" }); return; }
     const point = resolvePointerPoint({ worldPointer: parsed.point, screenPointer: parsed.point, candidates: [], viewTransform: current.viewTransform, origin: (tool === "MEMBER" ? memberOrigin() : cadState(current).origin) || parsed.point, ortho: false, gridEnabled: false, explicitNumeric: true }).point;
@@ -251,7 +267,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   });
   const exactPoint = (point) => {
     if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
-    if (tool === "MEMBER" && memberStart) return numericPlacement(point, () => completeMemberAt(point)) !== "INVALID";
+    if (tool === "MEMBER" && pendingStart()) return numericPlacement(point, () => completeMemberAt(point)) !== "INVALID";
     if (tool !== "NODE") return false;
     const current = canvasController.getState();
     return numericPlacement(point, () => {
@@ -292,13 +308,13 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (tool === "MEMBER") {
       const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current); if (!world) return true;
       const resolved = resolvePointerPoint({worldPointer:world,screenPointer:screen,candidates:snapCandidates(current.draft,cad),viewTransform:current.viewTransform,origin:memberOrigin(),ortho:effectiveOrtho(cad),gridEnabled:cad.gridSnap,explicitNumeric:false});
-      if (!memberStart) { if(!resolved.nodeClientKey)return true; memberStart=resolved.nodeClientKey;commandState=transition(commandState,{type:'POINTER_POINT',point:resolved.worldPoint});updateUi(root,tool,memberStart);return true; }
-      completeMemberAt(resolved.worldPoint);cadStatus(root,cadState(canvasController.getState()),resolved);return true;
+      if (!pendingStart()) { if(current.draft.schema_version!=='physical-draft-v2'&&!resolved.nodeClientKey)return true; const response=interaction.dispatch({type:'CONFIRM_POINT',resolution:resolved},{draft:current.draft,readOnly:false});for(const effect of response.effects)if(effect.type==='ERROR')showError(effect);commandState=transition(commandState,{type:'POINTER_POINT',point:resolved.worldPoint});refreshUi();return true; }
+      completeMemberAt(resolved.worldPoint,resolved);cadStatus(root,cadState(canvasController.getState()),resolved);return true;
     }
     const node = nodeTarget(current.draft, target);
     if (!node) {
       contextualInstruction = "请点击构件节点放置支座或荷载；若尚无构件，请先绘制构件。";
-      updateUi(root, tool, memberStart, contextualInstruction);
+      refreshUi();
       return;
     }
     if (tool === "SUPPORT") {
@@ -364,7 +380,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const labels = createStudentLabelResolver(state.draft);
     const studentLabel = resolution.snapType === "NODE" ? labels.label("GEOMETRY_NODE", resolution.candidateKey?.split(":")[1]) : null;
     transientCad({
-      preview: memberStart ? { start: memberOrigin(), end: resolution.point } : null,
+      preview: pendingStart() ? { start: memberOrigin(), end: resolution.point } : null,
       loadPreview: tool === "LOAD" && resolution.snapType === "NODE" ? { point: resolution.point, fx_N: 0, fy_N: -100 } : null,
       snapFeedback: active && resolution.snapType ? { ...resolution, studentLabel, unconnectedIntersection } : null,
       trackingGuide,
@@ -384,12 +400,12 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       }
     }
     cadStatus(root, cadState(canvasController.getState()), resolution);
-    updateUi(root, tool, memberStart, contextualInstruction);
+    refreshUi();
     if (state.draft.schema_version === "physical-draft-v2" && active && !contextualInstruction) {
-      const previewInstruction = placementEffects(resolution.point, "点击确认。");
+      const previewInstruction = placementEffects(resolution.point, "点击确认。",resolution);
       if (previewInstruction) root.querySelector("[data-modeling-instruction]").textContent = previewInstruction;
     } else if (unconnectedIntersection && active && !contextualInstruction) root.querySelector("[data-modeling-instruction]").textContent = "这里有构件交叉，但尚未建立连接。";
-    if (memberStart) updateDynamics(resolution.point);
+    if (pendingStart()) updateDynamics(resolution.point);
   });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && tool !== "SELECT") { event.preventDefault(); event.stopPropagation(); cancelCommand(); } });
   const editableFocus = (target) => Boolean(target?.closest?.("input, textarea, select, [contenteditable], [role='textbox']"));
@@ -404,7 +420,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   const syncHistory = (state) => { if (undoButton) undoButton.disabled = !state.history?.past.length; if (redoButton) redoButton.disabled = !state.history?.future.length; };
   canvasController.subscribeStateChange(syncHistory);
   const travelHistory = (direction) => {
-    if (memberStart) cancelCommand();
+    if (pendingStart()) cancelCommand();
     const current = canvasController.getState();
     const next = direction === "UNDO" ? undoWorkspaceEdit(current) : redoWorkspaceEdit(current);
     if (next === current) return;
@@ -420,5 +436,9 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     event.preventDefault(); travelHistory(direction);
   });
   svg.addEventListener("pointerleave", () => transientCad({ preview: null, loadPreview: null, snapFeedback: null, trackingGuide: null }));
-  updateUi(root, tool, memberStart, contextualInstruction); cadStatus(root, cadState(canvasController.getState())); syncHistory(canvasController.getState()); return Object.freeze({ getTool: () => tool });
+  canvasController.subscribeStateChange(state=>{
+    const had=pendingStart();interaction.dispatch({type:'DRAFT_CHANGED'},{draft:state.draft});
+    if(had&&!pendingStart()){pendingNumeric=null;contextualInstruction=null;clearInputs();transientCad({origin:null,preview:null,snapFeedback:null});refreshUi();}
+  });
+  refreshUi(); cadStatus(root, cadState(canvasController.getState())); syncHistory(canvasController.getState()); return Object.freeze({ getTool: () => tool });
 }

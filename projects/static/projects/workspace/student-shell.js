@@ -73,6 +73,9 @@ export function bindStudentShell({ root, canvasController }) {
   root.querySelector('[data-workspace-tool="NODE"]')?.addEventListener("click", () => {
     if (empty) empty.hidden = true;
   });
+  root.querySelector('[data-workspace-tool="MEMBER"]')?.addEventListener("click", () => {
+    if (empty) empty.hidden = true;
+  });
   canvasController.subscribeStateChange(state => {
     if (empty && state.draft.nodes.length) empty.hidden = true;
     if (root.dataset.uxStage === "build") next.textContent = `下一步：${buildTask(state.draft)}`;
