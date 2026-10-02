@@ -73,7 +73,8 @@
         <svg id="workspace-canvas" role="img" tabindex="0" aria-label="结构画布；使用方向键平移，使用放大、缩小和全图按钮调整视图" aria-describedby="workspace-canvas-keyboard-help" viewBox="0 0 1000 600"></svg>
         {% if not bootstrap.read_only %}<div data-cad-dynamic-overlay hidden aria-label="游标动态输入">
           <div data-cad-xy-fields><label>X (mm)<input type="number" step="any" data-cad-x></label><label>Y (mm)<input type="number" step="any" data-cad-y></label></div>
-          <span data-cad-preview-distance></span><span data-cad-preview-angle></span>
+          <div data-cad-polar-fields hidden><label>长度 (mm)<input type="number" step="any" min="0" data-cad-dynamic-length></label><label>角度 (°)<input type="number" step="any" data-cad-dynamic-angle></label></div>
+          <div data-cad-relative-fields hidden><label>ΔX (mm)<input type="number" step="any" data-cad-dynamic-dx></label><label>ΔY (mm)<input type="number" step="any" data-cad-dynamic-dy></label></div>
         </div>{% endif %}
         {% if not bootstrap.read_only %}<div data-ux-empty-state class="ux-empty-state"{% if bootstrap.draft.nodes %} hidden{% endif %}><h2>开始绘制结构</h2><p>可用「构件」在画布点击起点、终点直接绘制；也可先放置节点。</p><button type="button" data-ux-start-modeling>开始建模</button></div>{% endif %}
         <p id="workspace-canvas-keyboard-help" class="visually-hidden">画布取得焦点后，可使用方向键平移；使用放大、缩小和全图按钮调整视图。</p>
@@ -144,9 +145,9 @@
     <footer id="workspace-status-bar" role="status" aria-label="建模状态" aria-live="polite" aria-atomic="false">
       {% if not bootstrap.read_only %}<div class="workspace-drafting-status" role="toolbar" aria-label="绘图辅助">
         <button type="button" data-cad-grid-visible aria-pressed="true">网格</button>
-        <button type="button" data-cad-snap aria-pressed="true">网格捕捉</button>
-        <button type="button" data-cad-object-snap aria-pressed="true">对象捕捉</button>
-        <button type="button" data-cad-ortho aria-pressed="false">正交</button>
+        <button type="button" data-cad-snap aria-pressed="true">网格吸附 · 1 mm</button>
+        <button type="button" data-cad-object-snap aria-pressed="true">物件捕捉 · 节点/交点</button>
+        <button type="button" data-cad-ortho aria-pressed="false">正交 · 仅水平/竖直</button>
         <button type="button" data-cad-tracking aria-pressed="true">追踪</button>
         <button type="button" data-cad-dynamic-input aria-pressed="true">动态输入</button>
         <button type="button" data-cad-undo disabled>撤销</button>

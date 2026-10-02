@@ -31,7 +31,11 @@ export function clientDeltaToSvgLocal(from,to,space) {
 export function visibleSvgViewport(svg,space) {
   const r=svg.getBoundingClientRect(), parent=svg.closest('.workspace-center')?.getBoundingClientRect() || r;
   const left=Math.max(r.left,parent.left,0),top=Math.max(r.top,parent.top,0);
-  const right=Math.min(r.right,parent.right,window.innerWidth),bottom=Math.min(r.bottom,parent.bottom,window.innerHeight);
+  const right=Math.min(r.right,parent.right,window.innerWidth);
+  const status=document.querySelector('#workspace-status-bar')?.getBoundingClientRect();
+  // The fixed status controls can cover the lower canvas on responsive layouts.
+  const statusTop=status&&status.left<right&&status.right>left&&status.top>top&&status.bottom>=Math.min(r.bottom,window.innerHeight)?status.top:Infinity;
+  const bottom=Math.min(r.bottom,parent.bottom,window.innerHeight,statusTop);
   const a=clientPointToSvgLocal({x:left,y:top},space),b=clientPointToSvgLocal({x:right,y:bottom},space);
   return {left:a.x,top:a.y,width:Math.max(0,b.x-a.x),height:Math.max(0,b.y-a.y)};
 }

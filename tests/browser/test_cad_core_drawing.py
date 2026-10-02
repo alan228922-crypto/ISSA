@@ -222,13 +222,134 @@ def test_core_crossing_requires_node_tool(context, workspace_page):
 
 def test_core_pending_start_invalidated_by_save_undo_and_tool_change(context, workspace_page):
     page,_=open_core(context,workspace_page,[('a',0,0),('b',100,100)])
+    page.locator('[data-workspace-tool="NODE"]').click()
+    move_world(page,50,50,click=True)
+    assert '有' in page.locator('#workspace-save-status').inner_text()
     page.locator('[data-workspace-tool="MEMBER"]').click()
     move_world(page,0,0,click=True)
-    page.locator('#workspace-save').click()
-    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    with page.expect_response(lambda response: response.request.method=='POST' and '/model/' in response.url) as response:
+        page.locator('#workspace-save').click()
+    assert response.value.ok
+    page.wait_for_function("document.querySelector('#workspace-draft-version').textContent.includes('v2')")
     move_world(page,100,100,click=True)
     assert page.locator('[data-object-kind="PhysicalMember"]').count()==0
     page.locator('[data-workspace-tool="NODE"]').click()
     page.locator('[data-workspace-tool="MEMBER"]').click()
     move_world(page,0,0,click=True)
     assert page.locator('[data-object-kind="PhysicalMember"]').count()==0
+
+
+def test_core_grid_ortho_decimal_contract(context, workspace_page):
+    page,_=open_core(context,workspace_page)
+    result=page.evaluate("""async()=>{
+      const {resolvePointerPoint:r}=await import('/static/projects/workspace/geometry.js');
+      const {visibleGridLevels}=await import('/static/projects/workspace/grid.js');
+      const run=(p,origin,ortho,gridEnabled,explicitNumeric=false,scale=1)=>r({worldPointer:p,clientPointer:p,candidates:[],coordinates:{svgToClient:{a:1,b:0,c:0,d:1,e:0,f:0},worldToSvg:{a:scale,b:0,c:0,d:scale,e:0,f:0}},origin,ortho,gridEnabled,explicitNumeric}).worldPoint;
+      return {grid:run({x:12.6,y:8.4},null,false,true),h:run({x:13.2,y:7.8},{x:12.4,y:7.6},true,true),v:run({x:12.6,y:9.2},{x:12.4,y:7.6},true,true),free:run({x:13.2,y:7.8},{x:12.4,y:7.6},true,false),precise:run({x:12.4,y:7.6},{x:0,y:0},true,true,true),lod:[.05,1,20].map(scale=>({levels:visibleGridLevels(scale),point:run({x:12.6,y:8.4},null,false,true,false,scale)}))};
+    }""")
+    assert result['grid']=={'x':13,'y':8}
+    assert result['h']=={'x':13,'y':7.6}
+    assert result['v']=={'x':12.4,'y':9}
+    assert result['free']=={'x':13.2,'y':7.6}
+    assert result['precise']=={'x':12.4,'y':7.6}
+    assert all(row['point']==result['grid'] for row in result['lod'])
+
+
+def test_core_shift_and_fkeys_respect_input_focus_and_blur(context, workspace_page):
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',100,100)])
+    page.locator('[data-workspace-tool="NODE"]').click()
+    move_world(page,30,30)
+    page.locator('#workspace-canvas').focus()
+    page.keyboard.down('Shift')
+    assert 'ORTHO: 开' in page.locator('#workspace-snap-indicator').inner_text()
+    page.evaluate("window.dispatchEvent(new Event('blur'))")
+    assert 'ORTHO: 关' in page.locator('#workspace-snap-indicator').inner_text()
+    page.keyboard.up('Shift')
+    page.keyboard.down('Shift')
+    page.locator('[data-cad-x]').focus()
+    assert 'ORTHO: 关' in page.locator('#workspace-snap-indicator').inner_text()
+    page.keyboard.up('Shift')
+    page.locator('#workspace-canvas').focus()
+    for key,selector in [('F7','grid-visible'),('F8','ortho'),('F9','snap'),('F3','object-snap')]:
+        button=page.locator(f'[data-cad-{selector}]')
+        previous=button.get_attribute('aria-pressed')
+        page.keyboard.press(key)
+        assert button.get_attribute('aria-pressed') != previous
+        field=page.locator('[data-cad-x]')
+        field.focus()
+        current=button.get_attribute('aria-pressed')
+        field.press(key)
+        field.press('Shift')
+        assert button.get_attribute('aria-pressed')==current
+        page.locator('#workspace-canvas').focus()
+
+
+def test_core_dynamic_parser_rejects_blank_malformed_nonfinite(context,workspace_page):
+    page,_=open_core(context,workspace_page)
+    result=page.evaluate("""async()=>{try{
+      const {parseDynamicPoint:p}=await import('/static/projects/workspace/cad-input.js');
+      return {empty:p({mode:'XY',values:{x:' ',y:''}}),partial:p({mode:'XY',values:{x:'1',y:''}}),bad:p({mode:'XY',values:{x:'oops',y:'2'}}),infinite:p({mode:'XY',values:{x:'1e999',y:'2'}}),zero:p({mode:'POLAR',values:{length:'0',angle:'0'},origin:{x:0,y:0}}),relative:p({mode:'RELATIVE',values:{dx:'10.25',dy:'-3.75'},origin:{x:12.4,y:7.6}})};
+    }catch(e){return {error:e.message}}}""")
+    assert result.get('empty')=={'ok':False,'code':'EMPTY'},result
+    assert result['partial']['code']=='INCOMPLETE'
+    assert all(result[k]['code']=='MALFORMED' for k in ['bad','infinite','zero'])
+    assert result['relative']['point']==pytest.approx({'x':22.65,'y':3.85},abs=1e-9)
+
+
+def test_core_dynamic_xy_polar_relative_and_cancel(context,workspace_page):
+    import math
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',200,100)])
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    move_world(page,12.4,7.6)
+    x=page.locator('[data-cad-x]');y=page.locator('[data-cad-y]')
+    x.fill('12.4');y.fill('7.6');y.press('Enter')
+    assert page.locator('[data-object-kind="GeometryNode"]').count()==2
+    length=page.locator('[data-cad-dynamic-length]');angle=page.locator('[data-cad-dynamic-angle]')
+    length.fill('100.5');angle.fill('30.25')
+    box=page.locator('[data-cad-dynamic-overlay]').bounding_box()
+    assert box['y']+box['height'] <= page.locator('#workspace-status-bar').bounding_box()['y']
+    page.screenshot(path='.superpowers/sdd/2026-10-01-cad-core-drawing-v1/screenshots/dynamic-polar.png')
+    move_world(page,150,50)
+    assert angle.input_value()=='30.25'
+    angle.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==1
+    page.keyboard.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==1
+    move_world(page,150,70)
+    x.fill('150.25');y.fill('70.75');y.press('Enter')
+    length.focus();length.press('Tab');angle.press('Tab')
+    dx=page.locator('[data-cad-dynamic-dx]');dy=page.locator('[data-cad-dynamic-dy]')
+    assert dx.evaluate('(el)=>el===document.activeElement')
+    dx.fill('10.25');dy.fill('-3.75');dy.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==2
+    move_world(page,170,30,click=True)
+    page.keyboard.press('Escape')
+    page.locator('#workspace-save').click()
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    draft=page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    first,second=draft['physical_members']
+    points={n['client_key']:n for n in draft['nodes']}
+    end=points[first['end_node_client_key']]
+    assert end['x_mm']==pytest.approx(12.4+100.5*math.cos(math.radians(30.25)),abs=1e-9)
+    assert end['y_mm']==pytest.approx(7.6+100.5*math.sin(math.radians(30.25)),abs=1e-9)
+    end2=points[second['end_node_client_key']]
+    assert (end2['x_mm'],end2['y_mm'])==pytest.approx((160.5,67),abs=1e-9)
+
+
+def test_core_dynamic_numeric_topology_preview_requires_confirmation(context,workspace_page):
+    page,_=open_core(context,workspace_page,[('a',0,0),('mid',50,0),('b',100,100)])
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    p=client_point(page,0,0)
+    assert page.evaluate("p=>!!document.elementFromPoint(p.x,p.y)?.closest('#workspace-canvas')",p),page.evaluate("p=>({p,hit:document.elementFromPoint(p.x,p.y)?.outerHTML,rect:document.querySelector('#workspace-canvas').getBoundingClientRect().toJSON()})",p)
+    move_world(page,0,0,click=True)
+    assert '终点' in page.locator('[data-modeling-instruction]').inner_text()
+    move_world(page,90,10)
+    length=page.locator('[data-cad-dynamic-length]');angle=page.locator('[data-cad-dynamic-angle]')
+    assert length.is_visible(), page.evaluate("({tool:document.querySelector('#workspace-root').dataset.uxTool,overlay:document.querySelector('[data-cad-dynamic-overlay]').outerHTML,instruction:document.querySelector('[data-modeling-instruction]').textContent})")
+    length.fill('100');angle.fill('0');angle.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==0
+    length.fill('101');length.fill('100');angle.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==0
+    angle.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==1

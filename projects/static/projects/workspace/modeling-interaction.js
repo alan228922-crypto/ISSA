@@ -1,9 +1,8 @@
 import { EditorActionError } from "./editor.js";
 import { pickAt, renderedObjectsFromSvg, worldPointFromEvent } from "./canvas-interaction.js";
-import { parseCadInput } from "./cad-input.js";
-import { transition } from "./cad-state.js";
+import { parseCadInput, parseDynamicPoint } from "./cad-input.js";
 import { resolvePointerPoint as resolveGeometry } from "./geometry.js";
-import { readCoordinateSpace } from './coordinate-space.js';
+import { readCoordinateSpace,visibleSvgViewport,svgLocalToClient } from './coordinate-space.js';
 import { createInteractionController } from './interaction-controller.js';
 import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction, undoWorkspaceEdit, redoWorkspaceEdit } from "./state.js";
@@ -98,14 +97,21 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   if (readOnly) return Object.freeze({ getTool: () => "SELECT" });
   const interaction = createInteractionController({resolvePointer:resolveGeometry,inspectEndpoint:inspectEndpointCandidates});
   const resolvePointerPoint = (args) => interaction.dispatch({type:'POINTER_RESOLVE',...args,clientPointer:args.screenPointer,coordinates:readCoordinateSpace(svg,args.viewTransform)}, {draft:canvasController.getState().draft,settings:{ortho:args.ortho,gridSnap:args.gridEnabled}}).state.snapResolution;
-  let tool = "SELECT"; let contextualInstruction = null; let pendingNumeric = null; let lastCompletedTool = null; let commandState = { state: "SELECTING", fieldIndex: null };
+  let tool = "SELECT"; let contextualInstruction = null; let pendingNumeric = null; let lastCompletedTool = null;
   const pendingStart=()=>interaction.getState().pendingMemberStart;
-  const refreshUi=()=>updateUi(root,tool,pendingStart(),contextualInstruction);
+  const refreshUi=()=>{updateUi(root,tool,pendingStart(),contextualInstruction);syncMini();};
   let supportChoice = "PINNED";
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
   const commandInput = root.querySelector("[data-cad-command-input]");
   const dynamicOverlay = root.querySelector("[data-cad-dynamic-overlay]");
   const xInput = dynamicOverlay?.querySelector("[data-cad-x]"); const yInput = dynamicOverlay?.querySelector("[data-cad-y]");
+  const miniFields={x:xInput,y:yInput,length:dynamicOverlay?.querySelector('[data-cad-dynamic-length]'),angle:dynamicOverlay?.querySelector('[data-cad-dynamic-angle]'),dx:dynamicOverlay?.querySelector('[data-cad-dynamic-dx]'),dy:dynamicOverlay?.querySelector('[data-cad-dynamic-dy]')};
+  const miniMode=()=>pendingStart()?(interaction.getState().dynamicInput?.mode==='RELATIVE'?'RELATIVE':'POLAR'):'XY';
+  function syncMini(){
+    if(!dynamicOverlay)return;
+    const mode=miniMode();
+    for(const [name,selector] of [['XY','xy'],['POLAR','polar'],['RELATIVE','relative']])dynamicOverlay.querySelector(`[data-cad-${selector}-fields]`).hidden=name!==mode;
+  }
   let acquiredSnap = null;
   const transientCad = (changes, notify = false) => {
     const current = canvasController.getState();
@@ -117,13 +123,13 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (commandInput) commandInput.value = "";
     if (distanceInput) distanceInput.value = "";
     if (angleInput) angleInput.value = "";
+    for(const input of Object.values(miniFields))if(input)input.value='';
   };
   const cancelCommand = () => {
     interaction.dispatch({type:'CANCEL'},{draft:canvasController.getState().draft});
     pendingNumeric = null;
     acquiredSnap = null;
     contextualInstruction = null;
-    commandState = transition(commandState, { type: "ESC" });
     tool = "SELECT";
     clearInputs();
     transientCad({ activeCommand: "SELECT", origin: null, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false });
@@ -186,7 +192,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     endpoint ||= newNode;
     if (endpoint.client_key === memberStart) return false;
     if (!apply({ type: "CREATE_MEMBER_WITH_ENDPOINT", node: newNode, member: { client_key: nextKey(current.draft.physical_members, "member"), start_node_client_key: memberStart, end_node_client_key: endpoint.client_key, material_id: profile.materialId, section_id: profile.sectionId, label: "", is_active: true } }, { origin: point, preview: null, snapFeedback: null })) return false;
-    updateDynamics(point); interaction.dispatch({type:'EDITOR_RESULT',ok:true},{draft:canvasController.getState().draft}); commandState = transition(commandState, { type: "ENTER", valid: true, point }); distanceInput.value = ""; angleInput.value = ""; refreshUi(); return true;
+    updateDynamics(point); interaction.dispatch({type:'EDITOR_RESULT',ok:true},{draft:canvasController.getState().draft}); distanceInput.value = ""; angleInput.value = ""; refreshUi(); return true;
   };
   const placementEffects = (point, confirmation = "再次确认。", resolution = null) => {
     const draft = canvasController.getState().draft;
@@ -223,7 +229,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   const chooseTool = (nextTool) => {
     interaction.dispatch({type:'SELECT_TOOL',tool:nextTool},{draft:canvasController.getState().draft});
-    tool = nextTool; acquiredSnap = null; contextualInstruction = null; pendingNumeric = null; clearInputs(); commandState = transition(commandState, { type: "SELECT_TOOL", tool: nextTool });
+    tool = nextTool; acquiredSnap = null; contextualInstruction = null; pendingNumeric = null; clearInputs();
     const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); refreshUi();
     if (dynamicOverlay) dynamicOverlay.hidden = nextTool === "SELECT" || cadState(current).dynamicInput === false;
   };
@@ -240,11 +246,9 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     button?.addEventListener("click", () => toggleCad(field, button));
   }
   const dynamicPoint = () => { const origin = memberOrigin(); const distance = Number(distanceInput?.value); const angle = Number(angleInput?.value); if (!origin || distanceInput?.value === "" || angleInput?.value === "" || !Number.isFinite(distance) || distance <= 0 || !Number.isFinite(angle)) return null; const radians = angle * Math.PI / 180; return { x: origin.x + distance * Math.cos(radians), y: origin.y + distance * Math.sin(radians) }; };
-  for (const [input, field] of [[distanceInput, "DISTANCE"], [angleInput, "ANGLE"]]) input?.addEventListener("input", () => { commandState = transition(commandState, { type: "INPUT_CHANGE", mode: "DYNAMIC", field, value: input.value }); updateDynamics(dynamicPoint()); });
+  for (const input of [distanceInput, angleInput]) input?.addEventListener("input", () => updateDynamics(dynamicPoint()));
   for (const [input, field] of [[distanceInput, "DISTANCE"], [angleInput, "ANGLE"]]) input?.addEventListener("keydown", (event) => {
     if (event.key === "Tab") {
-      commandState = transition(commandState, { type: "INPUT_CHANGE", mode: "DYNAMIC", field, value: input.value });
-      commandState = transition(commandState, { type: "TAB" });
       if (input === angleInput && !event.shiftKey) { event.preventDefault(); distanceInput.focus(); }
       return;
     }
@@ -252,14 +256,13 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   });
   commandInput?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return; event.preventDefault();
-    if (tool !== "NODE" && !(tool === "MEMBER" && pendingStart())) { showError({ code: "CAD_COMMAND_CONTEXT", message: "请先选择节点工具，或先选择构件起点。" }); return; }
+    if (!['NODE','MEMBER'].includes(tool)) { showError({ code: "CAD_COMMAND_CONTEXT", message: "请先选择节点或构件工具。" }); return; }
     const current = canvasController.getState(); const parsed = parseCadInput(commandInput.value, tool === "MEMBER" ? memberOrigin() : cadState(current).origin);
     if (!parsed.ok) { showError({ code: `CAD_INPUT_${parsed.code}`, message: "坐标格式无效，请输入 x,y、@dx,dy 或 长度<角度。" }); return; }
     const point = resolvePointerPoint({ worldPointer: parsed.point, screenPointer: parsed.point, candidates: [], viewTransform: current.viewTransform, origin: (tool === "MEMBER" ? memberOrigin() : cadState(current).origin) || parsed.point, ortho: false, gridEnabled: false, explicitNumeric: true }).point;
     const result = numericPlacement(point, () => {
-      if (tool === "MEMBER") return completeMemberAt(point);
+      if (tool === "MEMBER") return pendingStart()?completeMemberAt(point):exactPoint(point);
       const placed = apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point });
-      if (placed) commandState = transition(commandState, { type: "ENTER", valid: true, point });
       return placed;
     });
     if (result === "COMMITTED") commandInput.value = "";
@@ -268,19 +271,48 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   const exactPoint = (point) => {
     if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
     if (tool === "MEMBER" && pendingStart()) return numericPlacement(point, () => completeMemberAt(point)) !== "INVALID";
+    if(tool==='MEMBER'){
+      const result=interaction.dispatch({type:'PRECISE_POINT',worldPoint:point},{draft:canvasController.getState().draft,readOnly:false});
+      const error=result.effects.find(e=>e.type==='ERROR');if(error){showError(error);return false;}
+      refreshUi();return Boolean(pendingStart());
+    }
     if (tool !== "NODE") return false;
     const current = canvasController.getState();
     return numericPlacement(point, () => {
       const placed = apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point });
-      if (placed) commandState = transition(commandState, { type: "ENTER", valid: true, point });
       return placed;
     }) !== "INVALID";
   };
   for (const input of [xInput, yInput]) input?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     event.preventDefault();
-    if (xInput.value === "" || yInput.value === "" || !exactPoint({ x: Number(xInput.value), y: Number(yInput.value) })) showError({ code: "CAD_INPUT_MALFORMED", message: "请输入有效的 X、Y 坐标。" });
+    const parsed=parseDynamicPoint({mode:'XY',values:{x:xInput.value,y:yInput.value}});
+    if(!parsed.ok||!exactPoint(parsed.point))showError({ code: "CAD_INPUT_MALFORMED", message: "请输入有效的 X、Y 坐标。" });
   });
+  const miniPair=mode=>({XY:['x','y'],POLAR:['length','angle'],RELATIVE:['dx','dy']}[mode]);
+  for(const [field,input] of Object.entries(miniFields)){
+    input?.addEventListener('focus',()=>interaction.dispatch({type:'INPUT_FOCUS',field},{draft:canvasController.getState().draft}));
+    input?.addEventListener('input',()=>{
+      pendingNumeric=null;contextualInstruction=null;
+      const mode=miniMode(),values=Object.fromEntries(miniPair(mode).map(k=>[k,miniFields[k].value]));
+      interaction.dispatch({type:'INPUT_CHANGE',input:{mode,values,field}},{draft:canvasController.getState().draft});
+    });
+    input?.addEventListener('keydown',event=>{
+      if(event.key==='Tab'){
+        event.preventDefault();const order=pendingStart()?['length','angle','dx','dy']:['x','y'];
+        const next=order[(order.indexOf(field)+(event.shiftKey?-1:1)+order.length)%order.length];
+        interaction.dispatch({type:'INPUT_CHANGE',input:{mode:['dx','dy'].includes(next)?'RELATIVE':pendingStart()?'POLAR':'XY'}},{draft:canvasController.getState().draft});
+        syncMini();miniFields[next].focus();
+      }
+      if(event.key==='Enter'&&['length','angle','dx','dy'].includes(field)){
+        event.preventDefault();const mode=miniMode();
+        const parsed=parseDynamicPoint({mode,values:Object.fromEntries(miniPair(mode).map(k=>[k,miniFields[k].value])),origin:memberOrigin()});
+        if(!pendingStart()||!parsed.ok||!exactPoint(parsed.point))showError({code:'CAD_INPUT_MALFORMED',message:'请输入有效的长度/角度或 ΔX/ΔY。'});
+        else if(!pendingStart()){for(const key of ['length','angle','dx','dy'])miniFields[key].value='';svg.focus();}
+      }
+    });
+  }
+  for(const input of [commandInput,distanceInput,angleInput])input?.addEventListener('input',()=>{pendingNumeric=null;contextualInstruction=null;});
   root.querySelector("[data-cad-relative-place]")?.addEventListener("click", () => {
     const origin = tool === "MEMBER" ? memberOrigin() : cadState(canvasController.getState()).origin;
     const dxText = root.querySelector("[data-cad-relative-x]")?.value; const dyText = root.querySelector("[data-cad-relative-y]")?.value;
@@ -299,16 +331,16 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current);
       const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
       const point = resolved?.point; if (!point) return;
-      if (resolved.candidateKey?.startsWith("NODE:")) {
-        apply({ type: "CONNECT_NODE", nodeClientKey: resolved.candidateKey.slice(5) });
+      if (resolved.nodeClientKey) {
+        apply({ type: "CONNECT_NODE", nodeClientKey: resolved.nodeClientKey });
         cadStatus(root, cad, resolved); return;
       }
-      apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point, preview: null, snapFeedback: null }); commandState = transition(commandState, { type: "POINTER_POINT", point }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
+      apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point, preview: null, snapFeedback: null }); cadStatus(root, cadState(canvasController.getState()), resolved); return;
     }
     if (tool === "MEMBER") {
       const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current); if (!world) return true;
       const resolved = resolvePointerPoint({worldPointer:world,screenPointer:screen,candidates:snapCandidates(current.draft,cad),viewTransform:current.viewTransform,origin:memberOrigin(),ortho:effectiveOrtho(cad),gridEnabled:cad.gridSnap,explicitNumeric:false});
-      if (!pendingStart()) { if(current.draft.schema_version!=='physical-draft-v2'&&!resolved.nodeClientKey)return true; const response=interaction.dispatch({type:'CONFIRM_POINT',resolution:resolved},{draft:current.draft,readOnly:false});for(const effect of response.effects)if(effect.type==='ERROR')showError(effect);commandState=transition(commandState,{type:'POINTER_POINT',point:resolved.worldPoint});refreshUi();return true; }
+      if (!pendingStart()) { if(current.draft.schema_version!=='physical-draft-v2'&&!resolved.nodeClientKey)return true; const response=interaction.dispatch({type:'CONFIRM_POINT',resolution:resolved},{draft:current.draft,readOnly:false});for(const effect of response.effects)if(effect.type==='ERROR')showError(effect);refreshUi();return true; }
       completeMemberAt(resolved.worldPoint,resolved);cadStatus(root,cadState(canvasController.getState()),resolved);return true;
     }
     const node = nodeTarget(current.draft, target);
@@ -366,7 +398,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     return draft.nodes.some((node) => connectedNodes.has(node.client_key) && Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
   };
   canvasController.setPointerMoveHandler((world, state, screen) => {
-    if (!world) return; root.querySelector("#workspace-pointer-x").textContent = `X: ${Math.round(world.x)} mm`; root.querySelector("#workspace-pointer-y").textContent = `Y: ${Math.round(world.y)} mm`;
+    if (!world) return; const display=v=>String(Math.round(v*1e6)/1e6);root.querySelector("#workspace-pointer-x").textContent = `X: ${display(world.x)} mm`; root.querySelector("#workspace-pointer-y").textContent = `Y: ${display(world.y)} mm`;
     const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: snapCandidates(state.draft, cad), viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
     const active = tool !== "SELECT";
     const unconnectedIntersection = resolution.snapType === "INT" && !hasConnectionAt(state.draft, resolution.point);
@@ -380,7 +412,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const labels = createStudentLabelResolver(state.draft);
     const studentLabel = resolution.snapType === "NODE" ? labels.label("GEOMETRY_NODE", resolution.candidateKey?.split(":")[1]) : null;
     transientCad({
-      preview: pendingStart() ? { start: memberOrigin(), end: resolution.point } : null,
+      preview: interaction.getState().preview,
       loadPreview: tool === "LOAD" && resolution.snapType === "NODE" ? { point: resolution.point, fx_N: 0, fy_N: -100 } : null,
       snapFeedback: active && resolution.snapType ? { ...resolution, studentLabel, unconnectedIntersection } : null,
       trackingGuide,
@@ -389,14 +421,22 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       dynamicOverlay.hidden = !active || cad.dynamicInput === false;
       if (!dynamicOverlay.hidden) {
         const center = svg.closest(".workspace-center").getBoundingClientRect();
-        dynamicOverlay.style.left = `${Math.min(center.width - 160, Math.max(0, screen.x - center.left + 20))}px`;
-        dynamicOverlay.style.top = `${Math.min(center.height - 80, Math.max(0, screen.y - center.top + 20))}px`;
+        const focused=dynamicOverlay.contains(document.activeElement);
+        if(!focused){
+          const space=readCoordinateSpace(svg,state.viewTransform),viewport=visibleSvgViewport(svg,space);
+          const topLeft=svgLocalToClient({x:viewport.left,y:viewport.top},space),bottomRight=svgLocalToClient({x:viewport.left+viewport.width,y:viewport.top+viewport.height},space);
+          dynamicOverlay.style.left=`${Math.max(topLeft.x-center.left,Math.min(bottomRight.x-center.left-dynamicOverlay.offsetWidth-8,screen.x-center.left+20))}px`;
+          dynamicOverlay.style.top=`${Math.max(topLeft.y-center.top,Math.min(bottomRight.y-center.top-dynamicOverlay.offsetHeight-8,screen.y-center.top+20))}px`;
+        }
         if (document.activeElement !== xInput) xInput.value = String(resolution.point.x);
         if (document.activeElement !== yInput) yInput.value = String(resolution.point.y);
         const origin = memberOrigin();
-        dynamicOverlay.querySelector("[data-cad-xy-fields]").hidden = tool !== "NODE";
-        dynamicOverlay.querySelector("[data-cad-preview-distance]").textContent = origin ? `长度 ${Math.round(Math.hypot(resolution.point.x - origin.x, resolution.point.y - origin.y) * 1000) / 1000} mm` : "";
-        dynamicOverlay.querySelector("[data-cad-preview-angle]").textContent = origin ? `角度 ${Math.round(Math.atan2(resolution.point.y - origin.y, resolution.point.x - origin.x) * 180 / Math.PI * 10) / 10}°` : "";
+        syncMini();
+        if(origin&&!focused){const dx=resolution.point.x-origin.x,dy=resolution.point.y-origin.y;
+          const values={length:String(Math.hypot(dx,dy)),angle:String(Math.atan2(dy,dx)*180/Math.PI),dx:String(dx),dy:String(dy)};
+          for(const [key,value] of Object.entries(values))miniFields[key].value=value;
+          interaction.dispatch({type:'INPUT_CHANGE',input:{mode:miniMode(),values}},{draft:state.draft});
+        }
       }
     }
     cadStatus(root, cadState(canvasController.getState()), resolution);
@@ -409,12 +449,17 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && tool !== "SELECT") { event.preventDefault(); event.stopPropagation(); cancelCommand(); } });
   const editableFocus = (target) => Boolean(target?.closest?.("input, textarea, select, [contenteditable], [role='textbox']"));
+  const temporaryOrtho=(down)=>{const response=interaction.dispatch({type:'KEY',key:'Shift',down},{focusedInput:down&&editableFocus(document.activeElement)});transientCad({temporaryOrtho:response.state.temporaryOrtho});cadStatus(root,cadState(canvasController.getState()));};
+  root.addEventListener('focusin',event=>{if(editableFocus(event.target)&&cadState(canvasController.getState()).temporaryOrtho)temporaryOrtho(false);});
   const repeatLastTool = () => { if (tool === "SELECT" && lastCompletedTool && root.dataset.uxStage === "build") chooseTool(lastCompletedTool); };
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Shift" && tool !== "SELECT" && !editableFocus(event.target) && !event.repeat) { transientCad({ temporaryOrtho: true }); cadStatus(root, cadState(canvasController.getState())); }
+    const fkeys={F7:'grid-visible',F8:'ortho',F9:'snap',F3:'object-snap'};
+    if(fkeys[event.key]&&event.target===svg&&!editableFocus(event.target)){event.preventDefault();root.querySelector(`[data-cad-${fkeys[event.key]}]`)?.click();svg.focus();}
+    if (event.key === "Shift" && tool !== "SELECT" && !editableFocus(event.target) && !event.repeat) temporaryOrtho(true);
     if (event.key === "Enter" && !event.repeat && (event.target === svg || event.target === document.body) && !event.altKey && !event.ctrlKey && !event.metaKey && tool === "SELECT" && lastCompletedTool) { event.preventDefault(); repeatLastTool(); }
   });
-  document.addEventListener("keyup", (event) => { if (event.key === "Shift" && cadState(canvasController.getState()).temporaryOrtho) { transientCad({ temporaryOrtho: false }); cadStatus(root, cadState(canvasController.getState())); } });
+  document.addEventListener("keyup", (event) => { if (event.key === "Shift")temporaryOrtho(false); });
+  window.addEventListener('blur',()=>temporaryOrtho(false));
   document.addEventListener("cad-space-tap", repeatLastTool);
   const undoButton = root.querySelector("[data-cad-undo]"); const redoButton = root.querySelector("[data-cad-redo]");
   const syncHistory = (state) => { if (undoButton) undoButton.disabled = !state.history?.past.length; if (redoButton) redoButton.disabled = !state.history?.future.length; };

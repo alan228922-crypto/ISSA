@@ -1071,12 +1071,14 @@ def test_cad_crossing_marquee_has_distinct_visual_feedback(context, workspace_pa
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
     box = page.locator('#workspace-canvas').bounding_box()
-    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
-    page.mouse.click(x + 40, y - 100)
+    # Measured Fit now excludes the fixed status bar. Use actual blank Canvas
+    # above the model rather than assuming its old visual center.
+    x, y = box['x'] + box['width'] / 2, box['y'] + 100
+    page.mouse.click(x + 40, y - 40)
     page.mouse.move(x - 40, y + 40)
     assert page.locator('[data-selection-marquee]').get_attribute('data-selection-mode') == 'CROSSING'
     page.keyboard.press('Escape')
-    page.mouse.click(x - 40, y - 100)
+    page.mouse.click(x - 40, y - 40)
     page.mouse.move(x + 40, y + 40)
     assert page.locator('[data-selection-marquee]').get_attribute('data-selection-mode') == 'WINDOW'
 

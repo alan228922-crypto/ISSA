@@ -46,6 +46,8 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 [data-cad-dynamic-overlay][hidden] { display:none; }
 [data-cad-dynamic-overlay] [data-cad-xy-fields] { display:flex; gap:5px; }
 [data-cad-dynamic-overlay] [data-cad-xy-fields][hidden] { display:none; }
+[data-cad-dynamic-overlay] [data-cad-polar-fields], [data-cad-dynamic-overlay] [data-cad-relative-fields] { display:flex; gap:5px; }
+[data-cad-dynamic-overlay] [data-cad-polar-fields][hidden], [data-cad-dynamic-overlay] [data-cad-relative-fields][hidden] { display:none; }
 [data-cad-dynamic-overlay] label { display:grid; gap:2px; width:64px; }
 [data-cad-dynamic-overlay] input { width:100%; min-width:0; padding:3px; pointer-events:auto; }
 [data-cad-dynamic-overlay] span { display:block; }
