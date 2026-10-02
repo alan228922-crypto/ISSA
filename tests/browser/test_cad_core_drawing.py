@@ -337,6 +337,125 @@ def test_core_dynamic_xy_polar_relative_and_cancel(context,workspace_page):
     assert (end2['x_mm'],end2['y_mm'])==pytest.approx((160.5,67),abs=1e-9)
 
 
+@pytest.mark.parametrize('width',[1024,1440])
+def test_core_cursor_centered_zoom_at_offset_responsive_and_limits(context,workspace_page,width):
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',100,100)])
+    page.set_viewport_size({'width':width,'height':900})
+    target=client_point(page,40,60)
+    page.mouse.move(target['x'],target['y'])
+    for delta in [-100]*4+[100]*8:
+        before=page.locator('[data-world-layer]').get_attribute('transform')
+        page.mouse.wheel(0,delta)
+        page.wait_for_function("before=>document.querySelector('[data-world-layer]').getAttribute('transform')!==before",arg=before)
+        after=client_point(page,40,60)
+        assert ((after['x']-target['x'])**2+(after['y']-target['y'])**2)**.5<=1
+    result=page.evaluate("""async()=>{const {reduceView}=await import('/static/projects/workspace/canvas-interaction.js'); const v={a:1,b:0,c:0,d:-1,e:20,f:300};const low=reduceView(v,{type:'ZOOM',factor:1e-9,anchorSvgLocal:{x:400,y:200}});const high=reduceView(v,{type:'ZOOM',factor:1e9,anchorSvgLocal:{x:400,y:200}});return {low:low.a,high:high.a};}""")
+    assert result=={'low':.05,'high':20}
+
+
+def test_core_middle_pan_preserves_pending_member_and_updates_preview(context,workspace_page):
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',100,100)],[('m','a','b')])
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.evaluate("window.coreMember=document.querySelector('[data-object-kind=PhysicalMember]')")
+    move_world(page,0,0,click=True)
+    p=client_point(page,50,50)
+    page.mouse.move(p['x'],p['y']);page.mouse.down(button='middle')
+    page.mouse.move(p['x']+30,p['y']+20)
+    expected=page.evaluate("p=>{const v=new DOMPoint(p.x,p.y).matrixTransform(document.querySelector('[data-world-layer]').getScreenCTM().inverse());return {x:Math.floor(v.x+.5),y:Math.floor(v.y+.5)}}",{'x':p['x']+30,'y':p['y']+20})
+    preview=page.locator('[data-cad-member-preview]')
+    assert float(preview.get_attribute('x2'))==pytest.approx(expected['x'])
+    assert float(preview.get_attribute('y2'))==pytest.approx(expected['y'])
+    page.mouse.up(button='middle')
+    assert page.evaluate("window.coreMember===document.querySelector('[data-object-kind=PhysicalMember]')")
+    assert '无' in page.locator('#workspace-save-status').inner_text()
+    assert page.locator('[data-object-kind="GeometryNode"]').count()==2
+    move_world(page,80,40,click=True)
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==2
+
+
+@pytest.mark.parametrize('cleanup',['pointercancel','lostpointercapture','blur'])
+def test_core_pointercancel_blur_release_pan_without_commit(context,workspace_page,cleanup):
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',100,100)])
+    page.locator('[data-workspace-tool="MEMBER"]').click();move_world(page,0,0,click=True)
+    assert '请选择构件的终点' in page.locator('[data-modeling-instruction]').inner_text()
+    p=client_point(page,50,50);page.mouse.move(p['x'],p['y']);page.mouse.down(button='middle')
+    page.mouse.move(p['x']+15,p['y'])
+    page.evaluate("event=>{const target=event==='blur'?window:document.querySelector('#workspace-canvas');target.dispatchEvent(new Event(event));}",cleanup)
+    page.mouse.up(button='middle')
+    before=page.locator('[data-world-layer]').get_attribute('transform')
+    # A numeric field intentionally owns its click. Choose an unobstructed
+    # Canvas point for the post-cancellation drawing assertion.
+    move_world(page,70,70)
+    p2=client_point(page,70,70)
+    assert page.evaluate("p=>!!document.elementFromPoint(p.x,p.y)?.closest('#workspace-canvas')",p2),page.evaluate("p=>document.elementFromPoint(p.x,p.y)?.outerHTML",p2)
+    assert page.locator('[data-world-layer]').get_attribute('transform')==before
+    move_world(page,70,70,click=True)
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==1,page.locator('[data-modeling-instruction]').inner_text()
+
+
+def test_core_snap_index_lifecycle_and_local_query(context,workspace_page):
+    page,_=open_core(context,workspace_page)
+    result=page.evaluate("""async()=>{try{
+      const {getSnapCandidateIndex:get,querySnapCandidates:query}=await import('/static/projects/workspace/snap-candidates.js');
+      const draft={nodes:[],physical_members:[]};
+      for(let c=0;c<100;c++){for(let n=0;n<10;n++)draft.nodes.push({client_key:`n${c}-${n}`,x_mm:c*1000+n,y_mm:n%2?10:0});for(let m=0;m<20;m++)draft.physical_members.push({client_key:`m${c}-${m}`,start_node_client_key:`n${c}-${m%10}`,end_node_client_key:`n${c}-${(m+3)%10}`});}
+      draft.physical_members.push({client_key:'incomplete',start_node_client_key:null,end_node_client_key:'gone'});
+      const idx=get(draft),identity={a:1,b:0,c:0,d:1,e:0,f:0},diagnostics={nodesVisited:0,segmentsVisited:0,pairsTested:0};
+      const hits=query(idx,{clientPoint:{x:5,y:5},coordinates:{svgToClient:identity,worldToSvg:identity},diagnostics});
+      const s=await import('/static/projects/workspace/state.js'),initial=s.createWorkspaceState(JSON.parse(document.querySelector('#workspace-bootstrap').textContent));
+      const edit=s.applyWorkspaceEditorAction(initial,{type:'CREATE_NODE',node:{client_key:'new',x_mm:1,y_mm:2,label:''}}),undo=s.undoWorkspaceEdit(edit),save=s.applyWorkspaceSaveSuccess(edit,{draft_version:1});
+      return {reuse:idx===get(draft),fresh:idx!==get({...draft,nodes:[...draft.nodes]}),lifecycle:[get(initial.draft)!==get(edit.draft),get(edit.draft)!==get(undo.draft),get(edit.draft)!==get(save.draft)],diagnostics,nodes:hits.filter(h=>h.kind==='NODE').length,intersections:hits.filter(h=>h.kind==='INTERSECTION').map(h=>h.memberClientKeys),incomplete:hits.some(h=>h.memberClientKeys?.includes('incomplete'))};
+    }catch(e){return {missing:e.message}}}""")
+    assert result.get('reuse') and result['fresh'],result
+    assert result['diagnostics']['nodesVisited']<100
+    assert result['diagnostics']['segmentsVisited']<200
+    assert result['nodes']==10 and result['intersections']
+    assert all(pair==sorted(pair) for pair in result['intersections'])
+    assert result['incomplete'] is False
+    assert all(result['lifecycle'])
+    assert result['diagnostics']['pairsTested']==190
+
+
+@pytest.mark.parametrize('width,height',[(500,500),(1000,1000),(2000,1000)])
+def test_core_view_grid_marker_and_pointer_dom_cost(context,workspace_page,width,height):
+    import json
+    from pathlib import Path
+    nodes=[(f'{side}{i}',x,height*i/49) for i in range(50) for side,x in [('a',0),('b',width)]]
+    members=[(f'm{i}',f'a{i}',f'b{i}') for i in range(50)]
+    page,_=open_core(context,workspace_page,nodes,members)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.evaluate("window.coreMember=document.querySelector('[data-object-kind=PhysicalMember]')")
+    move_world(page,0,0)
+    marker=page.locator('[data-cad-snap-marker] circle')
+    size=marker.bounding_box()['width']
+    page.locator('[data-cad-zoom-in]').click()
+    move_world(page,0,0)
+    assert abs(marker.bounding_box()['width']-size)<=1
+    p=client_point(page,width*.5,height*.5);page.mouse.move(p['x'],p['y']);page.mouse.down(button='middle');page.mouse.move(p['x']+20,p['y']);page.mouse.up(button='middle')
+    assert page.evaluate("window.coreMember===document.querySelector('[data-object-kind=PhysicalMember]')")
+    assert page.locator('pattern[data-grid-level]').count()==3
+    assert page.locator('[data-canvas-grid] line').count()==0
+    page.evaluate("""()=>{window.coreTimings={pointer:[],pan:[],zoom:[]};const svg=document.querySelector('#workspace-canvas');for(const type of ['pointermove','wheel']){svg.addEventListener(type,e=>{window.coreStamp=performance.now()},true);svg.addEventListener(type,e=>{window.coreTimings[type==='wheel'?'zoom':e.buttons&4?'pan':'pointer'].push(performance.now()-window.coreStamp)});}}""")
+    for i in range(25):
+        move_world(page,width*(.4+i*.001),height*.5)
+    p=client_point(page,width*.5,height*.5);page.mouse.move(p['x'],p['y']);page.mouse.down(button='middle')
+    for i in range(25):
+        page.mouse.move(p['x']+i,p['y']+i*.2)
+    page.mouse.up(button='middle')
+    for i in range(12):
+        before=page.locator('[data-world-layer]').get_attribute('transform')
+        page.mouse.wheel(0,-100 if i%2 else 100)
+        page.wait_for_function("before=>document.querySelector('[data-world-layer]').getAttribute('transform')!==before",arg=before)
+    samples=page.evaluate('window.coreTimings')
+    metrics={}
+    for kind,values in samples.items():
+        values=sorted(values[3:])
+        assert values, samples
+        metrics[kind]={'p50_ms':values[len(values)//2],'p95_ms':values[min(len(values)-1,int(len(values)*.95))],'samples':len(values)}
+    metrics.update({'range_mm':[width,height],'nodes':100,'members':50})
+    Path(f'.superpowers/sdd/2026-10-01-cad-core-drawing-v1/screenshots/performance-{width}x{height}.json').write_text(json.dumps(metrics,indent=2))
+
+
 def test_core_dynamic_numeric_topology_preview_requires_confirmation(context,workspace_page):
     page,_=open_core(context,workspace_page,[('a',0,0),('mid',50,0),('b',100,100)])
     page.locator('[data-workspace-tool="MEMBER"]').click()
@@ -353,3 +472,26 @@ def test_core_dynamic_numeric_topology_preview_requires_confirmation(context,wor
     assert page.locator('[data-object-kind="PhysicalMember"]').count()==0
     angle.press('Enter')
     assert page.locator('[data-object-kind="PhysicalMember"]').count()==1
+
+
+def test_core_far_grid_coverage_and_int_marker_stability(context,workspace_page):
+    page,_=open_core(context,workspace_page,[('a',-100,0),('b',100,0),('c',0,-100),('d',0,100)],[('h','a','b'),('v','c','d')])
+    page.locator('[data-workspace-tool="NODE"]').click();move_world(page,0,0)
+    marker=page.locator('[data-cad-snap-marker][data-snap-type="INT"] path')
+    size=marker.bounding_box()['width']
+    for selector in ['zoom-in','zoom-out','zoom-out']:
+        page.locator(f'[data-cad-{selector}]').click();move_world(page,0,0)
+        assert abs(marker.bounding_box()['width']-size)<=1
+    result=page.evaluate("""async()=>{
+      const {renderWorkspaceView}=await import('/static/projects/workspace/renderer.js');
+      const {readCoordinateSpace,visibleSvgViewport,svgLocalToWorld}=await import('/static/projects/workspace/coordinate-space.js');
+      const svg=document.querySelector('#workspace-canvas'),draft=JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft;
+      const viewTransform={a:1,b:0,c:0,d:-1,e:-20000,f:300};
+      const coordinates=readCoordinateSpace(svg,viewTransform);
+      renderWorkspaceView(svg,draft,{viewTransform,cad:{}},coordinates);
+      const viewport=visibleSvgViewport(svg,coordinates),world=svgLocalToWorld({x:viewport.left,y:viewport.top},coordinates),rect=svg.querySelector('[data-grid-fill]');
+      return {x:Number(rect.getAttribute('x')),width:Number(rect.getAttribute('width')),worldX:world.x,patterns:svg.querySelectorAll('pattern[data-grid-level]').length,lines:svg.querySelectorAll('[data-canvas-grid] line').length};
+    }""")
+    assert result['x']>10000
+    assert result['x']<=result['worldX']<=result['x']+result['width']
+    assert result['patterns']==3 and result['lines']==0

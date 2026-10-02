@@ -4,6 +4,7 @@ import { objectsInMarquee } from "./selection-geometry.js";
 import { createStudentLabelResolver } from "./labels.js";
 import { candidateMembersAtNode } from "./joint-candidates.js";
 import { readCoordinateSpace, clientToWorld, worldToClient, clientPointToSvgLocal, clientDeltaToSvgLocal } from './coordinate-space.js';
+import { renderWorkspaceView } from './renderer.js';
 
 const POINT_TOLERANCE = 10;
 const SEGMENT_TOLERANCE = 8;
@@ -126,6 +127,9 @@ export function bindCanvasInteractions(svg, initialState, render) {
   let hoveredElement = null;
   let overlapChooser = null;
   let lastMiddleClick = null;
+  let lastClientPointer=null;
+  let navigationHandler=null;
+  const resolvePresentation=()=>{if(lastClientPointer)pointerMoveHandler?.(worldPointFromEvent(svg,{clientX:lastClientPointer.x,clientY:lastClientPointer.y}),state,lastClientPointer);};
   const visibleIdentity = (item) => {
     if (item?.kind !== "CONNECTION") return item;
     const connection = state.draft.connections?.find((record) => record.client_key === item.clientKey);
@@ -148,8 +152,9 @@ export function bindCanvasInteractions(svg, initialState, render) {
   };
   const dispatchViewEvent = (event) => {
     state = Object.freeze({ ...state, viewTransform: reduceView(state.viewTransform, event) });
-    redraw();
+    renderWorkspaceView(svg,state.draft,state,readCoordinateSpace(svg,state.viewTransform));
     notifyStateChange();
+    resolvePresentation();
   };
   const closeChooser = () => { overlapChooser?.remove(); overlapChooser = null; };
   const showChooser = (candidates, point, additive) => {
@@ -234,6 +239,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   });
   svg.addEventListener("wheel", (event) => {
     event.preventDefault();
+    lastClientPointer={x:event.clientX,y:event.clientY};
     try { dispatchViewEvent({ type: "ZOOM", factor: event.deltaY < 0 ? 1.1 : 1 / 1.1, anchorSvgLocal: clientPointToSvgLocal({ x: event.clientX, y: event.clientY },readCoordinateSpace(svg,state.viewTransform)) }); }
     catch(error){svg.dispatchEvent(new CustomEvent('cad-coordinate-error',{detail:error}));}
   }, { passive: false });
@@ -270,11 +276,13 @@ export function bindCanvasInteractions(svg, initialState, render) {
     if (event.button === 1) event.preventDefault();
     if (spaceHeld) spaceTapEligible = false;
     const grip = event.button === 0 && !spaceHeld && state.cad?.activeCommand === "SELECT" ? event.target?.closest?.("[data-cad-node-grip]") : null;
-    gesture = { start: { x: event.clientX, y: event.clientY }, last: { x: event.clientX, y: event.clientY }, moved: false, pan: event.button === 1 || spaceHeld, select: event.button === 0 && !grip && state.cad?.activeCommand === "SELECT", gripTarget: grip?.getAttribute("data-cad-node-grip") || null, additive: event.shiftKey };
+    gesture = { pointerId:event.pointerId,start: { x: event.clientX, y: event.clientY }, last: { x: event.clientX, y: event.clientY }, moved: false, pan: event.button === 1 || spaceHeld, select: event.button === 0 && !grip && state.cad?.activeCommand === "SELECT", gripTarget: grip?.getAttribute("data-cad-node-grip") || null, additive: event.shiftKey };
     pointerSelection = grip ? { kind: "GEOMETRY_NODE", clientKey: grip.getAttribute("data-cad-node-grip") } : selectionFromElement(event.target?.closest?.("[data-object-kind]"));
+    if(gesture.pan)navigationHandler?.('START');
     svg.setPointerCapture?.(event.pointerId);
   });
   svg.addEventListener("pointermove", (event) => {
+    lastClientPointer={x:event.clientX,y:event.clientY};
     if (gesture?.gripTarget) {
       const point = { x: event.clientX, y: event.clientY };
       if (distance(point, gesture.start) >= 4) gesture.moved = true;
@@ -282,7 +290,13 @@ export function bindCanvasInteractions(svg, initialState, render) {
       gesture.last = point;
       return;
     }
-    pointerMoveHandler?.(worldPointFromEvent(svg, event), state, { x: event.clientX, y: event.clientY });
+    if(gesture?.pan){
+      const point=lastClientPointer;
+      if(distance(point,gesture.start)>=4)gesture.moved=true;
+      if(gesture.moved)try{dispatchViewEvent({type:'PAN',deltaSvgLocal:clientDeltaToSvgLocal(gesture.last,point,readCoordinateSpace(svg,state.viewTransform))});}catch(error){cancelGesture();svg.dispatchEvent(new CustomEvent('cad-coordinate-error',{detail:error}));return;}
+      gesture.last=point;return;
+    }
+    resolvePresentation();
     if (!gesture && marqueeAnchor) drawMarquee(marqueeAnchor.point, { x: event.clientX, y: event.clientY });
     if (!gesture && state.cad?.activeCommand === "SELECT") {
       const direct = event.target?.closest?.("[data-object-kind]");
@@ -293,7 +307,6 @@ export function bindCanvasInteractions(svg, initialState, render) {
     if (!gesture) return;
     const point = { x: event.clientX, y: event.clientY };
     if (distance(point, gesture.start) >= 4) gesture.moved = true;
-    if (gesture.moved && gesture.pan) dispatchViewEvent({ type: "PAN", deltaSvgLocal: clientDeltaToSvgLocal(gesture.last,point,readCoordinateSpace(svg,state.viewTransform)) });
     if (gesture.moved && gesture.select) drawMarquee(gesture.start, point);
     gesture.last = point;
   });
@@ -318,10 +331,19 @@ export function bindCanvasInteractions(svg, initialState, render) {
       }
       marqueeAnchor = null;
     }
+    if(gesture.pan)navigationHandler?.('END');
     gesture = null; removeMarquee();
     if (svg.hasPointerCapture?.(event.pointerId)) svg.releasePointerCapture(event.pointerId);
   });
-  svg.addEventListener("pointercancel", () => { if (gesture?.gripTarget) gripHandlers?.onCancel?.(); gesture = null; lastPointerUp = null; removeMarquee(); });
+  const cancelGesture=()=>{
+    if(gesture?.gripTarget)gripHandlers?.onCancel?.();
+    if(gesture?.pan)navigationHandler?.('END');
+    const pointerId=gesture?.pointerId;gesture=null;lastPointerUp=null;spaceHeld=false;spaceTapEligible=false;marqueeAnchor=null;suppressClick=false;removeMarquee();
+    if(pointerId!=null&&svg.hasPointerCapture?.(pointerId))svg.releasePointerCapture(pointerId);
+  };
+  svg.addEventListener('pointercancel',cancelGesture);
+  svg.addEventListener('lostpointercapture',()=>{if(gesture)cancelGesture();});
+  window.addEventListener('blur',cancelGesture);
   svg.addEventListener("pointerleave", () => { hoveredElement?.removeAttribute("data-hovered"); hoveredElement = null; });
   const replaceState = (nextState, notify = true, redrawState = true) => {
     if (nextState.cad?.activeCommand !== "SELECT") { marqueeAnchor = null; removeMarquee(); closeChooser(); }
@@ -337,6 +359,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
     setStateChangeHandler: (handler) => { stateChangeHandlers.clear(); if (handler) stateChangeHandlers.add(handler); },
     subscribeStateChange: (handler) => { stateChangeHandlers.add(handler); return () => stateChangeHandlers.delete(handler); },
     setPointerMoveHandler: (handler) => { pointerMoveHandler = handler; },
+    setNavigationHandler:(handler)=>{navigationHandler=handler;},
     setFitHandler: (handler) => { fitHandler = handler; },
     setGripHandlers: (handlers) => { gripHandlers = handlers; },
     setPropertiesHandler: (handler) => { propertiesHandler = handler; },

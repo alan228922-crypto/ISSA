@@ -770,6 +770,9 @@ def test_cad_middle_navigation_is_transparent_and_double_middle_fits(context, wo
     page.locator('[data-workspace-tool="MEMBER"]').click()
     page.locator('[data-client-key="n1"] circle').click(force=True)
     assert '终点' in page.locator('[data-modeling-instruction]').inner_text()
+    # Keep the two measured-Fit operations in the same visible viewport;
+    # Playwright otherwise scrolls this lower toolbar into view on click.
+    page.locator('[data-cad-fit]').scroll_into_view_if_needed()
     box = canvas.bounding_box()
     x, y = box['x'] + box['width'] * .65, box['y'] + box['height'] * .55
     before = canvas.locator('[data-world-layer]').get_attribute('transform')
@@ -780,10 +783,18 @@ def test_cad_middle_navigation_is_transparent_and_double_middle_fits(context, wo
     assert canvas.locator('[data-world-layer]').get_attribute('transform') != before
     assert page.locator('[data-workspace-tool="MEMBER"]').get_attribute('aria-pressed') == 'true'
     assert '终点' in page.locator('[data-modeling-instruction]').inner_text()
+    expected_fit = """async()=>{const {readCoordinateSpace,visibleSvgViewport}=await import('/static/projects/workspace/coordinate-space.js');const svg=document.querySelector('#workspace-canvas'),v=visibleSvgViewport(svg,readCoordinateSpace(svg));const nodes=JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft.nodes;const xs=nodes.map(n=>n.x_mm),ys=nodes.map(n=>n.y_mm);const cx=(Math.min(...xs)+Math.max(...xs))/2,cy=(Math.min(...ys)+Math.max(...ys))/2;const scale=Math.min((v.width-80)/Math.max(100,Math.max(...xs)-Math.min(...xs)),(v.height-80)/Math.max(100,Math.max(...ys)-Math.min(...ys)));return {a:scale,d:-scale,e:v.left+v.width/2-scale*cx,f:v.top+v.height/2+scale*cy};}"""
+    expected_middle = page.evaluate(expected_fit)
     page.mouse.click(x, y, button='middle', click_count=2)
-    fitted = canvas.locator('[data-world-layer]').get_attribute('transform')
+    actual = page.evaluate("()=>{const m=document.querySelector('[data-world-layer]').transform.baseVal.consolidate().matrix;return {a:m.a,d:m.d,e:m.e,f:m.f}}")
+    assert actual == pytest.approx(expected_middle,abs=1e-4)
+    page.locator('[data-cad-fit]').scroll_into_view_if_needed()
     page.locator('[data-cad-fit]').click()
-    assert canvas.locator('[data-world-layer]').get_attribute('transform') == fitted
+    # Native focus can scroll the document during click; evaluate its actual
+    # resulting visible viewport, not the pre-click rectangle.
+    expected_toolbar = page.evaluate(expected_fit)
+    actual = page.evaluate("()=>{const m=document.querySelector('[data-world-layer]').transform.baseVal.consolidate().matrix;return {a:m.a,d:m.d,e:m.e,f:m.f}}")
+    assert actual == pytest.approx(expected_toolbar,abs=1e-4)
     assert '终点' in page.locator('[data-modeling-instruction]').inner_text()
 
 

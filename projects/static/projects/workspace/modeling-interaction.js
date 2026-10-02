@@ -8,6 +8,7 @@ import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction, undoWorkspaceEdit, redoWorkspaceEdit } from "./state.js";
 import { createStudentLabelResolver } from "./labels.js";
 import { candidateMembersAtNode, nodesOnMember, inspectEndpointCandidates } from "./joint-candidates.js";
+import { getSnapCandidateIndex,querySnapCandidates } from './snap-candidates.js';
 
 const TOOL_INSTRUCTIONS = Object.freeze({ SELECT: "点击结构查看或修改", NODE: "在画布放置节点；交叉处放置节点即形成桁架铰接", MEMBER: "选择起点，再选择终点", SUPPORT: "选择构件节点放置支座", LOAD: "选择构件节点施加荷载" });
 const COMPLETED = Object.freeze({ CREATE_NODE: "已放置节点", PLACE_JOINT_NODE: "已放置节点", CREATE_MEMBER: "已添加构件", CREATE_MEMBER_WITH_ENDPOINT: "已添加构件", CREATE_SUPPORT_AT_NODE: "已放置支座", CREATE_NODE_LOAD_AT_NODE: "已施加荷载" });
@@ -53,40 +54,10 @@ function updateUi(root, tool, memberStart, contextualInstruction = null) {
   for (const input of root.querySelectorAll("[data-cad-distance], [data-cad-angle]")) input.disabled = !(tool === "MEMBER" && memberStart);
 }
 
-function segmentIntersection(left, right) {
-  const denominator = (left.end.x - left.start.x) * (right.end.y - right.start.y) - (left.end.y - left.start.y) * (right.end.x - right.start.x);
-  if (Math.abs(denominator) < 1e-12) return null;
-  const dx = right.start.x - left.start.x; const dy = right.start.y - left.start.y;
-  const t = (dx * (right.end.y - right.start.y) - dy * (right.end.x - right.start.x)) / denominator;
-  const u = (dx * (left.end.y - left.start.y) - dy * (left.end.x - left.start.x)) / denominator;
-  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-  return { x: left.start.x + t * (left.end.x - left.start.x), y: left.start.y + t * (left.end.y - left.start.y) };
-}
-
-const candidateCache = new WeakMap();
-function drawingCandidates(draft) {
-  if (candidateCache.has(draft)) return candidateCache.get(draft);
-  const nodes = new Map(draft.nodes.map((node) => [node.client_key, node]));
-  const candidates = draft.nodes.map((node) => ({ kind: "NODE", canonicalKey: `NODE:${node.client_key}`, worldPoint: { x: node.x_mm, y: node.y_mm } }));
-  const segments = draft.physical_members.flatMap((member) => {
-    const start = nodes.get(member.start_node_client_key); const end = nodes.get(member.end_node_client_key);
-    return start && end ? [{ key: member.client_key, start: { x: start.x_mm, y: start.y_mm }, end: { x: end.x_mm, y: end.y_mm } }] : [];
-  });
-  for (let left = 0; left < segments.length; left += 1) for (let right = left + 1; right < segments.length; right += 1) {
-    const point = segmentIntersection(segments[left], segments[right]); if (!point) continue;
-    const keys = [segments[left].key, segments[right].key].sort();
-    candidates.push({ kind: "INTERSECTION", canonicalKey: `INTERSECTION:${keys[0]}|${keys[1]}`, worldPoint: point });
-  }
-  candidateCache.set(draft, candidates);
-  return candidates;
-}
-
 function cadState(state) { return state.cad || { ortho: false, gridSnap: true, gridVisible: true, activeCommand: "SELECT", origin: null }; }
 const effectiveOrtho = (cad) => Boolean(cad.ortho) !== Boolean(cad.temporaryOrtho);
-const snapCandidates = (draft, cad) => cad.objectSnap === false ? [] : drawingCandidates(draft);
-function localScreenPoint(svg, point) {
-  return point; // Resolver now measures browser client pixels through CoordinateSpace.
-}
+const labelCache=new WeakMap();
+const drawingLabels=draft=>{if(!labelCache.has(draft))labelCache.set(draft,createStudentLabelResolver(draft));return labelCache.get(draft);};
 function cadStatus(root, cad, resolution = null) {
   const indicator = root.querySelector("#workspace-snap-indicator"); if (!indicator) return;
   indicator.textContent = `ORTHO: ${effectiveOrtho(cad) ? "开" : "关"} · SNAP: ${cad.gridSnap ? "开" : "关"} (Grid) · 对象捕捉: ${cad.objectSnap === false ? "关" : "开"} · 当前: ${resolution?.snapType || "无"}`;
@@ -96,9 +67,15 @@ function cadStatus(root, cad, resolution = null) {
 export function bindModelingInteractions({ root, svg, canvasController, showError, readOnly }) {
   if (readOnly) return Object.freeze({ getTool: () => "SELECT" });
   const interaction = createInteractionController({resolvePointer:resolveGeometry,inspectEndpoint:inspectEndpointCandidates});
-  const resolvePointerPoint = (args) => interaction.dispatch({type:'POINTER_RESOLVE',...args,clientPointer:args.screenPointer,coordinates:readCoordinateSpace(svg,args.viewTransform)}, {draft:canvasController.getState().draft,settings:{ortho:args.ortho,gridSnap:args.gridEnabled}}).state.snapResolution;
+  const resolvePointerPoint = (args) => {
+    const state=canvasController.getState(),coordinates=readCoordinateSpace(svg,args.viewTransform);
+    const discovered=args.candidates??(cadState(state).objectSnap===false?[]:querySnapCandidates(getSnapCandidateIndex(state.draft),{clientPoint:args.screenPointer,coordinates}));
+    const candidates=discovered.filter(c=>c.nodeClientKey!==args.excludedNodeClientKey||!args.excludedNodeClientKey);
+    return interaction.dispatch({type:'POINTER_RESOLVE',...args,candidates,clientPointer:args.screenPointer,coordinates},{draft:state.draft,settings:{ortho:args.ortho,gridSnap:args.gridEnabled}}).state.snapResolution;
+  };
   let tool = "SELECT"; let contextualInstruction = null; let pendingNumeric = null; let lastCompletedTool = null;
   const pendingStart=()=>interaction.getState().pendingMemberStart;
+  canvasController.setNavigationHandler(event=>interaction.dispatch({type:event==='START'?'PAN_START':'PAN_END'},{draft:canvasController.getState().draft}));
   const refreshUi=()=>{updateUi(root,tool,pendingStart(),contextualInstruction);syncMini();};
   let supportChoice = "PINNED";
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
@@ -329,7 +306,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (tool === "NODE") {
       if (pointerSelection?.kind === "SUPPORT") return;
       const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current);
-      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: snapCandidates(current.draft, cad), viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: screen, candidates: null, viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
       const point = resolved?.point; if (!point) return;
       if (resolved.nodeClientKey) {
         apply({ type: "CONNECT_NODE", nodeClientKey: resolved.nodeClientKey });
@@ -339,7 +316,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     }
     if (tool === "MEMBER") {
       const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current); if (!world) return true;
-      const resolved = resolvePointerPoint({worldPointer:world,screenPointer:screen,candidates:snapCandidates(current.draft,cad),viewTransform:current.viewTransform,origin:memberOrigin(),ortho:effectiveOrtho(cad),gridEnabled:cad.gridSnap,explicitNumeric:false});
+      const resolved = resolvePointerPoint({worldPointer:world,screenPointer:screen,candidates:null,viewTransform:current.viewTransform,origin:memberOrigin(),ortho:effectiveOrtho(cad),gridEnabled:cad.gridSnap,explicitNumeric:false});
       if (!pendingStart()) { if(current.draft.schema_version!=='physical-draft-v2'&&!resolved.nodeClientKey)return true; const response=interaction.dispatch({type:'CONFIRM_POINT',resolution:resolved},{draft:current.draft,readOnly:false});for(const effect of response.effects)if(effect.type==='ERROR')showError(effect);refreshUi();return true; }
       completeMemberAt(resolved.worldPoint,resolved);cadStatus(root,cadState(canvasController.getState()),resolved);return true;
     }
@@ -367,8 +344,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const original = state.draft.nodes.find((node) => node.client_key === clientKey);
     if (!original) return null;
     const origin = { x: original.x_mm, y: original.y_mm };
-    const candidates = snapCandidates(state.draft, cad).filter((candidate) => candidate.canonicalKey !== `NODE:${clientKey}`);
-    const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates, viewTransform: state.viewTransform, origin, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+    const resolved = resolvePointerPoint({ worldPointer: world, screenPointer: screen, candidates:null,excludedNodeClientKey:clientKey, viewTransform: state.viewTransform, origin, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
     return { point: resolved.point, original, draft: state.draft };
   };
   const clearGrip = () => transientCad({ gripPreview: null });
@@ -392,16 +368,11 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     },
     onCancel: clearGrip,
   });
-  const hasConnectionAt = (draft, point) => {
-    if (draft.schema_version === "physical-draft-v2") return draft.nodes.some((node) => Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
-    const connectedNodes = new Set(draft.connections.map((connection) => connection.geometry_node_client_key));
-    return draft.nodes.some((node) => connectedNodes.has(node.client_key) && Math.abs(node.x_mm - point.x) < 1e-9 && Math.abs(node.y_mm - point.y) < 1e-9);
-  };
-  canvasController.setPointerMoveHandler((world, state, screen) => {
+  const handlePointerMove=(world, state, screen) => {
     if (!world) return; const display=v=>String(Math.round(v*1e6)/1e6);root.querySelector("#workspace-pointer-x").textContent = `X: ${display(world.x)} mm`; root.querySelector("#workspace-pointer-y").textContent = `Y: ${display(world.y)} mm`;
-    const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: localScreenPoint(svg, screen), candidates: snapCandidates(state.draft, cad), viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+    const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: screen, candidates:null, viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
     const active = tool !== "SELECT";
-    const unconnectedIntersection = resolution.snapType === "INT" && !hasConnectionAt(state.draft, resolution.point);
+    const unconnectedIntersection = resolution.kind==='INTERSECTION';
     let trackingGuide = null;
     if (active && cad.tracking !== false && acquiredSnap && !["NODE", "INT"].includes(resolution.snapType)) {
       const tolerance = 8 / Math.max(.05, Math.abs(state.viewTransform.a));
@@ -409,8 +380,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       else if (Math.abs(world.x - acquiredSnap.x) <= tolerance) trackingGuide = { start: acquiredSnap, end: { x: acquiredSnap.x, y: resolution.point.y } };
     }
     if (active && ["NODE", "INT"].includes(resolution.snapType)) acquiredSnap = resolution.point;
-    const labels = createStudentLabelResolver(state.draft);
-    const studentLabel = resolution.snapType === "NODE" ? labels.label("GEOMETRY_NODE", resolution.candidateKey?.split(":")[1]) : null;
+    const labels = drawingLabels(state.draft);
+    const studentLabel = resolution.kind === "NODE" ? labels.label("GEOMETRY_NODE", resolution.nodeClientKey) : null;
     transientCad({
       preview: interaction.getState().preview,
       loadPreview: tool === "LOAD" && resolution.snapType === "NODE" ? { point: resolution.point, fx_N: 0, fy_N: -100 } : null,
@@ -446,7 +417,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       if (previewInstruction) root.querySelector("[data-modeling-instruction]").textContent = previewInstruction;
     } else if (unconnectedIntersection && active && !contextualInstruction) root.querySelector("[data-modeling-instruction]").textContent = "这里有构件交叉，但尚未建立连接。";
     if (pendingStart()) updateDynamics(resolution.point);
-  });
+  };
+  canvasController.setPointerMoveHandler((...args)=>{try{handlePointerMove(...args);}catch(error){transientCad({preview:null,snapFeedback:null,trackingGuide:null});showError({code:error.code||'CAD_INTERACTION_ERROR',message:error.message});}});
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && tool !== "SELECT") { event.preventDefault(); event.stopPropagation(); cancelCommand(); } });
   const editableFocus = (target) => Boolean(target?.closest?.("input, textarea, select, [contenteditable], [role='textbox']"));
   const temporaryOrtho=(down)=>{const response=interaction.dispatch({type:'KEY',key:'Shift',down},{focusedInput:down&&editableFocus(document.activeElement)});transientCad({temporaryOrtho:response.state.temporaryOrtho});cadStatus(root,cadState(canvasController.getState()));};

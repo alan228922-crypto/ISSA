@@ -3,7 +3,18 @@ import { GRID_SPACING, visibleGridLevels } from "./grid.js";
 import { createStudentLabelResolver } from "./labels.js";
 import { structuralSymbolDefs, renderNode, renderMember, renderConnection, renderSupport, renderLoad } from "./structural-symbols.js";
 import { candidateMembersAtNode } from "./joint-candidates.js";
-import { readCoordinateSpace, cssPixelsPerWorldUnit } from './coordinate-space.js';
+import { readCoordinateSpace, cssPixelsPerWorldUnit,visibleSvgViewport,svgLocalToWorld } from './coordinate-space.js';
+const topologyCache=new WeakMap(),renderedUnits=new WeakMap();
+function topologyMetadata(draft){
+  if(topologyCache.has(draft))return topologyCache.get(draft);
+  const coordinateCounts=new Map(),unjoined=new Map(),members=new Map((draft.physical_members||[]).map(m=>[m.client_key,m]));
+  const incidences=new Set((draft.member_joint_incidences||[]).map(i=>JSON.stringify([i.member_client_key,i.node_client_key])));
+  if(draft.schema_version==='physical-draft-v2')for(const node of draft.nodes){
+    const key=JSON.stringify([node.x_mm,node.y_mm]);coordinateCounts.set(key,(coordinateCounts.get(key)||0)+1);
+    unjoined.set(node.client_key,candidateMembersAtNode(draft,node).filter(k=>{const m=members.get(k);return ![m.start_node_client_key,m.end_node_client_key].includes(node.client_key)&&!incidences.has(JSON.stringify([k,node.client_key]));}));
+  }
+  const result={coordinateCounts,unjoined};topologyCache.set(draft,result);return result;
+}
 
 function element(name, attributes = {}) {
   const node = document.createElementNS(SVG_NS, name);
@@ -66,9 +77,9 @@ function gridLayer(unit) {
   defs.append(pattern("minor", GRID_SPACING, "#f1f5fa"));
   defs.append(pattern("medium", 10 * GRID_SPACING, "#e4ebf4", levels.minor ? "minor" : null));
   defs.append(pattern("major", 100 * GRID_SPACING, "#cbd8e9", levels.medium ? "medium" : null));
-  grid.append(defs, element("rect", { x: -10000, y: -10000, width: 20000, height: 20000, fill: "url(#workspace-grid-major)" }));
-  grid.append(element("path", { d: "M -30 0 L 30 0 M 0 -30 L 0 30", stroke: "#7c8ba1", "stroke-width": 2 }));
-  const origin = element("text", { x: 12, y: -12, fill: "#536274", "font-size": 24 }); origin.textContent = "(0,0)"; grid.append(origin);
+  grid.append(defs, element("rect", { 'data-grid-fill':'true',x: -10000, y: -10000, width: 20000, height: 20000, fill: "url(#workspace-grid-major)" }));
+  grid.append(element("path", { d: `M ${-12*unit} 0 L ${12*unit} 0 M 0 ${-12*unit} L 0 ${12*unit}`, stroke: "#7c8ba1", "stroke-width": 1.5*unit }));
+  const origin = element("text", { x: 12*unit, y: 12*unit, transform:'scale(1 -1)',fill: "#536274", "font-size": 11*unit }); origin.textContent = "(0,0)"; grid.append(origin);
   return grid;
 }
 
@@ -89,17 +100,17 @@ function cadPresentationLayer(cad = {}, unit = 1) {
   if (cad.gripPreview) {
     for (const member of cad.gripPreview.members || []) group.append(element("line", {
       "data-cad-grip-preview": "member", x1: member.start.x, y1: member.start.y,
-      x2: member.end.x, y2: member.end.y, stroke: "#d97706", "stroke-width": 6,
-      "stroke-dasharray": "10 5", "pointer-events": "none",
+      x2: member.end.x, y2: member.end.y, stroke: "#d97706", "stroke-width": 2*unit,
+      "stroke-dasharray": `${6*unit} ${4*unit}`, "pointer-events": "none",
     }));
     group.append(element("circle", { "data-cad-grip-preview": "node", cx: cad.gripPreview.point.x,
-      cy: cad.gripPreview.point.y, r: 9, fill: "#f59e0b", "pointer-events": "none" }));
+      cy: cad.gripPreview.point.y, r: 5*unit, fill: "#f59e0b", "pointer-events": "none" }));
   }
   if (cad.trackingGuide?.start && cad.trackingGuide?.end) group.append(element("line", {
     "data-cad-tracking-guide": "true",
     x1: cad.trackingGuide.start.x, y1: cad.trackingGuide.start.y,
     x2: cad.trackingGuide.end.x, y2: cad.trackingGuide.end.y,
-    stroke: "#0f766e", "stroke-width": 2, "stroke-dasharray": "8 5", "pointer-events": "none",
+    stroke: "#0f766e", "stroke-width": 1.5*unit, "stroke-dasharray": `${6*unit} ${4*unit}`, "pointer-events": "none",
   }));
   if (cad.preview?.start && cad.preview?.end) {
     group.append(element("line", {
@@ -109,8 +120,8 @@ function cadPresentationLayer(cad = {}, unit = 1) {
       x2: cad.preview.end.x,
       y2: cad.preview.end.y,
       stroke: "#7c3aed",
-      "stroke-width": 5,
-      "stroke-dasharray": "14 8",
+      "stroke-width": 2*unit,
+      "stroke-dasharray": `${6*unit} ${4*unit}`,
       opacity: .85,
       "pointer-events": "none",
     }));
@@ -120,18 +131,18 @@ function cadPresentationLayer(cad = {}, unit = 1) {
     const marker = element("g", {
       "data-cad-snap-marker": "true",
       "data-snap-type": feedback.snapType,
-      transform: `translate(${feedback.point.x} ${feedback.point.y})`,
+      transform: `translate(${feedback.point.x} ${feedback.point.y}) scale(${unit})`,
       "pointer-events": "none",
     });
     const shape = feedback.snapType === "NODE"
-      ? element("circle", { cx: 0, cy: 0, r: 13, fill: "none", stroke: "#0759c7", "stroke-width": 4 })
+      ? element("circle", { cx: 0, cy: 0, r: 7, fill: "none", stroke: "#0759c7", "stroke-width": 1.5 })
       : feedback.snapType === "INT"
-        ? element("path", { d: "M -12 -12 L 12 12 M -12 12 L 12 -12", stroke: "#b54708", "stroke-width": 4 })
-        : element("rect", { x: -10, y: -10, width: 20, height: 20, fill: "none", stroke: "#196127", "stroke-width": 4 });
-    const label = element("text", { x: 16, y: -16, fill: "#172033", "font-size": 22, "font-weight": 700, transform: "scale(1 -1)" });
+        ? element("path", { d: "M -6 -6 L 6 6 M -6 6 L 6 -6", stroke: "#b54708", "stroke-width": 1.5 })
+        : element("rect", { x: -4, y: -4, width: 8, height: 8, fill: "none", stroke: "#196127", "stroke-width": 1 });
+    const label = element("text", { x: 10, y: -10, fill: "#172033", "font-size": 11, "font-weight": 600, transform: "scale(1 -1)" });
     label.textContent = feedback.snapType === "NODE" ? `○ ${feedback.studentLabel || "节点"}` : feedback.snapType === "INT" ? "× 交点" : "□ 网格";
     const tooltip = element("title");
-    tooltip.textContent = feedback.unconnectedIntersection ? "这里有构件交叉，但尚未建立连接。" : label.textContent;
+    tooltip.textContent = feedback.unconnectedIntersection ? "几何交点，尚未连接；使用节点工具才会连接。" : label.textContent;
     marker.append(shape, label, tooltip);
     group.append(marker);
   }
@@ -159,20 +170,16 @@ export function predictionSelectableObject(selection) {
   return Object.freeze({ kind: selection.kind, clientKey: selection.clientKey });
 }
 
-export function renderWorkspace(svg, draft, uiState = {}) {
+export function renderWorkspace(svg, draft, uiState = {}, coordinates = null) {
   const v2 = draft.schema_version === "physical-draft-v2";
-  const unit = screenUnit(svg, uiState);
+  const unit = coordinates?1/cssPixelsPerWorldUnit(coordinates):screenUnit(svg, uiState);
   const nodes = ordered(draft.nodes || []);
   const members = ordered(draft.physical_members || []);
   const connections = v2 ? [] : ordered(draft.connections || []);
   const loads = ordered(draft.node_loads || []);
   const supports = ordered(draft.supports || []);
   const nodePositions = pointMap(nodes);
-  const coordinateCounts = new Map();
-  if (v2) for (const node of nodes) {
-    const key = JSON.stringify([node.x_mm, node.y_mm]);
-    coordinateCounts.set(key, (coordinateCounts.get(key) || 0) + 1);
-  }
+  const {coordinateCounts,unjoined:unjoinedByNode}=topologyMetadata(draft);
   const connectionByKey = new Map(connections.map((connection) => [connection.client_key, connection]));
   const labels = createStudentLabelResolver(draft);
   const grid = gridLayer(unit);
@@ -225,11 +232,7 @@ export function renderWorkspace(svg, draft, uiState = {}) {
       const warning = element("title"); warning.textContent = "这里有多个位置相同但彼此不连接的旧模型节点。"; group.append(warning);
     }
     if (v2) {
-      const unjoined = candidateMembersAtNode(draft, node).filter((memberKey) => {
-        const member = members.find((row) => row.client_key === memberKey);
-        return ![member.start_node_client_key, member.end_node_client_key].includes(node.client_key)
-          && !(draft.member_joint_incidences || []).some((row) => row.member_client_key === memberKey && row.node_client_key === node.client_key);
-      });
+      const unjoined = unjoinedByNode.get(node.client_key)||[];
       if (unjoined.length) {
         group.dataset.legacyUnjoinedPass = unjoined.join(" ");
         group.append(element("path", { d: `M ${point.x + 12 * unit} ${point.y - 12 * unit} l ${8 * unit} ${-8 * unit} m ${-8 * unit} 0 l ${8 * unit} ${8 * unit}`, fill: "none", stroke: "#b45309", "stroke-width": 2 * unit, "pointer-events": "none" }));
@@ -251,4 +254,33 @@ export function renderWorkspace(svg, draft, uiState = {}) {
   if (uiState.cad?.gridVisible !== false) world.append(grid);
   world.append(...layers, cadPresentationLayer(uiState.cad, unit));
   svg.replaceChildren(defs, world, orientationLayer());
+  renderedUnits.set(svg,unit);
+  if(svg.isConnected)updateGridViewport(svg,coordinates||readCoordinateSpace(svg,uiState.viewTransform));
+}
+
+function updateGridViewport(svg,coordinates){
+  const fill=svg.querySelector('[data-grid-fill]');if(!fill)return;
+  const v=visibleSvgViewport(svg,coordinates);
+  const points=[[v.left,v.top],[v.left+v.width,v.top],[v.left,v.top+v.height],[v.left+v.width,v.top+v.height]].map(([x,y])=>svgLocalToWorld({x,y},coordinates));
+  const x=Math.min(...points.map(p=>p.x))-100,y=Math.min(...points.map(p=>p.y))-100;
+  for(const [key,value] of Object.entries({x,y,width:Math.max(...points.map(p=>p.x))-x+100,height:Math.max(...points.map(p=>p.y))-y+100}))fill.setAttribute(key,value);
+}
+
+export function renderWorkspaceView(svg,draft,uiState,coordinates=readCoordinateSpace(svg,uiState.viewTransform)){
+  const world=svg.querySelector('[data-world-layer]');if(!world)return;
+  world.setAttribute('transform',viewTransform(uiState.viewTransform));
+  const unit=1/cssPixelsPerWorldUnit(coordinates);
+  if(Math.abs(unit-(renderedUnits.get(svg)||unit))>1e-12){
+    // Zoom refreshes symbol presentation, using cached topology metadata. It
+    // never replaces the live world/physical-object groups or reruns inference.
+    const staging=element('svg');renderWorkspace(staging,draft,uiState,coordinates);
+    const fresh=new Map([...staging.querySelectorAll('[data-object-kind]')].map(g=>[`${g.dataset.objectKind}:${g.dataset.clientKey}`,g]));
+    for(const group of svg.querySelectorAll('[data-object-kind]')){const next=fresh.get(`${group.dataset.objectKind}:${group.dataset.clientKey}`);if(next)group.replaceChildren(...next.childNodes);}
+    for(const grip of svg.querySelectorAll('[data-cad-node-grip]'))grip.remove();
+    svg.querySelector('[data-render-layer=nodes]')?.append(...staging.querySelectorAll('[data-cad-node-grip]'));
+    const grid=svg.querySelector('[data-canvas-grid]'),nextGrid=staging.querySelector('[data-canvas-grid]');
+    if(grid&&nextGrid){grid.replaceChildren(...nextGrid.childNodes);grid.dataset.gridVisibleLevels=nextGrid.dataset.gridVisibleLevels;}
+    renderedUnits.set(svg,unit);
+  }
+  updateGridViewport(svg,coordinates);renderCadPresentation(svg,uiState.cad,uiState);
 }
