@@ -140,7 +140,10 @@ function cadPresentationLayer(cad = {}, unit = 1) {
 
 export function renderCadPresentation(svg, cad = {}, uiState = {}) {
   const current = svg.querySelector("[data-cad-presentation]");
-  const next = cadPresentationLayer(cad, screenUnit(svg, uiState));
+  // Clearing transient feedback requires no coordinate projection (including
+  // recovery from a missing/singular CTM).
+  const visible = cad.preview || cad.loadPreview || cad.gripPreview || cad.snapFeedback || cad.trackingGuide;
+  const next = cadPresentationLayer(cad, visible ? screenUnit(svg, uiState) : 1);
   if (current) current.replaceWith(next);
   else svg.querySelector("[data-world-layer]")?.append(next);
 }
