@@ -537,3 +537,110 @@ def test_core_dynamic_input_only_for_drawing_tools(context,workspace_page):
         page.locator(f'[data-workspace-tool="{tool}"]').click()
         move_world(page,40,40)
         assert page.locator('[data-cad-dynamic-overlay]').is_hidden()
+
+
+@pytest.mark.parametrize('effect', ['through', 'start', 'end'])
+def test_core_provisional_numeric_topology_requires_confirmation(context, workspace_page, effect):
+    nodes = [('mid',50,0)] if effect == 'through' else [('a',-100,0),('b',100,0)]
+    members = [] if effect == 'through' else [('old','a','b')]
+    page,_ = open_core(context,workspace_page,nodes,members)
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    move_world(page,0,-50 if effect == 'end' else 0,click=True)
+    page.locator('[data-cad-dynamic-length]').focus()
+    page.keyboard.press('Tab');page.keyboard.press('Tab')
+    page.locator('[data-cad-dynamic-dx]').fill('100' if effect == 'through' else '0')
+    dy=page.locator('[data-cad-dynamic-dy]');dy.fill('0' if effect == 'through' else '50')
+    dy.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == len(members)
+    assert page.locator('[data-object-kind="GeometryNode"]').count() == len(nodes)
+    assert '再次确认' in page.locator('[data-modeling-instruction]').inner_text()
+    dy.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count() == len(members)+1
+    with page.expect_response('**/model/save/') as saved:
+        page.locator('#workspace-save').click()
+    assert saved.value.ok
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    page.reload()
+    draft=page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft")
+    assert len(draft['member_joint_incidences']) == 1
+
+
+def test_core_xy_pair_keeps_complete_precision_point_when_focused(context, workspace_page):
+    page,_=open_core(context,workspace_page,[('a',0,0),('far',200,100)])
+    page.locator('[data-workspace-tool="NODE"]').click()
+    move_world(page,12,8)
+    page.locator('[data-cad-x]').fill('12.4')
+    y=page.locator('[data-cad-y]');y.fill('7.6')
+    move_world(page,60,40)
+    assert page.locator('[data-cad-x]').input_value() == '12.4'
+    assert y.input_value() == '7.6'
+    y.press('Enter')
+    node=page.locator('[data-client-key="node-1"] [data-node-body]')
+    assert float(node.get_attribute('cx')) == 12.4
+    assert float(node.get_attribute('cy')) == 7.6
+
+
+@pytest.mark.parametrize('width',[1024,1440])
+def test_core_edge_targets_remain_canvas_hittable(context,workspace_page,width):
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',100,100)])
+    page.set_viewport_size({'width':width,'height':1000})
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    bounds=page.evaluate("""()=>{const r=document.querySelector('#workspace-canvas').getBoundingClientRect(),c=document.querySelector('.workspace-center').getBoundingClientRect(),s=document.querySelector('#workspace-status-bar').getBoundingClientRect();return {left:Math.max(r.left,c.left),right:Math.min(r.right,c.right),top:Math.max(r.top,c.top,0),bottom:Math.min(r.bottom,c.bottom,s.top)}}""")
+    for x in [bounds['left']+40,bounds['right']-40]:
+        for y in [bounds['top']+30,bounds['bottom']-30]:
+            page.mouse.move(x,y)
+            assert page.evaluate("([x,y])=>!!document.elementFromPoint(x,y)?.closest('#workspace-canvas')",[x,y])
+    page.mouse.click(x,y)
+    assert page.locator('[data-cad-polar-fields]').is_visible()
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==0
+    page.screenshot(path=f'.superpowers/sdd/2026-10-01-cad-core-drawing-v1/screenshots/edge-canvas-{width}.png')
+
+
+def test_core_numeric_preview_matches_editing_and_confirmation(context,workspace_page):
+    page,_=open_core(context,workspace_page,[('a',0,0),('mid',50,0),('b',100,100)])
+    page.locator('[data-workspace-tool="MEMBER"]').click();move_world(page,0,0,click=True)
+    move_world(page,80,20)
+    page.locator('[data-cad-dynamic-length]').fill('100')
+    angle=page.locator('[data-cad-dynamic-angle]');angle.fill('0')
+    preview=page.locator('[data-cad-member-preview]')
+    assert float(preview.get_attribute('x2'))==100
+    assert float(preview.get_attribute('y2'))==0
+    angle.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==0
+    move_world(page,80,30)
+    assert float(preview.get_attribute('x2'))==100
+    assert float(preview.get_attribute('y2'))==0
+    page.screenshot(path='.superpowers/sdd/2026-10-01-cad-core-drawing-v1/screenshots/numeric-confirmation.png')
+    angle.press('Enter')
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==1
+
+
+def test_core_node_numeric_confirmation_invalidates_on_save(context,workspace_page):
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',100,0)],[('old','a','b')])
+    page.locator('[data-workspace-tool="NODE"]').click();move_world(page,50,30,click=True)
+    page.locator('[data-cad-x]').fill('50')
+    y=page.locator('[data-cad-y]');y.fill('0');y.press('Enter')
+    assert page.locator('[data-object-kind="GeometryNode"]').count()==3
+    with page.expect_response('**/model/save/') as saved:
+        page.locator('#workspace-save').click()
+    assert saved.value.ok
+    page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
+    y.press('Enter')
+    assert page.locator('[data-object-kind="GeometryNode"]').count()==3
+    assert '再次确认' in page.locator('[data-modeling-instruction]').inner_text()
+    y.press('Enter')
+    assert page.locator('[data-object-kind="GeometryNode"]').count()==4
+
+
+@pytest.mark.parametrize('event',['pointercancel','lostpointercapture'])
+def test_core_cancelled_pan_releases_shift_without_losing_start(context,workspace_page,event):
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',100,100)])
+    page.locator('[data-workspace-tool="MEMBER"]').click();move_world(page,0,0,click=True)
+    page.locator('#workspace-canvas').focus();page.keyboard.down('Shift')
+    p=client_point(page,70,70);page.mouse.move(p['x'],p['y']);page.mouse.down(button='middle')
+    page.evaluate("event=>document.querySelector('#workspace-canvas').dispatchEvent(new PointerEvent(event,{pointerId:1,bubbles:true}))",event)
+    assert 'ORTHO: 关' in page.locator('#workspace-snap-indicator').inner_text()
+    page.mouse.up(button='middle');page.keyboard.up('Shift')
+    assert page.locator('[data-cad-polar-fields]').is_visible()
+    move_world(page,70,70,click=True)
+    assert page.locator('[data-object-kind="PhysicalMember"]').count()==1

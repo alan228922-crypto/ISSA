@@ -340,6 +340,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
     if(gesture?.pan)navigationHandler?.('END');
     const pointerId=gesture?.pointerId;gesture=null;lastPointerUp=null;spaceHeld=false;spaceTapEligible=false;marqueeAnchor=null;suppressClick=false;removeMarquee();
     if(pointerId!=null&&svg.hasPointerCapture?.(pointerId))svg.releasePointerCapture(pointerId);
+    svg.dispatchEvent(new CustomEvent('cad-gesture-cancel'));
   };
   svg.addEventListener('pointercancel',cancelGesture);
   svg.addEventListener('lostpointercapture',()=>{if(gesture)cancelGesture();});
@@ -352,6 +353,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
     if (notify) notifyStateChange();
   };
   return Object.freeze({
+    refreshPointerPresentation:resolvePresentation,
     dispatchViewEvent,
     getState: () => state,
     replaceState,

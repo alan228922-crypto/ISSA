@@ -2,7 +2,7 @@ import { EditorActionError } from "./editor.js";
 import { pickAt, renderedObjectsFromSvg, worldPointFromEvent } from "./canvas-interaction.js";
 import { parseCadInput, parseDynamicPoint } from "./cad-input.js";
 import { resolvePointerPoint as resolveGeometry } from "./geometry.js";
-import { readCoordinateSpace,visibleSvgViewport,svgLocalToClient } from './coordinate-space.js';
+import { readCoordinateSpace,visibleSvgViewport,svgLocalToClient,worldToClient } from './coordinate-space.js';
 import { createInteractionController } from './interaction-controller.js';
 import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction, undoWorkspaceEdit, redoWorkspaceEdit } from "./state.js";
@@ -182,16 +182,27 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const memberStart=pendingStart().nodeClientKey;
     const start = {x_mm:memberOrigin().x,y_mm:memberOrigin().y};
     const existingEndpoint = draft.schema_version==='physical-draft-v2'?draft.nodes.find(n=>n.client_key===resolution?.nodeClientKey):existingEndpointAt(draft, point);
-    if (existingEndpoint?.client_key === memberStart) return null;
+    if (memberStart && existingEndpoint?.client_key === memberStart) return null;
     const passed = nodesOnMember(draft, start, { x_mm: point.x, y_mm: point.y }).filter((key) => key !== memberStart && key !== existingEndpoint?.client_key);
     const endpointMembers = existingEndpoint ? [] : candidateMembersAtNode(draft, { x_mm: point.x, y_mm: point.y });
+    const startMembers = pendingStart().kind === 'PROVISIONAL_POINT' ? candidateMembersAtNode(draft, start) : [];
     const messages = [];
+    if (startMembers.length) messages.push(`起点将在 ${startMembers.length} 条既有构件上建立节点：${startMembers.join("、")}`);
     if (passed.length) messages.push(`构件经过 ${passed.length} 个已有节点：${passed.join("、")}，将在这里形成连接`);
     if (endpointMembers.length) messages.push(`终点将在 ${endpointMembers.length} 条既有构件上建立节点：${endpointMembers.join("、")}`);
     return messages.length ? `${messages.join("；")}。${confirmation}` : null;
   };
+  const numericPreview = (point) => {
+    if (!pendingStart()) return;
+    const state=canvasController.getState(),coordinates=readCoordinateSpace(svg,state.viewTransform);
+    resolvePointerPoint({worldPointer:point,screenPointer:worldToClient(point,coordinates),candidates:[],viewTransform:state.viewTransform,origin:memberOrigin(),ortho:false,gridEnabled:false,explicitNumeric:true});
+    transientCad({preview:interaction.getState().preview,snapFeedback:null,trackingGuide:null});
+    cadStatus(root,cadState(canvasController.getState()),interaction.getState().snapResolution);
+    updateDynamics(point);
+  };
   const numericPlacement = (point, commit) => {
     if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return "INVALID";
+    numericPreview(point);
     const summary = placementEffects(point);
     const signature = JSON.stringify([tool, pendingStart(), point.x, point.y, summary]);
     if (summary && pendingNumeric !== signature) {
@@ -273,6 +284,11 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       pendingNumeric=null;contextualInstruction=null;
       const mode=miniMode(),values=Object.fromEntries(miniPair(mode).map(k=>[k,miniFields[k].value]));
       interaction.dispatch({type:'INPUT_CHANGE',input:{mode,values,field}},{draft:canvasController.getState().draft});
+      if(pendingStart()){
+        const parsed=parseDynamicPoint({mode,values,origin:memberOrigin()});
+        if(parsed.ok)numericPreview(parsed.point);
+        else transientCad({preview:null,snapFeedback:null,trackingGuide:null});
+      }
     });
     input?.addEventListener('keydown',event=>{
       if(event.key==='Tab'){
@@ -370,6 +386,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   });
   const handlePointerMove=(world, state, screen) => {
     if (!world) return; const display=v=>String(Math.round(v*1e6)/1e6);root.querySelector("#workspace-pointer-x").textContent = `X: ${display(world.x)} mm`; root.querySelector("#workspace-pointer-y").textContent = `Y: ${display(world.y)} mm`;
+    if(dynamicOverlay?.contains(document.activeElement)||pendingNumeric)return;
     const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: screen, candidates:null, viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
     const active = tool !== "SELECT";
     const unconnectedIntersection = resolution.kind==='INTERSECTION';
@@ -396,8 +413,11 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
         if(!focused){
           const space=readCoordinateSpace(svg,state.viewTransform),viewport=visibleSvgViewport(svg,space);
           const topLeft=svgLocalToClient({x:viewport.left,y:viewport.top},space),bottomRight=svgLocalToClient({x:viewport.left+viewport.width,y:viewport.top+viewport.height},space);
-          dynamicOverlay.style.left=`${Math.max(topLeft.x-center.left,Math.min(bottomRight.x-center.left-dynamicOverlay.offsetWidth-8,screen.x-center.left+20))}px`;
-          dynamicOverlay.style.top=`${Math.max(topLeft.y-center.top,Math.min(bottomRight.y-center.top-dynamicOverlay.offsetHeight-8,screen.y-center.top+20))}px`;
+          const width=dynamicOverlay.offsetWidth,height=dynamicOverlay.offsetHeight;
+          const left=screen.x+20+width<=bottomRight.x-8?screen.x+20:screen.x-20-width;
+          const top=screen.y+20+height<=bottomRight.y-8?screen.y+20:screen.y-20-height;
+          dynamicOverlay.style.left=`${Math.max(topLeft.x-center.left,Math.min(bottomRight.x-center.left-width-8,left-center.left))}px`;
+          dynamicOverlay.style.top=`${Math.max(topLeft.y-center.top,Math.min(bottomRight.y-center.top-height-8,top-center.top))}px`;
         }
         if (document.activeElement !== xInput) xInput.value = String(resolution.point.x);
         if (document.activeElement !== yInput) yInput.value = String(resolution.point.y);
@@ -432,6 +452,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   });
   document.addEventListener("keyup", (event) => { if (event.key === "Shift")temporaryOrtho(false); });
   window.addEventListener('blur',()=>temporaryOrtho(false));
+  svg.addEventListener('cad-gesture-cancel',()=>{temporaryOrtho(false);canvasController.refreshPointerPresentation();});
   document.addEventListener("cad-space-tap", repeatLastTool);
   const undoButton = root.querySelector("[data-cad-undo]"); const redoButton = root.querySelector("[data-cad-redo]");
   const syncHistory = (state) => { if (undoButton) undoButton.disabled = !state.history?.past.length; if (redoButton) redoButton.disabled = !state.history?.future.length; };
@@ -452,8 +473,10 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     const direction = event.key.toLowerCase() === "y" || event.shiftKey ? "REDO" : "UNDO";
     event.preventDefault(); travelHistory(direction);
   });
-  svg.addEventListener("pointerleave", () => transientCad({ preview: null, loadPreview: null, snapFeedback: null, trackingGuide: null }));
+  svg.addEventListener("pointerleave", () => {if(!dynamicOverlay?.contains(document.activeElement)&&!pendingNumeric)transientCad({ preview: null, loadPreview: null, snapFeedback: null, trackingGuide: null });});
+  let observedDraft=canvasController.getState().draft;
   canvasController.subscribeStateChange(state=>{
+    if(observedDraft!==state.draft){observedDraft=state.draft;pendingNumeric=null;contextualInstruction=null;acquiredSnap=null;}
     const had=pendingStart();interaction.dispatch({type:'DRAFT_CHANGED'},{draft:state.draft});
     if(had&&!pendingStart()){pendingNumeric=null;contextualInstruction=null;clearInputs();transientCad({origin:null,preview:null,snapFeedback:null});refreshUi();}
   });
