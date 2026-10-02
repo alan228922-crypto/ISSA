@@ -102,7 +102,8 @@ export function renderConnection(connection, target, unit) {
   const fragment = document.createDocumentFragment();
   fragment.append(element("circle", { "data-hover-outline": "true", cx: target.x, cy: target.y, r: 18 * unit, fill: "none", stroke: "#0f766e", "stroke-width": 2 * unit, "pointer-events": "none" }));
   fragment.append(element("circle", { "data-selection-outline": "true", cx: target.x, cy: target.y, r: 21 * unit, fill: "none", stroke: "#0759c7", "stroke-width": 2.5 * unit, "pointer-events": "none" }));
-  fragment.append(symbol("circle", "connection", { "data-connection-ring": "true", "data-symbol-hit": "true", cx: target.x, cy: target.y, r: 14 * unit, fill: "none", stroke: "#1f2937", "stroke-width": 2 * unit, "pointer-events": "stroke" }));
+  fragment.append(element("circle", { "data-symbol-hit": "true", cx: target.x, cy: target.y, r: 14 * unit, fill: "none", stroke: "transparent", "stroke-width": 6 * unit, "pointer-events": "stroke" }));
+  fragment.append(symbol("circle", "connection", { "data-connection-ring": "true", cx: target.x, cy: target.y, r: 14 * unit, fill: "none", stroke: "#1f2937", "stroke-width": 2 * unit, "pointer-events": "none" }));
   fragment.append(element("rect", { x: target.x - 8 * unit, y: target.y - 8 * unit, width: 16 * unit, height: 16 * unit, fill: "transparent", "pointer-events": "none" }));
   return fragment;
 }

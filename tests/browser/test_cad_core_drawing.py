@@ -109,6 +109,29 @@ def test_core_direct_node_click_cannot_bypass_ortho(context, workspace_page):
     assert member['end_node_client_key'] != 'off'
 
 
+@pytest.mark.parametrize('tool', ['NODE', 'MEMBER'])
+def test_core_first_point_ortho_has_no_locked_axis(context, workspace_page, tool):
+    page, _ = open_core(context, workspace_page)
+    page.locator(f'[data-workspace-tool="{tool}"]').click()
+    page.locator('[data-cad-ortho]').click()
+    move_world(page, 12.4, -28.7)
+    assert float(page.locator('[data-cad-x]').input_value()) == 12
+    assert float(page.locator('[data-cad-y]').input_value()) == -29
+    move_world(page, 12.4, -28.7, click=True)
+    if tool == 'NODE':
+        node = page.locator('[data-object-kind="GeometryNode"] circle')
+        assert float(node.get_attribute('cx')) == 12
+        assert float(node.get_attribute('cy')) == -29
+    else:
+        assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
+        move_world(page, 35.4, -22.7, click=True)
+        line = page.locator('[data-object-kind="PhysicalMember"] line')
+        assert float(line.get_attribute('x1')) == 12
+        assert float(line.get_attribute('y1')) == -29
+        assert float(line.get_attribute('x2')) == 35
+        assert float(line.get_attribute('y2')) == -29
+
+
 def test_core_singular_canvas_coordinate_cancels_without_commit(context, workspace_page):
     page, _ = open_core(context, workspace_page)
     page.locator('[data-workspace-tool="NODE"]').click()
@@ -118,6 +141,17 @@ def test_core_singular_canvas_coordinate_cancels_without_commit(context, workspa
     assert page.locator('[data-workspace-tool="SELECT"]').get_attribute('aria-pressed') == 'true'
     assert page.locator('[data-object-kind="GeometryNode"]').count() == 0
     assert '无' in page.locator('#workspace-save-status').inner_text()
+
+
+def test_core_member_first_point_does_not_inherit_node_tool_origin(context, workspace_page):
+    page, _ = open_core(context, workspace_page)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    move_world(page, 0, 0, click=True)
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('[data-cad-ortho]').click()
+    move_world(page, 45.4, -28.7)
+    assert float(page.locator('[data-cad-x]').input_value()) == 45
+    assert float(page.locator('[data-cad-y]').input_value()) == -29
 
 
 @pytest.mark.parametrize('start_existing,end_existing,count', [(False,False,2),(True,False,1),(False,True,1),(True,True,0)])
@@ -495,3 +529,11 @@ def test_core_far_grid_coverage_and_int_marker_stability(context,workspace_page)
     assert result['x']>10000
     assert result['x']<=result['worldX']<=result['x']+result['width']
     assert result['patterns']==3 and result['lines']==0
+
+
+def test_core_dynamic_input_only_for_drawing_tools(context,workspace_page):
+    page,_=open_core(context,workspace_page,[('a',0,0),('b',100,100)],[('m','a','b')])
+    for tool in ['SUPPORT','LOAD','SELECT']:
+        page.locator(f'[data-workspace-tool="{tool}"]').click()
+        move_world(page,40,40)
+        assert page.locator('[data-cad-dynamic-overlay]').is_hidden()

@@ -50,7 +50,7 @@ function updateUi(root, tool, memberStart, contextualInstruction = null) {
     button.dataset.active = active ? "true" : "false"; button.setAttribute("aria-pressed", active ? "true" : "false");
   }
   const instruction = root.querySelector("[data-modeling-instruction]");
-  if (instruction) instruction.textContent = contextualInstruction || (memberStart ? "请选择构件的终点节点。按 Esc 可取消。" : TOOL_INSTRUCTIONS[tool]);
+  if (instruction) instruction.textContent = contextualInstruction || (memberStart ? "请选择构件的终点（节点或空白位置）。按 Esc 可取消。" : TOOL_INSTRUCTIONS[tool]);
   for (const input of root.querySelectorAll("[data-cad-distance], [data-cad-angle]")) input.disabled = !(tool === "MEMBER" && memberStart);
 }
 
@@ -207,8 +207,8 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   const chooseTool = (nextTool) => {
     interaction.dispatch({type:'SELECT_TOOL',tool:nextTool},{draft:canvasController.getState().draft});
     tool = nextTool; acquiredSnap = null; contextualInstruction = null; pendingNumeric = null; clearInputs();
-    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); refreshUi();
-    if (dynamicOverlay) dynamicOverlay.hidden = nextTool === "SELECT" || cadState(current).dynamicInput === false;
+    const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, origin: null, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); refreshUi();
+    if (dynamicOverlay) dynamicOverlay.hidden = !['NODE','MEMBER'].includes(nextTool) || cadState(current).dynamicInput === false;
   };
   for (const button of root.querySelectorAll("[data-workspace-tool]")) button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
   for (const button of root.querySelectorAll("[data-support-choice]")) button.addEventListener("click", () => {
@@ -216,7 +216,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     for (const choice of root.querySelectorAll("[data-support-choice]")) choice.setAttribute("aria-pressed", String(choice === button));
   });
   const orthoButton = root.querySelector("[data-cad-ortho]"); const snapButton = root.querySelector("[data-cad-snap]");
-  const toggleCad = (field, button) => { const current = canvasController.getState(); const nextCad = Object.freeze({ ...cadState(current), [field]: !cadState(current)[field], trackingGuide: field === "tracking" ? null : cadState(current).trackingGuide }); canvasController.replaceState({ ...current, cad: nextCad }); button.setAttribute("aria-pressed", nextCad[field] ? "true" : "false"); if (field === "dynamicInput" && dynamicOverlay) dynamicOverlay.hidden = !nextCad.dynamicInput || tool === "SELECT"; cadStatus(root, nextCad); };
+  const toggleCad = (field, button) => { const current = canvasController.getState(); const nextCad = Object.freeze({ ...cadState(current), [field]: !cadState(current)[field], trackingGuide: field === "tracking" ? null : cadState(current).trackingGuide }); canvasController.replaceState({ ...current, cad: nextCad }); button.setAttribute("aria-pressed", nextCad[field] ? "true" : "false"); if (field === "dynamicInput" && dynamicOverlay) dynamicOverlay.hidden = !nextCad.dynamicInput || !['NODE','MEMBER'].includes(tool); cadStatus(root, nextCad); };
   orthoButton?.addEventListener("click", () => toggleCad("ortho", orthoButton)); snapButton?.addEventListener("click", () => toggleCad("gridSnap", snapButton));
   for (const [field, selector] of [["gridVisible", "[data-cad-grid-visible]"], ["objectSnap", "[data-cad-object-snap]"], ["tracking", "[data-cad-tracking]"], ["dynamicInput", "[data-cad-dynamic-input]"]]) {
     const button = root.querySelector(selector);
@@ -306,7 +306,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (tool === "NODE") {
       if (pointerSelection?.kind === "SUPPORT") return;
       const world = worldPointFromEvent(svg, locationEvent); const cad = cadState(current);
-      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: screen, candidates: null, viewTransform: current.viewTransform, origin: cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+      const resolved = world && resolvePointerPoint({ worldPointer: world, screenPointer: screen, candidates: null, viewTransform: current.viewTransform, origin: cad.origin, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
       const point = resolved?.point; if (!point) return;
       if (resolved.nodeClientKey) {
         apply({ type: "CONNECT_NODE", nodeClientKey: resolved.nodeClientKey });
@@ -370,7 +370,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   });
   const handlePointerMove=(world, state, screen) => {
     if (!world) return; const display=v=>String(Math.round(v*1e6)/1e6);root.querySelector("#workspace-pointer-x").textContent = `X: ${display(world.x)} mm`; root.querySelector("#workspace-pointer-y").textContent = `Y: ${display(world.y)} mm`;
-    const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: screen, candidates:null, viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin || world, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
+    const cad = cadState(state); const resolution = resolvePointerPoint({ worldPointer: world, screenPointer: screen, candidates:null, viewTransform: state.viewTransform, origin: memberOrigin() || cad.origin, ortho: effectiveOrtho(cad), gridEnabled: cad.gridSnap, explicitNumeric: false });
     const active = tool !== "SELECT";
     const unconnectedIntersection = resolution.kind==='INTERSECTION';
     let trackingGuide = null;
@@ -389,7 +389,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       trackingGuide,
     });
     if (dynamicOverlay) {
-      dynamicOverlay.hidden = !active || cad.dynamicInput === false;
+      dynamicOverlay.hidden = !['NODE','MEMBER'].includes(tool) || cad.dynamicInput === false;
       if (!dynamicOverlay.hidden) {
         const center = svg.closest(".workspace-center").getBoundingClientRect();
         const focused=dynamicOverlay.contains(document.activeElement);

@@ -2181,7 +2181,7 @@ def test_workspace_modeling_tools_mutate_draft_and_save(context, workspace_page)
     page.locator('[data-workspace-tool="MEMBER"]').click()
     connection_rect = page.locator('[data-client-key="c1"] rect')
     connection_rect.click(force=True)
-    assert page.locator('[data-modeling-instruction]').text_content() == '请选择构件的终点节点。按 Esc 可取消。'
+    assert page.locator('[data-modeling-instruction]').text_content() == '请选择构件的终点（节点或空白位置）。按 Esc 可取消。'
     end_node = page.locator('[data-object-kind="GeometryNode"]').last.locator('circle')
     end_node.click(force=True)
     assert page.locator('[data-object-kind="PhysicalMember"]').count() == 2
