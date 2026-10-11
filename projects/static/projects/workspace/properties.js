@@ -321,16 +321,16 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
     const guidance = parent?.querySelector("[data-ux-panel-guidance]");
     if (workspace?.dataset.uxStage === "build") {
       if (title) title.textContent = current ? "当前对象" : "当前任务";
-      if (guidance) guidance.textContent = current ? "选中的对象会在画布中高亮。" : state.draft.nodes.length ? "选择工具后，点击画布或已有对象继续。" : "在画布点一下，放置第一个节点。";
+      if (guidance) guidance.textContent = current ? "选中的对象会在画布中高亮。" : state.draft.physical_members.length ? "选择工具后，点击画布或已有对象继续。" : "选择「构件」，点击起点，再点击终点，绘制第一根构件。";
     }
     const heading = (text) => { const element = document.createElement("h3"); element.textContent = text; root.append(element); };
     const note = (text) => { const element = document.createElement("p"); element.textContent = text; root.append(element); };
     heading("这是什么");
-    if (!current) { note("这里是你的结构草稿。"); heading("可以做什么"); note("选择左侧工具，在画布放置节点、连接构件。"); heading("下一步"); note(state.draft.nodes.length ? "继续建立结构，或选择对象修改。" : "先放置第一个节点。"); return; }
+    if (!current) { note("这里是你的结构草稿。"); heading("可以做什么"); note("选择「构件」，点击起点，再点击终点，绘制第一根构件。"); heading("下一步"); note(state.draft.physical_members.length ? "继续建立结构，或选择对象修改。" : "起点、终点可选择空白位置或已有节点。"); return; }
     if ((state.selectedObjects?.length || 0) > 1) note(`已选择 ${state.selectedObjects.length} 个对象；下方显示最后选中的对象。删除会作用于全部所选对象。`);
     const identity = document.createElement("p"); identity.dataset.propertyIdentity = ""; identity.textContent = labels.label(current.selected.kind, current.selected.clientKey); root.append(identity);
     const kind = current.selected.kind;
-    if (kind === "GEOMETRY_NODE") note(`结构上的一个位置：X ${current.record.x_mm} mm，Y ${current.record.y_mm} mm。`);
+    if (kind === "GEOMETRY_NODE") { note(`结构上的一个位置：X ${current.record.x_mm} mm，Y ${current.record.y_mm} mm。`); note("节点用于独立位置或明确连接；只有参与构件的结构节点才能放置支座与荷载。"); }
     if (kind === "PHYSICAL_MEMBER") { const from = current.record.start_node_client_key ? labels.label("GEOMETRY_NODE", current.record.start_node_client_key) : "未指定"; const to = current.record.end_node_client_key ? labels.label("GEOMETRY_NODE", current.record.end_node_client_key) : "未指定"; note(`从 ${from} 到 ${to}。材料与截面决定它的基本刚度。`); }
     if (kind === "CONNECTION") note("这里明确连接参与的构件；构件相交不等于连接。");
     if (kind === "SUPPORT") { note(current.record.support_type === "PINNED" ? "铰支座限制水平和竖直位移。" : `滚动支座限制 ${current.record.restrained_axis} 方向位移。`); if (!hasTargetLocation(state.draft, current.record.target_node_client_key ?? current.record.target_connection_client_key)) note("作用位置未指定，请重新指定节点。"); }
@@ -345,7 +345,7 @@ export function bindPropertyPanel({ root, canvasController, materials = [], sect
       appendDelete(root, current.selected, canvasController, showError);
     }
     heading("下一步");
-    note(kind === "GEOMETRY_NODE" ? "继续放置节点，再用构件连接。" : kind === "PHYSICAL_MEMBER" ? "检查材料与截面，必要时调整。" : kind === "CONNECTION" ? "需要时添加支座或荷载。" : "保存模型，再运行检查。 ");
+    note(kind === "GEOMETRY_NODE" ? "选择「构件」继续绘制；需要明确连接位置时使用「节点」。" : kind === "PHYSICAL_MEMBER" ? "检查材料与截面，必要时调整。" : kind === "CONNECTION" ? "需要时添加支座或荷载。" : "保存模型，再运行检查。 ");
   };
   propertyRenderers.set(canvasController, (state) => {
     const current = root.querySelector("[data-incomplete-inventory]");

@@ -62,7 +62,7 @@ def test_project_card_uses_actual_model_and_analysis_progress(client, context):
     project.save(update_fields=["draft_version"])
     body = client.get("/events/").content.decode()
     assert "当前状态：尚未建模" in body
-    assert "下一步：从第一个节点开始" in body
+    assert "下一步：从第一根构件开始" in body
 
     save_bt01_draft(owner, project, material, section)
     run = analyze_project(project=project, actor=owner, expected_draft_version=project.draft_version)

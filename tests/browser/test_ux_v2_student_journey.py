@@ -8,17 +8,21 @@ from tests.application.test_analysis_acceptance import save_bt01_draft
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_new_student_sees_purpose_stage_and_can_place_first_node(live_server):
+def test_new_student_sees_purpose_stage_and_can_draw_first_member(live_server):
     """Break caught: a newcomer lands in a tool dashboard without a starting action."""
     playwright = pytest.importorskip("playwright.sync_api")
     from accounts.models import User
     from competitions.models import EventMembership
     from projects.models import Project
+    from materials.models import Material
+    from materials.services import create_section
 
     student = User.objects.create_user("ux-v2-first-student", password="StudyPass123!")
     event = make_event(name="新生结构赛", code="UX-V2-ENTRY")
     add_membership(user=student, event=event, membership_type=EventMembership.Type.PARTICIPANT)
     Project.objects.create(event=event, owner_user=student, name="我的第一座桥")
+    material = Material.objects.create(owner_user=student, name="木材", E_MPa=10000, density_g_per_mm3=0.0005, source_type="MEASURED")
+    section = create_section(owner=student, name="方杆", definition={"schema_version": "section-definition-v1", "type": "rectangle", "width_mm": 10, "height_mm": 10, "density_g_per_mm3": 0.0005})
     runtime = playwright.sync_playwright().start()
     browser = runtime.chromium.launch()
     page = browser.new_page(viewport={"width": 1280, "height": 800})
@@ -28,16 +32,20 @@ def test_new_student_sees_purpose_stage_and_can_place_first_node(live_server):
         page.locator('input[name="username"]').fill(student.username)
         page.locator('input[name="password"]').fill("StudyPass123!")
         page.get_by_role("button", name="登录").click()
-        assert page.get_by_text("从第一个节点开始").is_visible()
+        assert page.get_by_text("从第一根构件开始").is_visible()
         page.get_by_role("link", name="进入工作区").click()
         assert page.locator("[data-ux-stage-nav]").get_by_role("button", name="建模").is_visible()
-        assert page.get_by_text("下一步：放置第一个节点").is_visible()
+        assert "构件" in page.locator("[data-ux-next-task]").inner_text()
+        page.locator('[data-member-material]').select_option(str(material.pk))
+        page.locator('[data-member-section]').select_option(str(section.pk))
         page.get_by_role("button", name="开始建模").click()
-        assert page.locator('[data-workspace-tool="NODE"]').get_attribute("aria-pressed") == "true"
+        assert page.locator('[data-workspace-tool="MEMBER"]').get_attribute("aria-pressed") == "true"
         canvas = page.locator("#workspace-canvas")
         canvas.click(position={"x": 200, "y": 200})
-        assert page.locator('[data-object-kind="GeometryNode"]').count() == 1
-        assert page.get_by_text("下一步：添加第二个节点，再用构件连接").is_visible()
+        canvas.click(position={"x": 400, "y": 200})
+        assert page.locator('[data-object-kind="GeometryNode"]').count() == 2
+        assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
+        assert page.get_by_text("下一步：为结构添加支座").is_visible()
         page.set_viewport_size({"width": 1024, "height": 768})
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         assert page.locator("#workspace-canvas").bounding_box()["width"] > 500
@@ -56,7 +64,7 @@ def test_build_guidance_context_save_and_check(context, workspace_page):
     assert tools.count() == 5
     assert all(button.locator("[data-tool-icon]").count() == 1 for button in tools.all())
     page.locator('[data-workspace-tool="NODE"]').click()
-    assert page.get_by_text("在画布放置节点；交叉处放置节点即形成桁架铰接").is_visible()
+    assert "交叉不会自动连接" in page.locator("[data-modeling-instruction]").inner_text()
     page.locator("#workspace-canvas").click(position={"x": 200, "y": 200})
     assert page.get_by_text("已放置节点").is_visible()
     assert page.locator("[data-ux-save-indicator]").inner_text() == "有未保存修改"

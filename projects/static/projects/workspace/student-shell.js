@@ -1,5 +1,5 @@
 const STAGES = Object.freeze({
-  build: ["建模", "放置第一个节点"],
+  build: ["建模", "选择「构件」，点击起点，再点击终点，绘制第一根构件。"],
   check: ["检查", "检查已保存的模型"],
   prediction: ["预测（可选）", "先记录你的判断，也可以直接分析"],
   analyze: ["分析", "分析这份已保存的模型"],
@@ -22,8 +22,7 @@ export function bindTabKeys(tablist) {
 }
 
 function buildTask(draft) {
-  if (!draft.nodes.length) return "放置第一个节点";
-  if (!draft.physical_members.length) return "添加第二个节点，再用构件连接";
+  if (!draft.physical_members.length) return STAGES.build[1];
   if (draft.schema_version === "physical-draft-v2") {
     if (!draft.supports.length) return "为结构添加支座";
     if (!draft.node_loads.length) return "为结构添加荷载";
@@ -58,7 +57,7 @@ export function bindStudentShell({ root, canvasController }) {
       if (guidance) guidance.textContent = messages[stage][1];
     } else {
       if (panel) panel.textContent = "当前任务";
-      if (guidance) guidance.textContent = canvasController.getState().draft.nodes.length ? "选择工具后，点击画布或已有对象继续。" : "在画布点一下，放置第一个节点。";
+      if (guidance) guidance.textContent = canvasController.getState().draft.physical_members.length ? "选择工具后，点击画布或已有对象继续。" : STAGES.build[1];
     }
     for (const button of root.querySelectorAll("[data-ux-stage-target]")) {
       button.setAttribute("aria-current", button.dataset.uxStageTarget === stage ? "step" : "false");
@@ -67,7 +66,7 @@ export function bindStudentShell({ root, canvasController }) {
   root.querySelectorAll("[data-ux-stage-target]").forEach(button => button.addEventListener("click", () => selectStage(button.dataset.uxStageTarget)));
   root.querySelector("[data-ux-start-modeling]")?.addEventListener("click", () => {
     selectStage("build");
-    root.querySelector('[data-workspace-tool="NODE"]')?.click();
+    root.querySelector('[data-workspace-tool="MEMBER"]')?.click();
     if (empty) empty.hidden = true;
     root.querySelector("#workspace-canvas")?.focus();
   });

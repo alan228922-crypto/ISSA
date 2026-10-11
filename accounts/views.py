@@ -53,7 +53,7 @@ def event_landing(request):
     ):
         if can_view_project(request.user, project):
             if not project.ux_has_nodes:
-                project.ux_status, project.ux_next = "尚未建模", "从第一个节点开始"
+                project.ux_status, project.ux_next = "尚未建模", "从第一根构件开始"
             elif project.ux_has_current_result:
                 project.ux_status, project.ux_next = "已完成分析", "查看结果并总结"
             elif project.ux_has_current_prediction:

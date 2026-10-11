@@ -4,6 +4,7 @@ from playwright.sync_api import expect
 
 from tests.application.test_physical_draft import context
 from tests.application.test_analysis_acceptance import save_bt01_draft
+from tests.browser.test_cad_core_drawing import open_core, move_world
 
 pytestmark = [pytest.mark.browser, pytest.mark.django_db(transaction=True)]
 TAB_NAMES = ("结论", "预测对比", "为什么", "技术数据")
@@ -74,3 +75,68 @@ def test_bridge_result_keyboard_navigation_stays_available(analyzed_bridge):
         page.keyboard.press(key)
         expect(page.get_by_role('tab', name=name, exact=True)).to_have_attribute('aria-selected', 'true')
         assert_result_tabs_visible(page)
+
+
+def test_bridge_blank_guidance_consistently_starts_with_member(context, workspace_page):
+    """RED-5/7: neither the shell nor property rerender may demand a first Node."""
+    page, _ = open_core(context, workspace_page)
+    for selector in ('[data-ux-next-task]', '[data-ux-panel-guidance]', '[data-ux-empty-state]'):
+        assert '构件' in page.locator(selector).inner_text()
+    properties = page.locator('#workspace-properties-panel').inner_text()
+    assert '构件' in properties
+    assert '第一个节点' not in properties
+    assert '先放置' not in properties
+
+
+def test_bridge_primary_cta_really_draws_member_from_blank_space(context, workspace_page):
+    """RED-6: correct wording alone cannot hide activation of the wrong tool."""
+    page, _ = open_core(context, workspace_page)
+    page.locator('[data-ux-start-modeling]').click()
+    expect(page.locator('[data-workspace-tool="MEMBER"]')).to_have_attribute('aria-pressed', 'true')
+    expect(page.locator('[data-workspace-tool="NODE"]')).to_have_attribute('aria-pressed', 'false')
+    move_world(page, 200, -100, click=True)
+    move_world(page, 400, -100, click=True)
+    expect(page.locator('[data-object-kind="PhysicalMember"]')).to_have_count(1)
+    expect(page.locator('[data-object-kind="GeometryNode"]')).to_have_count(2)
+
+
+def test_bridge_independent_node_does_not_require_a_second_node(context, workspace_page):
+    """Protect the alternate entry: existing standalone nodes are optional endpoints."""
+    page, _ = open_core(context, workspace_page, [('standalone', 0, 0)])
+    assert '构件' in page.locator('[data-ux-next-task]').inner_text()
+    assert '第二个节点' not in page.locator('[data-ux-next-task]').inner_text()
+    page.locator('[data-draft-object-key="standalone"]').click()
+    assert '继续放置节点' not in page.locator('#workspace-properties-panel').inner_text()
+    page.locator('[data-workspace-tool="MEMBER"]').click()
+    move_world(page, 0, 0, click=True)
+    move_world(page, 100, 0, click=True)
+    expect(page.locator('[data-object-kind="PhysicalMember"]')).to_have_count(1)
+
+
+def test_bridge_node_tool_retains_explicit_joint_explanation(context, workspace_page):
+    """RED-8: primary Member guidance must not erase the explicit-joint exception."""
+    page, _ = open_core(context, workspace_page)
+    page.locator('[data-workspace-tool="NODE"]').click()
+    instruction = page.locator('[data-modeling-instruction]').inner_text()
+    assert '节点' in instruction and '交叉' in instruction
+    assert '不会自动连接' in instruction
+    move_world(page, 200, -100, click=True)
+    expect(page.locator('[data-object-kind="GeometryNode"]')).to_have_count(1)
+    expect(page.locator('[data-object-kind="PhysicalMember"]')).to_have_count(0)
+
+
+def test_bridge_empty_catalog_discloses_drawing_prerequisite(context, workspace_page):
+    from accounts.models import User
+    from competitions.models import EventMembership
+    from projects.models import Project
+    owner, original, _, _ = context
+    student = User.objects.create_user('empty-catalog-student')
+    EventMembership.objects.create(user=student, event=original.event, membership_type=EventMembership.Type.PARTICIPANT)
+    project = Project.objects.create(event=original.event, owner_user=student, name='First project')
+    page = workspace_page(user=student, project=project)
+    expect(page.locator('[data-ux-empty-state]')).to_contain_text('绘制前')
+    expect(page.locator('[data-ux-empty-state]')).to_contain_text('材料与截面')
+    page.locator('[data-ux-start-modeling]').click()
+    expect(page.locator('[data-workspace-tool="MEMBER"]')).to_have_attribute('aria-pressed', 'true')
+    expect(page.locator('[data-member-prerequisite]')).to_be_visible()
+    expect(page.get_by_role('link', name='管理材料与截面', exact=True)).to_be_visible()

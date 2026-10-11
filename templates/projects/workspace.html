@@ -25,7 +25,7 @@
       <button type="button" data-ux-stage-target="understanding">理解</button>
       <button type="button" data-ux-stage-target="summary">总结</button>
     </nav>
-    <div class="ux-stage-heading"><div><p data-ux-current-stage>当前：建模</p><p data-ux-next-task>下一步：放置第一个节点</p></div><span data-ux-save-indicator role="status" aria-live="polite">已保存</span></div>
+    <div class="ux-stage-heading"><div><p data-ux-current-stage>当前：建模</p><p data-ux-next-task>下一步：选择「构件」，点击起点，再点击终点，绘制第一根构件。</p></div><span data-ux-save-indicator role="status" aria-live="polite">已保存</span></div>
     <section class="workspace-layout" aria-label="结构学习工作区">
       <aside id="workspace-modeling-panel" aria-label="建模工具">
         <h2>当前工具</h2>
@@ -76,15 +76,16 @@
           <div data-cad-polar-fields hidden><label>长度 (mm)<input type="number" step="any" min="0" data-cad-dynamic-length></label><label>角度 (°)<input type="number" step="any" data-cad-dynamic-angle></label></div>
           <div data-cad-relative-fields hidden><label>ΔX (mm)<input type="number" step="any" data-cad-dynamic-dx></label><label>ΔY (mm)<input type="number" step="any" data-cad-dynamic-dy></label></div>
         </div>{% endif %}
-        {% if not bootstrap.read_only %}<div data-ux-empty-state class="ux-empty-state"{% if bootstrap.draft.nodes %} hidden{% endif %}><h2>开始绘制结构</h2><p>可用「构件」在画布点击起点、终点直接绘制；也可先放置节点。</p><button type="button" data-ux-start-modeling>开始建模</button></div>{% endif %}
+        {% if not bootstrap.read_only %}<div data-ux-empty-state class="ux-empty-state"{% if bootstrap.draft.nodes %} hidden{% endif %}><h2>开始绘制结构</h2><p>选择「构件」，点击起点，再点击终点，绘制第一根构件。</p>{% if not bootstrap.materials or not bootstrap.sections %}<p>绘制前，请在右侧「管理材料与截面」准备并选择材料与截面。</p>{% endif %}<button type="button" data-ux-start-modeling>开始建模</button></div>{% endif %}
         <p id="workspace-canvas-keyboard-help" class="visually-hidden">画布取得焦点后，可使用方向键平移；使用放大、缩小和全图按钮调整视图。</p>
       </section>
       <aside id="workspace-workflow-panel" aria-label="当前阶段与对象">
         <h2 data-ux-panel-title>现在做什么</h2>
-        <p data-ux-panel-guidance>在画布点一下，放置第一个节点。</p>
+        <p data-ux-panel-guidance>选择「构件」，点击起点，再点击终点，绘制第一根构件。</p>
         <section id="workspace-properties-panel" aria-label="对象属性"><p>选择对象后可在这里查看属性。</p></section>
         {% if not bootstrap.read_only %}<fieldset class="workspace-member-properties">
             <legend>新构件属性</legend>
+            {% if not bootstrap.materials or not bootstrap.sections %}<p data-member-prerequisite>绘制前，请通过「管理材料与截面」准备并选择材料与截面，再点击起点与终点。</p>{% endif %}
             <label>材料
               <select data-member-material>
                 {% for material in bootstrap.materials %}<option value="{{ material.id }}">{{ material.name }}</option>{% empty %}<option value="">请先创建材料</option>{% endfor %}
