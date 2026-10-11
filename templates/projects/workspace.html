@@ -333,7 +333,7 @@
             const heading = document.createElement("h3"); heading.textContent = `${object.name} 尚未完整`;
             const missing = document.createElement("p"); missing.textContent = `缺少：${object.fields.join("、")}`;
             card.append(heading, missing);
-            const presentation = presentModelCheckIssue(object.issue);
+            const presentation = presentModelCheckIssue(object.issue, object.fields);
             const meaning = document.createElement("p"); meaning.textContent = `${presentation.title}。${presentation.explanation}`; card.append(meaning);
             const rebind = document.createElement("button"); rebind.type = "button"; rebind.textContent = "重新指定";
             rebind.addEventListener("click", () => recoverCheckIssue(object.issue, presentation)); card.append(rebind);

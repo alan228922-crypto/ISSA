@@ -16,12 +16,18 @@ const CHECK_RECOVERY = Object.freeze({
   MISSING_LOAD_NODE: { title: "荷载尚未指定作用节点", explanation: "荷载没有明确作用位置，不能进入分析。请在对象属性中重新指定作用节点。", actionLabel: "重新指定", action: "REBIND", field: "[data-property-load-target]" },
 });
 
-export function presentModelCheckIssue(issue) {
-  return Object.hasOwn(CHECK_RECOVERY, issue?.code) ? CHECK_RECOVERY[issue.code] : {
+export function presentModelCheckIssue(issue, missingFields = []) {
+  const presentation = Object.hasOwn(CHECK_RECOVERY, issue?.code) ? CHECK_RECOVERY[issue.code] : {
     title: "发现一个需要检查的地方",
     explanation: issue?.human_message || "模型需要进一步检查。",
     actionLabel: null, action: null,
   };
+  if (issue?.physical_object?.kind !== "PHYSICAL_MEMBER" || missingFields.length < 2) return presentation;
+  const bothEndpoints = missingFields.length === 2 && missingFields.includes("起点") && missingFields.includes("终点");
+  const fields = missingFields.join(bothEndpoints ? "和" : "、");
+  return { ...presentation, title: `构件缺少${fields}`, explanation: bothEndpoints
+    ? "这根构件尚未指定起点和终点，因此无法确定完整位置。请重新指定两个端点。"
+    : `这根构件尚未指定${fields}，缺漏补齐前不能分析。请在对象属性中逐项重新指定。` };
 }
 
 function failed(body) {
