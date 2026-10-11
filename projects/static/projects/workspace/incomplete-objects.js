@@ -59,7 +59,7 @@ export function groupDraftCheckIssues(draft, issues) {
   const other = [];
   for (const issue of issues) {
     const target = issue.physical_object;
-    if (!MISSING_FIELD_NAMES[issue.code] || !KINDS[target?.kind] || !target.client_key) { other.push(issue); continue; }
+    if (!Object.hasOwn(MISSING_FIELD_NAMES, issue.code) || !Object.hasOwn(KINDS, target?.kind) || !target.client_key) { other.push(issue); continue; }
     const id = `${target.kind}:${target.client_key}`;
     if (!grouped.has(id)) grouped.set(id, { kind: target.kind, clientKey: target.client_key, name: studentObjectName(draft, target.kind, target.client_key), fields: [], issue });
     const field = MISSING_FIELD_NAMES[issue.code];

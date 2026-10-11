@@ -82,6 +82,7 @@
       <aside id="workspace-workflow-panel" aria-label="当前阶段与对象">
         <h2 data-ux-panel-title>现在做什么</h2>
         <p data-ux-panel-guidance>选择「构件」，点击起点，再点击终点，绘制第一根构件。</p>
+        <p data-check-recovery-guidance role="status" hidden></p>
         <section id="workspace-properties-panel" aria-label="对象属性"><p>选择对象后可在这里查看属性。</p></section>
         {% if not bootstrap.read_only %}<fieldset class="workspace-member-properties">
             <legend>新构件属性</legend>
@@ -169,7 +170,7 @@
     import { bindModelingInteractions } from "{% static 'projects/workspace/modeling-interaction.js' %}";
     import { bindPropertyPanel } from "{% static 'projects/workspace/properties.js' %}";
     import { groupDraftCheckIssues } from "{% static 'projects/workspace/incomplete-objects.js' %}";
-    import { createWorkspaceWorkflow } from "{% static 'projects/workspace/workflow.js' %}";
+    import { createWorkspaceWorkflow, presentModelCheckIssue } from "{% static 'projects/workspace/workflow.js' %}";
     import { bindPredictionWorkspace } from "{% static 'projects/workspace/prediction.js' %}";
     import { createResultsWorkspace, renderComparison, renderExplanation, renderLevelOne, renderResultActions, showLevelOne, showEngineeringDetails, renderEngineeringDetails } from "{% static 'projects/workspace/results.js' %}";
     import { renderWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
@@ -293,11 +294,27 @@
       catch (error) { studentShell.setSaveState("保存失败"); showError(error); }
       finally { button.disabled = false; }
     });
+    const recoveryGuidance = document.querySelector("[data-check-recovery-guidance]");
+    function recoverCheckIssue(issue, presentation) {
+      studentShell.selectStage("build");
+      document.querySelector(`[data-workspace-tool="${presentation.action === "SUPPORT" ? "SUPPORT" : "SELECT"}"]`)?.click();
+      recoveryGuidance.textContent = presentation.explanation;
+      recoveryGuidance.hidden = false;
+      if (presentation.action === "REBIND") {
+        canvasController.replaceState(focusWorkspaceIssue(canvasController.getState(), issue));
+        const inventory = document.querySelector("[data-incomplete-inventory]");
+        if (inventory) inventory.open = true;
+        const fields = [...document.querySelectorAll(presentation.field)];
+        const field = fields.find((input) => input.value === "") || fields[0];
+        field?.scrollIntoView({ block: "nearest" });
+        field?.focus({ preventScroll: true });
+      }
+    }
     document.getElementById("workspace-model-check").addEventListener("click", async () => {
       const current = canvasController.getState();
       if (current.dirty) { showError({ code: "UNSAVED_DRAFT", message: "本地修改尚未保存，服务器无法检查这些修改。" }); return; }
       try {
-        const result = await workflow.checkModel(current.draftVersion); errorPanel.hidden = true; issuePanel.replaceChildren();
+        const result = await workflow.checkModel(current.draftVersion); errorPanel.hidden = true; issuePanel.replaceChildren(); recoveryGuidance.hidden = true;
         if (result.ok) { issuePanel.textContent = "模型检查通过。下一步可以预测，也可以直接分析。"; return; }
         const grouped = groupDraftCheckIssues(current.draft, result.issues || []);
         if (grouped.objects.length) {
@@ -316,21 +333,28 @@
             const heading = document.createElement("h3"); heading.textContent = `${object.name} 尚未完整`;
             const missing = document.createElement("p"); missing.textContent = `缺少：${object.fields.join("、")}`;
             card.append(heading, missing);
+            const presentation = presentModelCheckIssue(object.issue);
+            const meaning = document.createElement("p"); meaning.textContent = `${presentation.title}。${presentation.explanation}`; card.append(meaning);
             const rebind = document.createElement("button"); rebind.type = "button"; rebind.textContent = "重新指定";
-            rebind.addEventListener("click", () => { studentShell.selectStage("build"); canvasController.replaceState(focusWorkspaceIssue(canvasController.getState(), object.issue)); document.querySelector("[data-incomplete-inventory]").open = true; }); card.append(rebind);
+            rebind.addEventListener("click", () => recoverCheckIssue(object.issue, presentation)); card.append(rebind);
             issuePanel.append(card);
           }
         }
         for (const issue of grouped.other) {
+          const presentation = presentModelCheckIssue(issue);
           const card = document.createElement("article"); card.className = "ux-check-issue";
-          const title = document.createElement("h3"); title.textContent = "发现一个需要检查的地方";
-          const message = document.createElement("p"); message.textContent = issue.human_message || "模型需要进一步检查。";
+          const title = document.createElement("h3"); title.textContent = presentation.title;
+          const message = document.createElement("p"); message.textContent = presentation.explanation;
           const next = document.createElement("p"); next.textContent = "下一步：回到建模，检查连接、支座和荷载，再保存并重新检查。";
           card.append(title, message, next);
+          if (presentation.actionLabel) {
+            const recover = document.createElement("button"); recover.type = "button"; recover.textContent = presentation.actionLabel;
+            recover.addEventListener("click", () => recoverCheckIssue(issue, presentation)); card.append(recover);
+          }
           const target = focusWorkspaceIssue(canvasController.getState(), issue);
           if (target !== canvasController.getState() && canvas.querySelector(`[data-client-key="${CSS.escape(target.focusedObject.clientKey)}"]`)) {
             const locate = document.createElement("button"); locate.type = "button"; locate.textContent = "在画布中查看";
-            locate.addEventListener("click", () => canvasController.replaceState(focusWorkspaceIssue(canvasController.getState(), issue)));
+            locate.addEventListener("click", () => { studentShell.selectStage("build"); canvasController.replaceState(focusWorkspaceIssue(canvasController.getState(), issue)); });
             card.append(locate);
           }
           issuePanel.append(card);

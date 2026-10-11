@@ -65,6 +65,8 @@
 .workspace-member-properties label,#workspace-properties-panel label { display:grid; gap:5px; margin:9px 0; }
 .workspace-member-properties select,#workspace-properties-panel :is(select,input) { max-width:100%; min-height:38px; padding:5px; border:1px solid var(--ux-line); border-radius:6px; }
 #workspace-properties-panel { border-top:1px solid var(--ux-line); padding-top:10px; }
+[data-check-recovery-guidance] { padding:10px; border-left:3px solid var(--ux-blue); background:#eaf2ff; line-height:1.45; }
+#workspace-root:not([data-ux-stage="build"]) [data-check-recovery-guidance], [data-check-recovery-guidance][hidden] { display:none; }
 #workspace-properties-panel h3 { margin:16px 0 6px; font-size:16px; }
 #workspace-properties-panel p { margin:5px 0 10px; line-height:1.45; }
 #workspace-properties-panel [data-property-delete] { margin:9px 0; }
