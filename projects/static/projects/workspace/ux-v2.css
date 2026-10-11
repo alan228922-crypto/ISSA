@@ -92,10 +92,10 @@
 #workspace-results [data-result-conclusion] button { text-align:left; padding:10px; border:1px solid var(--ux-line); border-radius:8px; background:#fff; }
 #workspace-results h2 { margin:2px 0; font-size:20px; }
 #workspace-results p { margin:4px 0; }
-#workspace-results[data-ux-results-view="conclusion"] :is([data-result-comparison],[data-result-explanation]),
-#workspace-results[data-ux-results-view="compare"] :is([data-result-conclusion],[data-result-explanation]),
-#workspace-results[data-ux-results-view="explain"] :is([data-result-conclusion],[data-result-comparison]),
-#workspace-results[data-ux-results-view="technical"] :is([data-result-conclusion],[data-result-comparison],[data-result-explanation]) { display:none; }
+#workspace-results[data-ux-results-view="conclusion"] [data-result-panel]:not([data-result-panel="conclusion"]),
+#workspace-results[data-ux-results-view="compare"] [data-result-panel]:not([data-result-panel="compare"]),
+#workspace-results[data-ux-results-view="explain"] [data-result-panel]:not([data-result-panel="explain"]),
+#workspace-results[data-ux-results-view="technical"] [data-result-panel] { display:none; }
 #workspace-root[data-ux-stage="understanding"] #workspace-engineering-details { display:none; }
 #workspace-root[data-ux-stage="understanding"]:has(#workspace-results[data-ux-results-view="technical"]) #workspace-engineering-details { display:block; }
 #workspace-root[data-ux-stage="analyze"] [data-ux-back-to-build] { margin-left:8px; }

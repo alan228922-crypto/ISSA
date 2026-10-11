@@ -108,7 +108,7 @@ export function createResultsWorkspace({ urls, post = postJson, get = requestJso
 
 export function renderLevelOne(root, view, focus = () => {}) {
   root.replaceChildren();
-  const conclusion = document.createElement("section"); conclusion.dataset.resultConclusion = ""; root.append(conclusion);
+  const conclusion = document.createElement("section"); conclusion.dataset.resultConclusion = ""; conclusion.dataset.resultPanel = "conclusion"; root.append(conclusion);
   const title = document.createElement("h2"); title.textContent = `第 ${view.runNumber} 次分析 · 结论`; conclusion.append(title);
   const status = document.createElement("p"); status.textContent = view.stale ? "这份分析结果对应较早的模型版本，不能代表当前草稿。请重新分析当前模型，才能得到当前结果。" : "分析已完成，对应当前模型版本。"; conclusion.append(status);
   const prediction = document.createElement("p"); prediction.textContent = view.predictionUsed ? "预测已参与本次分析流程。" : "本次分析未使用预测。"; conclusion.append(prediction);
@@ -147,16 +147,19 @@ export function renderResultActions(root, { onCompare, onExplain, onTechnical = 
   for (const [name, text, handler] of [["conclusion", "结论", () => {}], ["compare", "预测对比", onCompare], ["explain", "为什么", onExplain], ["technical", "技术数据", onTechnical]]) {
     const button = document.createElement("button");
     button.type = "button"; button.setAttribute("role", "tab"); button.dataset.resultView = name;
-    button.dataset[`result${name[0].toUpperCase()}${name.slice(1)}`] = "";
+    // Retain legacy action hooks without sharing the conclusion panel marker.
+    button.dataset[name === "conclusion" ? "resultConclusionTab" : `result${name[0].toUpperCase()}${name.slice(1)}`] = "";
     button.textContent = text;
     button.addEventListener("click", () => { select(name); handler(); });
     actions.append(button);
   }
   const comparison = document.createElement("section");
   comparison.dataset.resultComparison = "";
+  comparison.dataset.resultPanel = "compare";
   comparison.setAttribute("aria-live", "polite");
   const explanation = document.createElement("section");
   explanation.dataset.resultExplanation = "";
+  explanation.dataset.resultPanel = "explain";
   explanation.setAttribute("aria-live", "polite");
   root.prepend(actions);
   root.append(comparison, explanation);

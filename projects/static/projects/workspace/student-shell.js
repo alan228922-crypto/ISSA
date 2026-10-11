@@ -45,6 +45,7 @@ export function bindStudentShell({ root, canvasController }) {
     if (!STAGES[stage]) return;
     if (stage !== "build") root.querySelector('[data-workspace-tool="SELECT"]')?.click();
     root.dataset.uxStage = stage;
+    if (stage === "understanding") root.querySelector('#workspace-results [role="tab"][data-result-view="conclusion"]')?.click();
     current.textContent = `当前：${STAGES[stage][0]}`;
     next.textContent = `下一步：${stage === "build" ? buildTask(canvasController.getState().draft) : STAGES[stage][1]}`;
     const analyzeContext = root.querySelector("[data-ux-analyze-context]");
