@@ -11,6 +11,15 @@
 <body>
   {% include "shared/product_header.html" %}
   <main id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}" data-ux-stage="build">
+    <dialog data-delete-impact-dialog aria-labelledby="delete-impact-title" aria-describedby="delete-impact-description">
+      <h2 id="delete-impact-title">删除会影响其他物件</h2>
+      <div id="delete-impact-description" data-delete-impact-content></div>
+      <div class="delete-impact-actions">
+        <button type="button" data-delete-impact-choice="keep">保留并重新指定</button>
+        <button type="button" data-delete-impact-choice="related">一起删除相关物件</button>
+        <button type="button" data-delete-impact-choice="cancel">取消</button>
+      </div>
+    </dialog>
     <header id="workspace-project-header">
       <div><p class="ux-eyebrow">结构学习工作区 · {{ bootstrap.access.event.name }}</p><h1>{{ bootstrap.project.name }}</h1></div>
       <p id="workspace-read-only"{% if not bootstrap.read_only %} hidden{% endif %}>只读查看</p>

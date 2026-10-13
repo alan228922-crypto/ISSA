@@ -2,6 +2,8 @@ import { EditorActionError } from "./editor.js";
 import { applyWorkspaceEditorAction } from "./state.js";
 import { createStudentLabelResolver } from "./labels.js";
 import { incompleteDraftObjects } from "./incomplete-objects.js";
+import { previewDeleteImpact } from "./delete-impact.js";
+import { confirmDeleteImpact } from "./delete-impact-dialog.js";
 
 const OBJECTS = Object.freeze({
   GEOMETRY_NODE: { collection: "nodes", label: "节点" },
@@ -204,11 +206,36 @@ function appendLoadControls(root, selected, load, canvasController, draft, label
   appendLabelControl(root, selected, load, canvasController);
 }
 
-function deleteSelection(canvasController, showError, explicitTargets = null) {
+async function deleteSelection(canvasController, showError, explicitTargets = null) {
   const state = canvasController.getState();
   const targets = explicitTargets || (state.selectedObjects?.length ? state.selectedObjects : state.selectedObject ? [state.selectedObject] : []);
   if (!targets.length) return;
   try {
+    if (state.draft.schema_version === "physical-draft-v2") {
+      const workspace = document.getElementById("workspace-root");
+      if (workspace.querySelector("[data-delete-impact-dialog]").open) return;
+      const preview = previewDeleteImpact(state.draft, targets);
+      let deletion = preview.selected;
+      let answer = null;
+      try {
+        if (preview.directAffected.length || preview.newlyUnattached.length) {
+          answer = await confirmDeleteImpact({ workspace, originalDraft: state.draft, preview });
+          if (answer.choice === "cancel") return;
+          if (answer.choice === "related") deletion = preview.finalDeleteSet;
+        }
+        const current = canvasController.getState();
+        // Check at the actual commit boundary, after the modal's async result.
+        if (current.draft !== state.draft || current.draft.version !== state.draft.version) {
+          showError({ code: "STALE_DELETE_PREVIEW", message: "模型已发生变化，请重新执行删除。" }); return;
+        }
+        const next = applyWorkspaceEditorAction(current, { type: "DELETE_OBJECTS", targets: deletion });
+        deleteFeedback = answer?.choice === "keep" ? "已删除所选对象；相关物件已保留，请检查并重新指定。" : "已删除所选对象及本次明确选择的相关物件。";
+        canvasController.replaceState({ ...next, selectedObject: null, selectedObjects: [], focusedObject: null }, true);
+        document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无";
+      } finally { answer?.restoreFocus(); }
+      return;
+    }
+    // Preserve the legacy v1 confirmation path; no v1 closure/conversion is added.
     const next = applyWorkspaceEditorAction(state, { type: "DELETE_OBJECTS", targets });
     const newlyIncomplete = [
       ...next.draft.physical_members.filter((item) => {

@@ -98,6 +98,7 @@ def test_core_student_blank_member_to_analysis_journey(context,workspace_page):
     page.locator('[data-ux-stage-target="build"]').click()
     page.locator('[data-workspace-tool="SELECT"]').click();move_world(page,1000,0,click=True)
     page.locator('#workspace-canvas').focus();page.keyboard.press('Delete')
+    page.get_by_role('dialog',name='删除会影响其他物件').get_by_role('button',name='保留并重新指定',exact=True).click()
     assert page.locator('[data-object-kind="GeometryNode"]').count()==2
     incomplete=save_reload(page)
     assert any(m['end_node_client_key'] is None for m in incomplete['physical_members'])
@@ -118,6 +119,7 @@ def test_core_selection_support_load_history_compatibility(context,workspace_pag
     page.keyboard.down('Shift');move_world(page,100,0,click=True);page.keyboard.up('Shift')
     assert page.locator('[data-object-kind="GeometryNode"][data-selected="true"]').count()==2
     page.locator('#workspace-canvas').focus();page.keyboard.press('Backspace')
+    page.get_by_role('dialog',name='删除会影响其他物件').get_by_role('button',name='保留并重新指定',exact=True).click()
     assert page.locator('[data-object-kind="GeometryNode"]').count()==0
     assert page.locator('[data-object-kind="PhysicalMember"]').count()==0 # incomplete, not deleted
     page.locator('[data-cad-undo]').click()

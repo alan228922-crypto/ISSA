@@ -71,3 +71,12 @@ button:disabled { cursor: not-allowed; opacity: .6; }
   #workspace-modeling-panel, #workspace-workflow-panel, .workspace-center { padding: 10px; }
   #workspace-status-bar { flex-wrap: wrap; }
 }
+[data-delete-impact-dialog] { width: min(560px, calc(100vw - 48px)); max-height: calc(100vh - 48px); box-sizing: border-box; border: 1px solid #a9b9d1; border-radius: 12px; padding: 20px; color: #172033; }
+[data-delete-impact-dialog][open] { display: flex; flex-direction: column; gap: 12px; }
+[data-delete-impact-dialog]::backdrop { background: #17203366; }
+[data-delete-impact-dialog] h2 { margin: 0; font-size: 20px; }
+[data-delete-impact-content] { overflow-y: auto; min-height: 0; overflow-wrap: anywhere; }
+[data-delete-impact-related-summary] { font-weight: 700; }
+.delete-impact-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.delete-impact-actions button { flex: 1 1 140px; padding: 10px; }
+[data-delete-impact-dialog] :focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
