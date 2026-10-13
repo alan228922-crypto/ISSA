@@ -1,4 +1,5 @@
 import { candidateMembersAtNode, nodesOnMember, segmentParameter, inspectEndpointCandidates } from "./joint-candidates.js";
+import { memberParticipationByNode } from "./draft-topology.js";
 
 const COLLECTIONS = { GEOMETRY_NODE: "nodes", PHYSICAL_MEMBER: "physical_members", SUPPORT: "supports", NODE_LOAD: "node_loads" };
 
@@ -147,7 +148,7 @@ export function applyEditorActionV2(draft, action) {
     case "CREATE_MEMBER_WITH_ENDPOINT": next = createMember(action.node ? placeNode(draft, action.node) : draft, action.member); break;
     case "CREATE_SUPPORT_AT_NODE": case "CREATE_NODE_LOAD_AT_NODE": {
       if (!node(draft, action.nodeClientKey)) fail("EDITOR_REFERENCE_NOT_FOUND");
-      if (!draft.physical_members.some(row => [row.start_node_client_key, row.end_node_client_key].includes(action.nodeClientKey) || draft.member_joint_incidences.some(pair => pair.member_client_key === row.client_key && pair.node_client_key === action.nodeClientKey))) fail("NODE_NOT_ON_MEMBER");
+      if (!memberParticipationByNode(draft).has(action.nodeClientKey)) fail("NODE_NOT_ON_MEMBER");
       const support = action.type === "CREATE_SUPPORT_AT_NODE";
       next = add(draft, support ? "SUPPORT" : "NODE_LOAD", { ...(support ? action.support : action.nodeLoad), target_node_client_key: action.nodeClientKey }); break;
     }
