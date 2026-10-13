@@ -49,12 +49,16 @@ export function confirmDeleteImpact({ workspace, originalDraft, preview }) {
     // Tab, Enter and Space activation still work inside the modal dialog.
     const isolate = event => {
       if (!dialog.open) return;
+      // Release cleanup must reach the existing owners of held-key state. It is
+      // not a selection command; suppress any Space-tap repeat it would emit below.
+      if (event.type === "keyup" && (event.code === "Space" || event.key === "Shift")) return;
       event.stopImmediatePropagation();
       if (event.type === "keydown" && event.key === "Escape") { event.preventDefault(); finish("cancel"); }
       else if (["Delete", "Backspace"].includes(event.key)) event.preventDefault();
     };
     document.addEventListener("keydown", isolate, { capture: true, signal: listeners.signal });
     document.addEventListener("keyup", isolate, { capture: true, signal: listeners.signal });
+    document.addEventListener("cad-space-tap", event => { if (dialog.open) event.stopImmediatePropagation(); }, { capture: true, signal: listeners.signal });
     dialog.showModal();
     dialog.querySelector('[data-delete-impact-choice="cancel"]').focus();
   });

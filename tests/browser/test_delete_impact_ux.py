@@ -326,3 +326,32 @@ def test_member_only_keep_reports_preserved_unattached_objects(context,workspace
     assert saved['physical_members']==[]
     assert len(saved['supports'])==2 and len(saved['node_loads'])==1
     assert {'UNATTACHED_SUPPORT_NODE','UNATTACHED_LOAD_NODE'} <= {i['code'] for i in check(page)['issues']}
+
+
+@pytest.mark.parametrize('held',['Space','Shift'])
+def test_held_key_release_inside_dialog_cleans_up_without_workspace_command(context,workspace_page,held):
+    page,project,_=open_model(context,workspace_page)
+    # Complete a real drawing command so Space-tap would normally repeat NODE.
+    page.locator('[data-workspace-tool="NODE"]').click()
+    page.locator('.ux-precision summary').click()
+    page.locator('[data-cad-command-input]').fill('1200,500');page.locator('[data-cad-command-input]').press('Enter')
+    page.locator('[data-workspace-tool="SELECT"]').click()
+    page.locator('[data-draft-object-key="a"]').click()
+    if held=='Shift':page.locator('[data-workspace-tool="MEMBER"]').click()
+    page.locator('#workspace-canvas').focus()
+    page.keyboard.down(held);page.keyboard.press('Delete')
+    modal=dialog(page)
+    page.keyboard.up(held)
+    modal.get_by_role('button',name='取消',exact=True).click()
+    if held=='Shift':
+        expect(page.locator('#workspace-snap-indicator')).to_contain_text('ORTHO: 关')
+        expect(page.locator('[data-workspace-tool="MEMBER"]')).to_have_attribute('aria-pressed','true')
+        page.locator('[data-workspace-tool="SELECT"]').click()
+    else:expect(page.locator('[data-workspace-tool="SELECT"]')).to_have_attribute('aria-pressed','true')
+    # No synthetic controller access: inspect the visible world transform during
+    # a normal left drag. A leaked held-Space makes this pan instead of selecting.
+    move_world(page,100,300)
+    before=page.locator('[data-world-layer]').get_attribute('transform')
+    page.mouse.down();move_world(page,200,350);page.mouse.up()
+    assert page.locator('[data-world-layer]').get_attribute('transform')==before
+    assert page.locator('[data-draft-object-key="a"]').count()==1
