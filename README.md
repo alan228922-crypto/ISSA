@@ -65,8 +65,6 @@ The affected objects are previewed before choosing preservation, explicit relate
 
 ![Delete Impact dialog with affected objects and explicit deletion choices](docs/assets/showcase/delete-impact.png)
 
-Public-ready Results and Calculation Report screenshots are not included yet; no mock result images are substituted.
-
 ## Engineering design
 
 - Django modular monolith with a pure Python mechanics core separated from the web layer.
@@ -75,7 +73,7 @@ Public-ready Results and Calculation Report screenshots are not included yet; no
 - Server-side Model Check before solver execution; browser recovery guidance is presentation/navigation, not a second validation authority.
 - Browser-based CAD interactions backed by TDD, mechanics benchmarks and regression journeys.
 
-See [the documentation index](docs/specs/README.md), [the truss solver contract](docs/specs/TRUSS_SOLVER_CONTRACT.md) and [known issues](docs/specs/POC_V1_KNOWN_ISSUES.md) for deeper engineering details. Historical development records are not a substitute for the current implementation.
+See [the documentation index](docs/specs/README.md), [the truss solver contract](docs/specs/TRUSS_SOLVER_CONTRACT.md) and [known issues](docs/specs/POC_V1_KNOWN_ISSUES.md) for deeper engineering details.
 
 ## Technical stack
 
