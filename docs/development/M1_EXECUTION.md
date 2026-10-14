@@ -7,7 +7,7 @@
 
 **SPEC UPDATE REQUIRED — Platform Language = zh-CN**。本记录遵循当前产品指示：平台默认语言为简体中文；尚未修改 `docs/specs/MASTER_SPEC.md`，等待 Product Owner / System Architect 同步正式规格。
 
-工作目錄：`/Users/user/Documents/developement/ＩＳＡＡ/.worktrees/m1-truss-mechanics`
+工作目錄：`<repo-root>/.worktrees/m1-truss-mechanics`
 分支：`feat/m1-truss-mechanics`
 基線：`99f4985643f734f03ab08fd21a1b401c198e84b2`
 

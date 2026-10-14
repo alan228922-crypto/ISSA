@@ -6,7 +6,21 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.*
+!.env.example
 *.sqlite3
+*.egg-info/
+.coverage
+.coverage.*
+htmlcov/
+test-results/
+playwright-report/
+blob-report/
+# Runtime screenshots; curated docs/assets/showcase remains version controlled.
+/screenshots/
+/.superpowers/
+.vscode/
+.idea/
 
 # Isolated implementation workspaces
 .worktrees/
