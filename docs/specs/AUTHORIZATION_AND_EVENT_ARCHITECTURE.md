@@ -5,7 +5,11 @@
 - 文件角色：RBAC、Event scope、Project ownership、帳號 provisioning、密碼 lifecycle、Event lifecycle、Purge 與 audit 架構。
 - 階段：Truss-first P0。
 - 不包含 production code / migration。
-- Source of Truth：MASTER_SPEC.md v1.2；本文件已完成 reconciliation。
+- Source of Truth：[MASTER_SPEC.md v1.12](MASTER_SPEC.md)；2026-10-21 仅同步已批准的 M7 / M8 decision status，不重新设计权限。
+- 当前稳定实现基线：`main@96c335dc1c1d742d4143817c02a51a0fc3961892`；**M8 CLOSED — STABLE ON MAIN**。
+- O-003：**RESOLVED**；O-006：**RESOLVED — APPROVED SCOPE ONLY**；O-004：**OPEN**；O-001：**OPEN — MECHANICS REVIEW REQUIRED**。
+
+D-M7-001/002/003、D-M8-001/002/003/004 均已 RESOLVED。下方原有 role / lifecycle 架构不表示 Event transition UI、scheduler 或所有 Event administration 已交付；M9 已完成 Tasks 1–8 技术门槛，状态 **M9 IMPLEMENTED — TEACHER REVIEW PENDING**，Owner review PENDING，未 merge main；本轮未改变任何授权服务语义。
 
 ---
 
@@ -295,6 +299,8 @@ P0 採「blocking duplicate」，不自動 overwrite、merge 或 skip。
 
 ## 11. Bulk Import Audit
 
+【Confirmed — M8, 2026-10-18】The approved scoped contract is `../superpowers/specs/2026-10-18-m8-event-participant-management-decisions.md`. It supersedes the recommendation below for new business receipts: SUCCESS/NOOP only; no DENIED BulkImportBatch records. Only ACTIVE Memberships contribute to current mixed-role conflicts. Exact global role, actor activity, Event assignment and fresh service authorization are mandatory. Old signed credential-bearing preview tokens must be removed without fallback; default-DB Session opaque previews have600-second service cutoff, hash-free expired handling and verified clearsessions physical cleanup. One audit AddField only; no account/workflow model or scheduler.
+
 【Recommended】
 
 Audit 只保存：
@@ -362,12 +368,12 @@ PURGED
 
 - User 可使用 own Project。
 - Analyze enabled if Project valid。
-- Team provisioning 由 Master O-006 决定；当前服务端 fail-closed 并返回 PROVISIONING_STATUS_POLICY_GAP，不是永久禁止规则。
+- 【RESOLVED — M8 approved scope】ACTIVE 在既有资格与期限检查下允许单笔 CREATE_USER / JOIN_EXISTING / REACTIVATE / DEACTIVATE；ACTIVE CSV 仍 fail closed（PROVISIONING_STATUS_POLICY_GAP），其余未批准能力不因此开放。旧 blanket ACTIVE provisioning denial 已被此限定范围取代。
 
 #### FINISHED_GRACE
 
 - 比賽已結束，purge 尚未發生。
-- 【Recommended】read-only 僅為建議。User view/edit/analyze 行為由 Master O-003 決定；read-only、editable、denied 仍為未決選項。
+- 【Confirmed — D-M7-003】READ-ONLY HISTORY：保留既有角色历史读取权限，禁止所有学生 authoring、Save、Check、Analyze、create。
 - Manager/Developer 可查看/匯出必要資料。
 
 #### PURGED
@@ -376,11 +382,13 @@ PURGED
 - User 無 Project operational access。
 - Research 只剩核定 derived metrics。
 
-【Open Decision — Master O-003】FINISHED_GRACE User access 尚未確認；核定前不得建立永久 allow/deny edit/analyze assertions。不影響 Project Operational Data purge。
+【Resolved — Master O-003 / D-M7-003】FINISHED_GRACE 为 READ-ONLY HISTORY；PURGED residual operational rows 不得继续读取。合法历史 GET 可保留既有最小 disclosure receipt，不得创建学习作者内容。共享 owner resources 不得间接修改只读 Project。
+
+M7 D-M7-001/002 (RESOLVED): authenticated active USER + exact active PARTICIPANT may self-create only in ACTIVE before purge_at. One normal Event/owner Project; one valid existing Project is reused unchanged; legacy multiples remain explicitly selectable without new Create CTA. No Manager/Developer on-behalf create; no new domain/schema. Historical M7 scope did not authorize ACTIVE account/Membership provisioning and left O-006 OPEN / FAIL CLOSED at that stage; M8 subsequently resolved only the approved single-entry scope in §22. M7 self-create semantics remain unchanged.
 
 #### M4C Reflection narrow authoring rule
 
-M4C `reflection-v1` is a narrow learning-evidence rule, not a resolution of Master O-003. During ACTIVE, only the Project student owner may create, edit a DRAFT, or complete an eligible Reflection. FINISHED_GRACE Reflection authoring is temporarily fail-closed; PURGED rejects authoring. DRAFT is visible only to its student owner. A COMPLETED Reflection is readable, but never writable, by its student owner and by assigned Manager/Developer through existing Project-read authorization. This does not set the broader FINISHED_GRACE Project view/edit/analyze policy.
+M4C `reflection-v1` remains a narrow learning-evidence rule. Master O-003 was subsequently resolved by D-M7-003: FINISHED_GRACE is READ-ONLY HISTORY. During ACTIVE, only the Project student owner may create, edit a DRAFT, or complete an eligible Reflection. FINISHED_GRACE/PURGED reject authoring. DRAFT is visible only to its student owner. A COMPLETED Reflection is readable, but never writable, by its student owner and by assigned Manager/Developer through existing Project-read authorization; PURGED residual operational reads still fail closed.
 
 ---
 
@@ -486,14 +494,16 @@ PurgeService 不允許：
 
 ## 19. Event Status Authorization Effects
 
-【Recommended】
+【Status reconciliation — D-M7-003 / M8 approved scope】FINISHED_GRACE / PURGED 与 provisioning 单元格服从已确认决策；其余既有建议不在本轮重新定义。O-003 不再未决。
 
 | Status | User Edit | User Analyze | User View | Manager View | Provisioning |
 |---|---:|---:|---:|---:|---:|
 | DRAFT | ✗ | ✗ | limited | ✓ | ✓ |
-| ACTIVE | ✓ own | ✓ own | ✓ own | ✓ | ✓ / policy |
-| FINISHED_GRACE | Master O-003 Open | Master O-003 Open | Master O-003 Open; read-only recommended only | ✓ | ✗ |
+| ACTIVE | ✓ own | ✓ own | ✓ own | ✓ | approved single-entry only; CSV denied |
+| FINISHED_GRACE | ✗ | ✗ | authorized READ-ONLY HISTORY | authorized read-only | ✗ |
 | PURGED | ✗ | ✗ | no raw project | metadata only | ✗ |
+
+FINISHED_GRACE 禁止 Project create、Save Draft、Model Check、Analyze、Prediction / Reflection / Reasoning authoring 和其他学生写入；允许依既有权限查看历史 Results / Report。PURGED 拒绝所有 operational GET/write，即使仍有 residual rows；表中 metadata 不授予 raw Project access。
 
 ---
 
@@ -527,13 +537,13 @@ P0 至少：
 5. Manager cannot create Manager/Developer。
 6. Developer can perform allowed global actions。
 7. `must_change_password=True` cannot bypass password-change flow by direct URL。
-8. PURGED 不可操作已 purge 的 Project Operational Data；FINISHED_GRACE 依 Master O-003 保持未決，不建立永久 allow/deny edit/analyze assertions。
+8. 验证 D-M7-003：FINISHED_GRACE 仅允许依既有权限读取历史，拒绝 create、Save、Check、Analyze 与所有学生 authoring；PURGED operational GET/write 均拒绝，包括 residual rows。旧 M7 前“不建立永久 assertions”的建议已被已批准并完成的决策取代。
 9. CSV import re-checks authorization at confirm，不只 preview。
 10. purge management command cannot be triggered by ordinary User HTTP action。
 
 ---
 
-## 22. Open Decisions
+## 22. Decision Status — Open and Resolved
 
 ### OD-AUTH-01 — Purge 後 team account lifecycle（authoritative gate: Master O-004）
 
@@ -549,11 +559,15 @@ Master O-004 確認前，不由 PurgeService 自動刪除或停用 team User。P
 
 ### OD-AUTH-02 — FINISHED_GRACE User access（authoritative gate: Master O-003）
 
-【Open Decision】建議 read-only，但需 Product Owner 確認。
+【RESOLVED — D-M7-003】FINISHED_GRACE = READ-ONLY HISTORY，详见 §13 / §19；不再等待 read-only policy 决策。旧“建议 read-only / 需 Owner 确认”为被取代的历史状态。
 
 ### OD-AUTH-03 — ACTIVE Event Team Provisioning（authoritative gate: Master O-006）
 
-【Open Decision】DRAFT 已确认允许 provisioning，PURGED 已确认拒绝。ACTIVE 期间当前安全 fallback 为 fail-closed + PROVISIONING_STATUS_POLICY_GAP；这不是最终业务政策，也不与 FINISHED_GRACE 的 O-003 混用。
+【RESOLVED — APPROVED SCOPE ONLY; Owner acceptance PASS, 2026-10-20 Asia/Shanghai】DRAFT CSV 与 DRAFT/ACTIVE 的 CREATE_USER、JOIN_EXISTING、REACTIVATE、DEACTIVATE 单笔资格操作按 M8 scoped contract 开放；ACTIVE CSV 与未批准管理能力仍 fail closed。GRACE 资格管理只读，PURGED operational data 拒绝访问。不包含 Manager assignment/revoke/promotion、signup/join code、admin password reset、global User recovery、Event transition UI/scheduler 或 automatic Project provisioning；O-004 仍 OPEN。此处取代旧 blanket ACTIVE fallback，不扩张既有 Project authority。
+
+### Master O-001 — Mechanics gate unchanged
+
+**OPEN — MECHANICS REVIEW REQUIRED**。Explicit E/I/L/K Euler helper 不等于 product buckling screening 已可用；本轮没有关闭有效长度、控制轴或风险解释政策。
 
 ---
 

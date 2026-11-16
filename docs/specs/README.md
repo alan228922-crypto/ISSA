@@ -4,13 +4,22 @@
 
 - Source of Truth: `MASTER_SPEC.md v1.12`
 - Architecture: `FINAL_FROZEN`
-- Current milestone: **POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**
-- Production baseline: M1–M5 complete; M6 Gates 0–5 complete on merged `main`
+- Current milestone: **M8 CLOSED — STABLE ON MAIN**; M7 and M8 complete
+- Stable implementation baseline: `main@96c335dc1c1d742d4143817c02a51a0fc3961892` (post-M8; later docs-only commits do not imply a new implementation baseline)
 - Learning flow: Build → Check → optional Prediction → Analyze → Compare / Explain → Report → optional Reasoning → optional Reflection → Iterate
 - Prediction, Reasoning, and Reflection remain non-blocking; mechanics authority remains `Truss2DSolver`
 - M5/M6 merged-main automated acceptance and regression verification: **PASS**
-- Recommended next mode: **BUG / UX STABILIZATION**; no new feature Gate
-- Open decisions: O-001, O-003, O-004, O-005, O-006 — **POST-POC / OPEN**
+- Current product stage: **CONTROLLED TEACHING / PILOT**, not unattended production deployment
+- Current activity: **M9 IMPLEMENTED — TEACHER REVIEW PENDING**; Tasks 1–8 technical gates complete; Owner review PENDING; not merged to main. See [evidence](../development/M9_IMPLEMENTATION_EVIDENCE.md) and [review handoff](../development/M9_REVIEW_AND_ACCEPTANCE.md).
+- O-003: **RESOLVED** — FINISHED_GRACE = READ-ONLY HISTORY; PURGED operational access fails closed
+- O-006: **RESOLVED — APPROVED SCOPE ONLY** — DRAFT CSV and DRAFT/ACTIVE single CREATE_USER, JOIN_EXISTING, REACTIVATE, DEACTIVATE
+- O-004: **OPEN** — User account lifecycle
+- O-001: **OPEN — MECHANICS REVIEW REQUIRED** — Euler effective length / controlling-axis policy
+- O-005: remains open only if overlap-capable composite sections are proposed
+
+Status synchronization dated 2026-10-21 records already approved decisions, not new authorization semantics. D-M7-001/002/003 and D-M8-001/002/003/004 are **RESOLVED**. See [MASTER_SPEC current status](MASTER_SPEC.md), [decision register](ARCHITECTURE_DECISION_REGISTER.md), [M7 evidence](../development/M7_IMPLEMENTATION_EVIDENCE.md), and [M8 Owner acceptance](../development/M8_IMPLEMENTATION_EVIDENCE.md). Older milestone-stage OPEN / acceptance-pending statements retain historical attribution and do not override this post-M8 status.
+
+O-006 does **not** include ACTIVE CSV, public signup, join codes, Manager assignment/revoke/promotion, administrator password reset, global User recovery, Event transition UI/scheduler, or automatic Project provisioning. Unapproved operations remain fail closed / out of scope; this is not completion of all Event administration.
 
 ## Current Files
 
@@ -37,6 +46,8 @@
 21. `CALCULATION_REPORT_ASSISTANCE_SPEC.md` — completed M6 Report contract
 22. `POC_V1_KNOWN_ISSUES.md` — deferred manual verification, scope exclusions, and Post-PoC open items
 
+M9 scope: [Results Evidence & Teaching Loop](../superpowers/specs/2026-10-21-m9-results-teaching-loop-decisions.md) — **OWNER SCOPE APPROVED**. [TDD implementation plan](../superpowers/plans/2026-10-21-m9-results-teaching-loop.md) and execution method still require Owner approval; implementation has not started.
+
 ## Frozen P0 Direction
 
 - `TRUSS_2D`
@@ -57,16 +68,17 @@
 
 ## Scoped Open Gates
 
-- Master O-001: Euler K + controlling I / weak-axis policy — `MECHANICS REVIEW REQUIRED`
-- FINISHED_GRACE access
+- Master O-001: Euler K + controlling I / weak-axis policy — `OPEN — MECHANICS REVIEW REQUIRED`; explicit-input formula only, not product screening
 - post-purge account lifecycle
 - composite strip overlap if required
 
-These gates do not invalidate MASTER_SPEC v1.12 or the overall final architecture freeze; they block only directly dependent Post-PoC behavior.
+These gates do not invalidate MASTER_SPEC v1.12 or the overall final architecture freeze; they block only directly dependent behavior. O-003 is no longer an open gate: authorized history remains readable in FINISHED_GRACE, while create, Save, Check, Analyze, Prediction/Reflection/Reasoning authoring and other student mutations are denied. PURGED operational GET/write remains denied, including residual rows.
 
 ## Next Execution Point
 
-POC V1 frontend contract closure is complete with P1 remaining **0** and P2 remaining **0**. The next mode is BUG / UX STABILIZATION and Product Owner manual browser acceptance; no new feature Gate is authorized. Euler automatic product behavior remains a `SPEC_CONFLICT` success criterion blocked by O-001, not an implementation gap.
+Review the M9 TDD implementation plan and execution method; scope is approved, but implementation must wait for Owner plan/method approval. Event lifecycle UI/scheduler is not promoted into M9 merely because it remains undelivered. Euler automatic product behavior remains blocked by O-001; the existence of a formula helper does not make screening available.
+
+Historical milestone state (2026-09-23/24): POC V1 frontend reconciliation recorded P1/P2 remaining 0, and POC V1 / UX V2 manual acceptance was pending at those checkpoints. The then-recommended BUG / UX STABILIZATION mode is historical, not the current post-M8 execution point. M8 acceptance does not fabricate separate earlier UX sign-offs.
 
 Before any task, the implementer must read:
 

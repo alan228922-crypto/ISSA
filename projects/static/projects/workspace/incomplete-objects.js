@@ -1,3 +1,5 @@
+import { createStudentLabelResolver } from './labels.js';
+
 const KINDS = Object.freeze({
   PHYSICAL_MEMBER: { collection: "physical_members", name: "构件" },
   CONNECTION: { collection: "connections", name: "连接" },
@@ -17,12 +19,7 @@ export const MISSING_FIELD_NAMES = Object.freeze({
 });
 
 export function studentObjectName(draft, kind, key) {
-  const definition = KINDS[kind];
-  if (!definition) return "物件";
-  const records = [...(draft[definition.collection] || [])].sort((a, b) => a.client_key.localeCompare(b.client_key, undefined, { numeric: true }));
-  const index = records.findIndex((record) => record.client_key === key);
-  const label = records[index]?.label?.trim();
-  return `${definition.name} ${label || (index < 0 ? "" : index + 1)}`.trim();
+  return createStudentLabelResolver(draft).label(kind, key);
 }
 
 export function incompleteDraftObjects(draft) {

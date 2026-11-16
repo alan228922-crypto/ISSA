@@ -61,4 +61,5 @@ class BulkImportBatch(models.Model):
     success=models.BooleanField()
     created_account_count=models.PositiveIntegerField(default=0)
     validation_error_codes=models.JSONField(default=list)
+    operation_details_json=models.JSONField(default=dict,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)

@@ -23,7 +23,9 @@ def test_structural_sketch_visual_acceptance_and_fixed_dom_cost(context, workspa
               const segments=[[0,1],[1,2],[2,3],[0,4],[4,1],[1,5],[5,2],[2,6],[6,3],[3,7],[4,5],[5,6]].map(([a,b],i)=>({client_key:`m${i}`,start_node_client_key:`n${a}`,end_node_client_key:`n${b}`,material_id:1,section_id:1,label:'',is_active:true}));
               const connections=[0,1,2,3,4,5,6,7].map(i=>({client_key:`c${i}`,geometry_node_client_key:`n${i}`,participating_member_client_keys:segments.filter(m=>[m.start_node_client_key,m.end_node_client_key].includes(`n${i}`)).map(m=>m.client_key)}));
               const draft={nodes,physical_members:segments,connections,supports:[{client_key:'pin',target_connection_client_key:'c0',support_type:'PINNED',restrained_axis:null},{client_key:'rollerY',target_connection_client_key:'c3',support_type:'ROLLER',restrained_axis:'Y'},{client_key:'rollerX',target_connection_client_key:'c7',support_type:'ROLLER',restrained_axis:'X'}],node_loads:[{client_key:'down',target_connection_client_key:'c4',fx_N:0,fy_N:-20,label:''},{client_key:'up',target_connection_client_key:'c5',fx_N:0,fy_N:15,label:''},{client_key:'right',target_connection_client_key:'c1',fx_N:30,fy_N:0,label:''},{client_key:'left',target_connection_client_key:'c2',fx_N:-25,fy_N:0,label:''},{client_key:'both',target_connection_client_key:'c6',fx_N:40,fy_N:-50,label:''}]};
-              const view={a:scale,b:0,c:0,d:-scale,e:90,f:350};
+              const cssPerSvg=Math.hypot(svg.getScreenCTM().a,svg.getScreenCTM().b);
+              const cameraScale=scale/cssPerSvg;
+              const view={a:cameraScale,b:0,c:0,d:-cameraScale,e:90,f:350};
               renderWorkspace(svg,draft,{viewTransform:view,selectedObject:{kind:'Support',clientKey:'rollerY'}});
               const emptyState=document.querySelector('[data-ux-empty-state]'); if (emptyState) emptyState.hidden=true;
               const kinds=['GeometryNode','PhysicalMember','Connection','Support','NodeLoad'];
@@ -134,15 +136,15 @@ def test_structural_node_member_connection_textbook_symbols(context, workspace_p
       const member=svg.querySelector('[data-client-key="m1"] [data-member-body]');
       const ring=svg.querySelector('[data-client-key="c1"] [data-connection-ring]');
       const memberScale=Math.abs(svg.querySelector('[data-client-key="m1"]').getScreenCTM().a);
-      return {nodeFill:node?.getAttribute('fill'),nodeStroke:node?.getAttribute('stroke'),nodeWidth:node?.getBoundingClientRect().width,
+      return {nodeFill:node && getComputedStyle(node).fill,nodeStroke:node && getComputedStyle(node).stroke,nodeWidth:node?.getBoundingClientRect().width,
         memberWidth:member ? Number(member.getAttribute('stroke-width'))*memberScale : null,
         memberEnds:member && [member.getAttribute('x1'),member.getAttribute('y1'),member.getAttribute('x2'),member.getAttribute('y2')],
         ring:Boolean(ring),connectionCount:svg.querySelectorAll('[data-object-kind="Connection"]').length};
     }""")
-    assert result['nodeFill'] == 'white'
-    assert result['nodeStroke'] in ('#1f2937', '#111827', '#111111', '#171717')
-    assert 12 <= result['nodeWidth'] <= 18
-    assert 2 <= result['memberWidth'] <= 5
+    assert result['nodeFill'] == 'rgb(255, 255, 255)'
+    assert result['nodeStroke'] == 'rgb(24, 60, 81)'
+    assert result['nodeWidth'] == pytest.approx(8, abs=.5)
+    assert result['memberWidth'] == pytest.approx(2, abs=1e-6)
     assert result['memberEnds'] == ['0', '0', '1000', '0']
     assert result['ring'] is True and result['connectionCount'] == 1
 
@@ -256,7 +258,7 @@ def test_structural_load_symbol_components_point_to_true_anchor_with_magnitude_l
       const points=[[0,0],[100,0],[200,0],[300,0],[400,0]];
       const draft={nodes:points.map(([x,y],i)=>({client_key:`n${i}`,x_mm:x,y_mm:y,label:''})),physical_members:[],connections:points.map((_,i)=>({client_key:`c${i}`,geometry_node_client_key:`n${i}`,participating_member_client_keys:[null]})),supports:[],node_loads:[{client_key:'down',target_connection_client_key:'c0',fx_N:0,fy_N:-20,label:''},{client_key:'up',target_connection_client_key:'c1',fx_N:0,fy_N:15,label:''},{client_key:'right',target_connection_client_key:'c2',fx_N:30,fy_N:0,label:''},{client_key:'left',target_connection_client_key:'c3',fx_N:-25,fy_N:0,label:''},{client_key:'both',target_connection_client_key:'c4',fx_N:40,fy_N:-50,label:''}]};
       renderWorkspace(svg,draft,{viewTransform:{a:1,b:0,c:0,d:-1,e:0,f:0}});
-      const inspect=key=>{const group=svg.querySelector(`[data-client-key="${key}"]`);return [...group.querySelectorAll('[data-load-component]')].map(part=>({axis:part.getAttribute('data-load-component'),start:[Number(part.querySelector('[data-load-stem]').getAttribute('x1')),Number(part.querySelector('[data-load-stem]').getAttribute('y1'))],tip:[Number(part.querySelector('[data-load-stem]').getAttribute('x2')),Number(part.querySelector('[data-load-stem]').getAttribute('y2'))],head:part.querySelector('[data-load-arrowhead]').getAttribute('points').split(' ')[0],label:part.querySelector('[data-load-label]').textContent,red:part.querySelector('[data-load-stem]').getAttribute('stroke')}));};
+      const inspect=key=>{const group=svg.querySelector(`[data-client-key="${key}"]`);return [...group.querySelectorAll('[data-load-component]')].map(part=>({axis:part.getAttribute('data-load-component'),start:[Number(part.querySelector('[data-load-stem]').getAttribute('x1')),Number(part.querySelector('[data-load-stem]').getAttribute('y1'))],tip:[Number(part.querySelector('[data-load-stem]').getAttribute('x2')),Number(part.querySelector('[data-load-stem]').getAttribute('y2'))],head:part.querySelector('[data-load-arrowhead]').getAttribute('points').split(' ')[0],label:part.querySelector('[data-load-label]').textContent,red:getComputedStyle(part.querySelector('[data-load-stem]')).stroke}));};
       return {down:inspect('down'),up:inspect('up'),right:inspect('right'),left:inspect('left'),both:inspect('both')};
     }""")
     assert result['down'][0]['axis'] == 'Fy' and result['down'][0]['start'][1] > result['down'][0]['tip'][1]
@@ -268,7 +270,7 @@ def test_structural_load_symbol_components_point_to_true_anchor_with_magnitude_l
     assert {part['axis'] for part in result['both']} == {'Fx', 'Fy'}
     assert [part['label'] for part in result['both']] == ['40 N', '50 N']
     assert result['down'][0]['label'] == '20 N' and result['left'][0]['label'] == '25 N'
-    assert all(part['red'] == '#b91c1c' for parts in result.values() for part in parts)
+    assert all(part['red'] == 'rgb(180, 83, 9)' for parts in result.values() for part in parts)
 
 
 @pytest.mark.browser
@@ -783,7 +785,7 @@ def test_cad_middle_navigation_is_transparent_and_double_middle_fits(context, wo
     assert canvas.locator('[data-world-layer]').get_attribute('transform') != before
     assert page.locator('[data-workspace-tool="MEMBER"]').get_attribute('aria-pressed') == 'true'
     assert '终点' in page.locator('[data-modeling-instruction]').inner_text()
-    expected_fit = """async()=>{const {readCoordinateSpace,visibleSvgViewport}=await import('/static/projects/workspace/coordinate-space.js');const svg=document.querySelector('#workspace-canvas'),v=visibleSvgViewport(svg,readCoordinateSpace(svg));const nodes=JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft.nodes;const xs=nodes.map(n=>n.x_mm),ys=nodes.map(n=>n.y_mm);const cx=(Math.min(...xs)+Math.max(...xs))/2,cy=(Math.min(...ys)+Math.max(...ys))/2;const scale=Math.min((v.width-80)/Math.max(100,Math.max(...xs)-Math.min(...xs)),(v.height-80)/Math.max(100,Math.max(...ys)-Math.min(...ys)));return {a:scale,d:-scale,e:v.left+v.width/2-scale*cx,f:v.top+v.height/2+scale*cy};}"""
+    expected_fit = """async()=>{const {readCoordinateSpace,visibleSvgViewport}=await import('/static/projects/workspace/coordinate-space.js');const svg=document.querySelector('#workspace-canvas'),v=visibleSvgViewport(svg,readCoordinateSpace(svg));const nodes=JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft.nodes;const xs=nodes.map(n=>n.x_mm),ys=nodes.map(n=>n.y_mm);const cx=(Math.min(...xs)+Math.max(...xs))/2,cy=(Math.min(...ys)+Math.max(...ys))/2;const cssPerSvg=Math.hypot(svg.getScreenCTM().a,svg.getScreenCTM().b),margin=Math.max(40,60/cssPerSvg);const scale=Math.max(.05,Math.min(20,Math.min((v.width-2*margin)/Math.max(100,Math.max(...xs)-Math.min(...xs)),(v.height-2*margin)/Math.max(100,Math.max(...ys)-Math.min(...ys)))));return {a:scale,d:-scale,e:v.left+v.width/2-scale*cx,f:v.top+v.height/2+scale*cy};}"""
     expected_middle = page.evaluate(expected_fit)
     page.mouse.click(x, y, button='middle', click_count=2)
     actual = page.evaluate("()=>{const m=document.querySelector('[data-world-layer]').transform.baseVal.consolidate().matrix;return {a:m.a,d:m.d,e:m.e,f:m.f}}")
@@ -958,7 +960,7 @@ def test_cad_node_grip_drag_previews_and_preserves_identity(context, workspace_p
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.locator('[data-client-key="n1"] circle').click(force=True)
-    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='左 · 节点 N·M5VYXOCM44').click()
     grip = page.locator('[data-cad-node-grip]')
     assert grip.count() == 1
     box = grip.bounding_box()
@@ -984,7 +986,7 @@ def test_cad_grip_rejects_move_onto_existing_node_without_topology_change(contex
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.locator('[data-client-key="n1"] circle').click(force=True)
-    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='左 · 节点 N·M5VYXOCM44').click()
     start = page.locator('[data-cad-node-grip]').bounding_box()
     end = page.locator('[data-client-key="n2"] circle').bounding_box()
     sx, sy = start['x'] + start['width'] / 2, start['y'] + start['height'] / 2
@@ -1010,7 +1012,7 @@ def test_cad_node_move_rejects_disconnecting_interior_joint(context, workspace_p
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.locator('[data-client-key="n3"] circle').click(force=True)
-    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 中点').click()
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='中点 · 节点 N·Q4Q5MZHPMA').click()
     grip = page.locator('[data-cad-node-grip]').bounding_box()
     x, y = grip['x'] + grip['width'] / 2, grip['y'] + grip['height'] / 2
     page.mouse.move(x, y)
@@ -1034,7 +1036,7 @@ def test_cad_double_click_focuses_editable_properties(context, workspace_page):
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
     page.locator('[data-client-key="n1"] circle').dblclick(force=True)
-    assert page.locator('[data-property-identity]').text_content() == '节点 左'
+    assert page.locator('[data-property-identity]').text_content() == '左 · 节点 N·M5VYXOCM44'
     assert page.evaluate("document.activeElement?.hasAttribute('data-property-x')") is True
 
 
@@ -1051,10 +1053,10 @@ def test_cad_ambiguous_nearby_objects_require_explicit_choice(context, workspace
     page.mouse.click(x + 8.5, y - 4.5)
     chooser = page.locator('[data-cad-overlap-chooser]')
     assert chooser.count() == 1
-    assert '节点 左' in chooser.inner_text()
+    assert '左 · 节点 N·M5VYXOCM44' in chooser.inner_text()
     assert '连接' in chooser.inner_text()
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'false'
-    chooser.get_by_role('button', name='节点 左').click()
+    chooser.get_by_role('button', name='左 · 节点 N·M5VYXOCM44').click()
     assert chooser.count() == 0
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
 
@@ -1068,10 +1070,10 @@ def test_cad_exact_overlap_requires_explicit_choice(context, workspace_page):
     page.locator('[data-client-key="n1"] circle').click(force=True)
     chooser = page.locator('[data-cad-overlap-chooser]')
     assert chooser.count() == 1
-    assert '节点 左' in chooser.inner_text()
+    assert '左 · 节点 N·M5VYXOCM44' in chooser.inner_text()
     assert '连接' in chooser.inner_text()
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'false'
-    chooser.get_by_role('button', name='节点 左').click()
+    chooser.get_by_role('button', name='左 · 节点 N·M5VYXOCM44').click()
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
 
 
@@ -1278,7 +1280,7 @@ def test_cad_undo_redo_node_grip_move(context, workspace_page):
     page = workspace_page(user=owner, project=project)
     canvas = page.locator('#workspace-canvas')
     page.locator('[data-client-key="n1"] circle').click(force=True)
-    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='左 · 节点 N·M5VYXOCM44').click()
     box = page.locator('[data-cad-node-grip]').bounding_box()
     x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
     page.mouse.move(x, y)
@@ -1394,13 +1396,13 @@ def test_direct_joint_click_selects_node_and_shift_click_toggles(context, worksp
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.locator('[data-client-key="c1"] rect').click(force=True)
-    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='左 · 节点 N·M5VYXOCM44').click()
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
     page.locator('[data-client-key="c1"] rect').click(force=True, modifiers=['Shift'])
-    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='左 · 节点 N·M5VYXOCM44').click()
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'false'
     page.locator('[data-client-key="n1"] circle').click(force=True)
-    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='节点 左').click()
+    page.locator('[data-cad-overlap-chooser]').get_by_role('button', name='左 · 节点 N·M5VYXOCM44').click()
     page.locator('[data-client-key="n2"] circle').click(force=True, modifiers=['Shift'])
     assert page.locator('[data-client-key="n1"]').get_attribute('data-selected') == 'true'
     assert page.locator('[data-client-key="n2"]').get_attribute('data-selected') == 'true'
@@ -1459,7 +1461,6 @@ def test_blank_project_creates_first_member_from_explicit_material_and_section(c
     page.locator('[data-client-key="node-2"]').click()
 
     assert page.locator('[data-client-key="member-1"]').count() == 1
-    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
     page.locator("#workspace-save").click()
     page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
     page.reload()
@@ -1831,7 +1832,6 @@ def test_property_and_delete_controls_edit_persist_and_block_dependencies(contex
     page.locator("[data-property-delete]").click()
     assert page.locator('[data-client-key="node-1"]').count() == 0
 
-    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
     page.locator("#workspace-save").click()
     page.wait_for_function("document.querySelector('#workspace-save-status').textContent.includes('无')")
     page.reload()
@@ -2069,7 +2069,11 @@ def test_workspace_canvas_shows_orientation_grid_fit_and_pointer_coordinates(con
     axes = page.locator('[data-canvas-orientation]')
     grid = page.locator('[data-canvas-grid]')
     assert axes.count() == 1
-    assert axes.text_content() == '+X → +Y ↑'
+    assert axes.text_content() == 'XY'
+    assert 'X 向右，Y 向上' in axes.get_attribute('aria-label')
+    vectors=axes.evaluate("""e=>Object.fromEntries(['x','y'].map(axis=>{const p=e.querySelector(`[data-orientation-axis=${axis}]`),m=p.getScreenCTM(),a=p.getPointAtLength(0).matrixTransform(m),b=p.getPointAtLength(p.getTotalLength()).matrixTransform(m);return [axis,{dx:b.x-a.x,dy:b.y-a.y}]}))""")
+    assert vectors['x']['dx']==pytest.approx(42,abs=.5) and abs(vectors['x']['dy'])<.5
+    assert vectors['y']['dy']==pytest.approx(-42,abs=.5) and abs(vectors['y']['dx'])<.5
     assert grid.count() == 1
     assert grid.evaluate("(element) => getComputedStyle(element).pointerEvents") == 'none'
 
@@ -2197,7 +2201,6 @@ def test_workspace_modeling_tools_mutate_draft_and_save(context, workspace_page)
     connection.locator('rect').click(force=True)
     assert page.locator('[data-object-kind="NodeLoad"]').count() == 2
 
-    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
     assert 'csrftoken=' in page.evaluate('document.cookie')
     page.locator('#workspace-save').click()
     page.wait_for_function("document.querySelector('#workspace-save-status').textContent === '未保存修改：无'")
@@ -2264,17 +2267,17 @@ def test_workspace_properties_edit_support_and_load_and_persist(context, workspa
     page.locator('#workspace-canvas').click(position={'x': 300, 'y': 180})
     page.locator('[data-workspace-tool="SELECT"]').click()
     page.locator('[data-object-kind="GeometryNode"]').last.locator('circle').click(force=True)
-    assert page.locator('[data-property-identity]').text_content() == '节点 N3'
+    assert page.locator('[data-property-identity]').text_content() == '节点 N1'
     assert 'node-1' not in page.locator('[data-property-identity]').text_content()
     page.locator('[data-client-key="m1"] line').click(force=True)
-    assert page.locator('[data-property-identity]').text_content() == '构件 杆件'
+    assert page.locator('[data-property-identity]').text_content() == '杆件 · 构件 M·ZIG7FSK2UF'
     page.locator('[data-client-key="c1"]').focus()
     page.keyboard.press('Enter')
-    assert page.locator('[data-property-identity]').text_content() == '节点 左'
+    assert page.locator('[data-property-identity]').text_content() == '左 · 节点 N·M5VYXOCM44'
     assert page.locator('[data-workspace-tool="SELECT"]').get_attribute('aria-pressed') == 'true'
 
     page.locator('[data-client-key="s1"] path').click(force=True)
-    assert page.locator('[data-property-identity]').text_content() == '支座 S1'
+    assert page.locator('[data-property-identity]').text_content() == '支座 S·5C6BMPEC53'
     support_type = page.locator('[data-property-support-type]')
     support_type.select_option('ROLLER_X')
     assert support_type.input_value() == 'ROLLER_X'
@@ -2283,13 +2286,12 @@ def test_workspace_properties_edit_support_and_load_and_persist(context, workspa
     assert page.locator('#workspace-save-status').text_content() == '未保存修改：有'
 
     page.locator('[data-client-key="l1"] [data-load-stem]').click(force=True)
-    assert page.locator('[data-property-identity]').text_content() == '荷载 荷载'
+    assert page.locator('[data-property-identity]').text_content() == '荷载 · 荷载 L·FACLVVX6SS'
     page.locator('[data-property-fx]').fill('0')
     page.locator('[data-property-fy]').fill('-250')
     assert page.locator('[data-property-fx]').input_value() == '0'
     assert page.locator('[data-property-fy]').input_value() == '-250'
 
-    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
     page.locator('#workspace-save').click()
     page.wait_for_function("document.querySelector('#workspace-save-status').textContent === '未保存修改：无'")
     page.reload()
@@ -2400,8 +2402,11 @@ def test_analyze_level_one_and_stale_run(context, workspace_page):
       const workspace = createResultsWorkspace({urls:{analyze:'/analyze/',resultTemplate:'/analyses/{run_id}/data/'},post:async(url,payload)=>{calls.push({url,payload});return {response:{ok:true},body:{ok:true,analysis_run_id:31,status:'SUCCESS'}};},get:async(url)=>{calls.push({url});return {response:{ok:true},body:data};}});
       const withoutPrediction = await workspace.analyze(4, null);
       const completedPrediction = await workspace.analyze(4, 12);
-      const current = showLevelOne(completedPrediction.run, completedPrediction.data, 4);
-      const stale = showLevelOne(completedPrediction.run, completedPrediction.data, 5);
+      const teaching = {runId:31,runNumber:1,historical:false,canLinkCanvas:true,comparisonAvailable:true,
+        members:[{key:'m1',label:'构件一',actualState:'TENSION'},{key:'m2',label:'构件二',actualState:'COMPRESSION'},{key:'m3',label:'构件三',actualState:'ZERO_FORCE'}],
+        displacement:{available:true,maximumMm:4.2,candidates:[{id:'connection:c2',label:'连接'}]}};
+      const current = showLevelOne(teaching);
+      const stale = showLevelOne({...teaching,historical:true,canLinkCanvas:false});
       const failed = createResultsWorkspace({urls:{analyze:'/analyze/',resultTemplate:'/analyses/{run_id}/data/'},post:async()=>({response:{ok:false},body:{ok:false,error:{code:'STALE_DRAFT',message:'stale'}}}),get:async()=>{throw new Error('must not fetch')}});
       let failure = null; try { await failed.analyze(4, null); } catch (error) { failure = error.code; }
       return {calls,withoutPrediction,completedPrediction,current,stale,failure,failedState:failed.state(),mechanics:typeof window.Truss2DSolver};
@@ -2410,9 +2415,9 @@ def test_analyze_level_one_and_stale_run(context, workspace_page):
     assert result['calls'][2] == {'url':'/analyze/','payload':{'expected_draft_version':4,'prediction_id':12}}
     assert result['withoutPrediction']['predictionId'] is None and result['completedPrediction']['predictionId'] == 12
     assert result['current']['stale'] is False and result['stale']['stale'] is True
-    assert result['current']['maximum'] == {'maximum_displacement_mm':4.2,'candidate_analysis_node_ids':['connection:c2']}
+    assert result['current']['maximum'] == {'maximum_displacement_mm':4.2,'candidate_analysis_node_ids':['connection:c2'],'displayCandidateLabels':['连接']}
     assert result['current']['members'] == [
-        {'physicalMemberClientKey':'m1','state':'TENSION'}, {'physicalMemberClientKey':'m2','state':'COMPRESSION'}, {'physicalMemberClientKey':'m3','state':'ZERO'},
+        {'physicalMemberClientKey':'m1','displayLabel':'构件一','state':'TENSION'}, {'physicalMemberClientKey':'m2','displayLabel':'构件二','state':'COMPRESSION'}, {'physicalMemberClientKey':'m3','displayLabel':'构件三','state':'ZERO_FORCE'},
     ]
     assert result['failure'] == 'STALE_DRAFT' and result['failedState']['run'] is None
     assert result['mechanics'] == 'undefined'
@@ -2447,19 +2452,15 @@ def test_beginner_labels_mixed_evidence_and_frozen_copy(context, workspace_page)
         connections:[{client_key:'c1'}], supports:[{client_key:'s1'}], node_loads:[{client_key:'l1',label:''}],
       });
       const comparisonRoot = document.createElement('section');
-      document.body.append(comparisonRoot);
-      renderComparison(comparisonRoot, {comparison_available:true,member_comparisons:[{
-        physical_member_client_key:'m1', predicted_state:'TENSION', comparison_status:'NOT_COMPARABLE',
-        actual:{actual_state:'MIXED',segments:[
-          {analysis_member_id:'m1:1',axial_force_N:12.5,teaching_state:'TENSION'},
-          {analysis_member_id:'m1:2',axial_force_N:-4.25,teaching_state:'COMPRESSION'},
-        ]},
-      }]}, () => {}, labels);
+      renderComparison(comparisonRoot, {available:true,comparisonAvailable:true,members:[{
+        key:'m1',label:labels.label('PHYSICAL_MEMBER','m1'),predictedState:'TENSION',comparisonStatus:'NOT_COMPARABLE',actualState:'MIXED',segments:[
+          {label:labels.label('PHYSICAL_MEMBER','m1')+' · 分析段 1',analysis_member_id:'m1:1',axial_force_N:12.5,teaching_state:'TENSION'},
+          {label:labels.label('PHYSICAL_MEMBER','m1')+' · 分析段 2',analysis_member_id:'m1:2',axial_force_N:-4.25,teaching_state:'COMPRESSION'},
+        ],
+      }],hypothesis:[]});
       const staleRoot = document.createElement('section');
-      document.body.append(staleRoot);
       renderLevelOne(staleRoot, {runId:4,stale:true,predictionUsed:true,maximum:null,members:[],overlay:{}});
       const engineeringRoot = document.createElement('section');
-      document.body.append(engineeringRoot);
       renderEngineeringDetails(engineeringRoot, {displacements:[],reactions:[],members:[],total_mass_g:null}, true);
       return {
         labels:['GEOMETRY_NODE','PHYSICAL_MEMBER','CONNECTION','SUPPORT','NODE_LOAD'].map((kind) => fallbackLabels.label(kind, ({GEOMETRY_NODE:'n1',PHYSICAL_MEMBER:'m1',CONNECTION:'c1',SUPPORT:'s1',NODE_LOAD:'l1'})[kind])),
@@ -2468,7 +2469,7 @@ def test_beginner_labels_mixed_evidence_and_frozen_copy(context, workspace_page)
         engineeringStale:engineeringRoot.textContent,
       };
     }""")
-    assert result["labels"] == ["节点 N1", "构件 M1", "连接 C1", "支座 S1", "荷载 L1"]
+    assert result["labels"] == ["节点 N·M5VYXOCM44", "构件 M·ZIG7FSK2UF", "连接 C·2D3DDSQ53O", "支座 S·5C6BMPEC53", "荷载 L·FACLVVX6SS"]
     assert "一根实际构件在分析模型中可能被分成多个分析段，这些分析段的受力状态并不完全相同。" in result["comparison"]
     assert "分析段 1" in result["comparison"] and "12.5 N" in result["comparison"] and "受拉" in result["comparison"]
     assert "分析段 2" in result["comparison"] and "-4.25 N" in result["comparison"] and "受压" in result["comparison"]
@@ -2481,30 +2482,46 @@ def test_beginner_labels_mixed_evidence_and_frozen_copy(context, workspace_page)
     page.get_by_role("button", name="开始预测").click()
     prediction = page.locator("#workspace-prediction")
     assert prediction.get_by_role("button", name="近似零力").count() == 1
-    assert "构件 M1" in prediction.locator("[data-prediction-members]").text_content()
+    assert "构件 M·ZIG7FSK2UF" in prediction.locator("[data-prediction-members]").text_content()
     assert "m1" not in prediction.locator("[data-prediction-members]").text_content()
 
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
 def test_canvas_member_selection_focuses_existing_teaching_item_without_loop(context, workspace_page):
-    """Removing the selection observer or making it write selection recursively must fail."""
+    """AV-01 Results selection uses saved evidence without a Draft observer loop."""
     from competitions.models import CompetitionEvent
+    from playwright.sync_api import expect
+    from tests.browser.test_av01_run_integration import ready_plot
 
     owner, project, material, section = context
     CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
     save_bt01_draft(owner, project, material, section)
     page = workspace_page(user=owner, project=project)
-    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
     page.locator('[data-ux-stage-target="analyze"]').click()
     page.locator("#workspace-analyze").click()
-    page.wait_for_function("document.querySelector('[data-teaching-member]')")
-    member_key = page.evaluate("JSON.parse(document.querySelector('#workspace-bootstrap').textContent).draft.physical_members[0].client_key")
-
-    page.locator(f'[data-client-key="{member_key}"] line').click(force=True)
-    page.wait_for_function("key => document.activeElement?.dataset.teachingMember === key", arg=member_key)
-    assert page.locator(f'[data-teaching-member="{member_key}"][data-teaching-focused="true"]').count() == 1
-    assert page.evaluate("document.activeElement.dataset.teachingMember") == member_key
+    ready_plot(page)
+    teaching=page.locator('[data-result-conclusion] [data-teaching-member]').first
+    expect(teaching).to_be_visible()
+    draft=page.locator('#workspace-canvas')
+    before=draft.locator('[data-selected=true]').evaluate_all('(els)=>els.map(el=>el.dataset.clientKey).sort()')
+    dirty=page.locator('#workspace-save-status').text_content()
+    writes=[];page.on('request',lambda r:writes.append(r.method) if r.method not in ['GET','HEAD'] else None)
+    listing=page.locator('[data-av01-object-list]');listing.locator('summary').click()
+    listing.locator('button[data-object-kind=ANALYSIS_NODE]').first.click()
+    target=page.locator('[data-av01-target][data-object-kind=ANALYSIS_SEGMENT]').first
+    identity=target.get_attribute('data-object-id')
+    target.locator('circle').click()
+    selected=listing.locator('[aria-pressed=true]')
+    expect(selected).to_have_count(1);expect(selected).to_have_attribute('data-object-id',identity)
+    expect(selected).to_have_attribute('data-object-kind','ANALYSIS_SEGMENT')
+    member=page.locator('[data-av01-evidence] > [data-av01-field=member] [data-av01-value]').inner_text()
+    assert teaching.inner_text().startswith(member+'：')
+    expect(page.locator('[data-av01-canvas]')).to_be_focused()
+    target.locator('circle').click()
+    expect(selected).to_have_count(1)
+    assert not writes and page.locator('#workspace-save-status').text_content()==dirty
+    assert draft.locator('[data-selected=true]').evaluate_all('(els)=>els.map(el=>el.dataset.clientKey).sort()')==before
 
 
 @pytest.mark.browser
@@ -2517,7 +2534,6 @@ def test_compare_explain_reachable_from_real_analysis_controls(context, workspac
     CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
     save_bt01_draft(owner, project, material, section)
     page = workspace_page(user=owner, project=project)
-    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
 
     page.locator('[data-ux-stage-target="analyze"]').click()
     page.locator("#workspace-analyze").click()
@@ -2540,7 +2556,6 @@ def test_explicit_run_refresh_selects_new_analysis_without_reload(context, works
     CompetitionEvent.objects.filter(pk=project.event_id).update(status=CompetitionEvent.Status.ACTIVE)
     save_bt01_draft(owner, project, material, section)
     page = workspace_page(user=owner, project=project)
-    page.evaluate("document.cookie = 'csrftoken=' + 'a'.repeat(32) + '; path=/'")
 
     assert page.locator("#workspace-run-select").input_value() == ""
     page.locator('[data-ux-stage-target="analyze"]').click()
@@ -2615,7 +2630,7 @@ def test_run_context_clears_previous_payload_before_loading_or_failure(context, 
       try { await context.selectRun(2); } catch (_) {}
       return {renders, current:context.state().currentRunId, payload:context.state().payload};
     }""")
-    assert result == {'renders': [None, 1, None], 'current': 2, 'payload': None}
+    assert result == {'renders': [None, None, 1, None], 'current': 2, 'payload': None}
 
 
 @pytest.mark.browser
@@ -2647,7 +2662,9 @@ def test_switching_to_failed_run_clears_engineering_details_and_canvas_overlay(c
     assert page.locator('#workspace-canvas [data-result-state="TENSION"]').count() > 0
 
     page.locator("#workspace-run-select").select_option(str(failed.id))
-    page.wait_for_function("runId => document.querySelector('#workspace-results').textContent.includes(`#${runId}`)", arg=failed.id)
+    page.wait_for_function("document.querySelector('#workspace-results').textContent.includes('这次分析未完成')")
+    assert f'#{failed.id}' not in page.locator('#workspace-results').text_content()
+    assert 'SOLVER_FAILED' not in page.locator('#workspace-results').text_content()
     assert page.locator("[data-engineering-content]").text_content() == ""
     assert page.locator('#workspace-canvas [data-result-state]:not([data-result-state=""])').count() == 0
 
@@ -2659,12 +2676,16 @@ def test_historical_level_one_uses_revision_snapshot_labels_and_no_stale_overlay
     page = workspace_page(user=owner, project=project)
     result = page.evaluate("""async () => {
       const { showLevelOne } = await import('/static/projects/workspace/results.js');
+      const {createStudentLabelResolver}=await import('/static/projects/workspace/labels.js');
       const snapshot = {nodes:[{id:'n1',label:'历史节点'}],connections:[{id:'c1',geometry_node_id:'n1'}],physical_members:[{id:'m1',label:'历史构件'}]};
       const data = {source_draft_version:1,result_json:{member_results:[{physical_member_id:'m1',state:'TENSION'}]},level_one:{maximum_displacement:{maximum_displacement_mm:1,candidate_analysis_node_ids:['connection:c1']}}};
-      const view = showLevelOne({analysis_run_id:7,predictionId:null}, data, 2, snapshot);
+      const labels=createStudentLabelResolver(snapshot);
+      const view = showLevelOne({runId:7,historical:true,canLinkCanvas:false,comparisonAvailable:false,
+        members:[{key:'m1',label:labels.label('PHYSICAL_MEMBER','m1'),actualState:'TENSION'}],
+        displacement:{available:true,maximumMm:1,candidates:[{id:'connection:c1',label:labels.analysisNode('connection:c1')}]}});
       return {label:view.members[0].displayLabel,maximum:view.maximum.displayCandidateLabels,overlay:view.overlay,stale:view.stale};
     }""")
-    assert result == {'label': '构件 历史构件', 'maximum': ['连接 C1'], 'overlay': {}, 'stale': True}
+    assert result == {'label': '历史构件 · 构件 M·ZIG7FSK2UF', 'maximum': ['连接 C·2D3DDSQ53O'], 'overlay': {}, 'stale': True}
 
 
 @pytest.mark.browser
@@ -2803,8 +2824,8 @@ def test_reflection_draft_complete_and_readonly(context, workspace_page):
           const { createReflectionWorkspace, renderReflection } = await import('/static/projects/workspace/reflection.js');
           const calls = [];
           const responses = {
-            '/reflection/7/': { ok: true, status: 'DRAFT', original_reasoning: '原判断', unexpected_results: '', next_iteration_intent: '' },
-            '/reflection/7/complete/': { ok: true, status: 'COMPLETED', original_reasoning: '原判断', unexpected_results: '不同', next_iteration_intent: '修改' },
+            '/reflection/7/': { ok: true, analysis_run_id:7, status: 'DRAFT', original_reasoning: '原判断', unexpected_results: '', next_iteration_intent: '' },
+            '/reflection/7/complete/': { ok: true, analysis_run_id:7, status: 'COMPLETED', original_reasoning: '原判断', unexpected_results: '不同', next_iteration_intent: '修改' },
           };
           const request = async (url, options = {}) => {
             calls.push({ url, options });
@@ -2930,6 +2951,7 @@ def test_engineering_details_authoritative_values(context, workspace_page):
 @pytest.mark.django_db(transaction=True)
 def test_beginner_results_use_guidance_labels_and_rounded_values(context, workspace_page):
     from analysis.orchestration import analyze_project
+    from playwright.sync_api import expect
     from tests.application.test_analysis_acceptance import save_bt01_draft
 
     owner, project, material, section = context
@@ -2938,7 +2960,8 @@ def test_beginner_results_use_guidance_labels_and_rounded_values(context, worksp
     page = workspace_page(user=owner, project=project)
     page.locator('[data-ux-stage-target="summary"]').click()
     page.locator("#workspace-run-select").select_option(str(run.id))
-    page.wait_for_function("document.querySelector('#workspace-results h2')")
+    page.locator('[data-ux-stage-target="understanding"]').click()
+    expect(page.locator('#workspace-results [data-student-rounded-value]').first).to_be_visible()
     text = page.locator("#workspace-results").text_content()
 
     assert all(word in text for word in ["荷载", "支座", "传力", "受拉", "受压", "近似零力"])
@@ -2950,7 +2973,7 @@ def test_beginner_results_use_guidance_labels_and_rounded_values(context, worksp
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_beginner_error_uses_what_why_next_and_collapsed_technical_detail(context, workspace_page):
+def test_beginner_error_uses_what_why_next_without_internal_detail(context, workspace_page):
     owner, project, material, section = context
     save_physical_draft(actor=owner, project=project, payload=valid_payload(material, section))
     page = workspace_page(user=owner, project=project)
@@ -2963,9 +2986,9 @@ def test_beginner_error_uses_what_why_next_and_collapsed_technical_detail(contex
     assert error.locator("[data-error-why]").text_content()
     assert "下一步" in error.locator("[data-error-next]").text_content()
     technical = error.locator("details[data-error-technical]")
-    assert technical.get_attribute("open") is None
-    assert "EDITOR_NODE_MOVE_ZERO_LENGTH" in technical.text_content()
-    assert "EDITOR_NODE_MOVE_ZERO_LENGTH" not in error.locator("[data-error-what]").text_content()
+    assert technical.count() == 0
+    assert "EDITOR_NODE_MOVE_ZERO_LENGTH" not in error.text_content()
+    assert "长度为零" in error.locator("[data-error-why]").text_content()
 
 
 @pytest.mark.browser
@@ -3011,12 +3034,12 @@ def test_workspace_full_learning_loop(context, workspace_page):
     page = workspace_page(user=owner, project=project)
     result = page.evaluate(
         f"""async () => {{
-          document.cookie = 'csrftoken=' + 'a'.repeat(64) + '; path=/';
           const bootstrap = JSON.parse(document.querySelector('#workspace-bootstrap').textContent);
           const {{ requestJson }} = await import('/static/projects/workspace/api.js');
           const {{ createWorkspaceWorkflow }} = await import('/static/projects/workspace/workflow.js');
           const {{ createReflectionWorkspace, renderReflection }} = await import('/static/projects/workspace/reflection.js');
           const {{ showComparison, showExplanation, showEngineeringDetails, renderEngineeringDetails, showLevelOne, renderLevelOne }} = await import('/static/projects/workspace/results.js');
+          const {{ buildTeachingView }} = await import('/static/projects/workspace/teaching-view.js');
           const workflow = createWorkspaceWorkflow({{ urls: bootstrap.urls }});
           const editableDraft = {{ ...bootstrap.draft, physical_members: bootstrap.draft.physical_members.map((member) => ({{ ...member, label: '学习路径杆件' }})) }};
           const saved = await workflow.saveDraft(editableDraft);
@@ -3033,7 +3056,9 @@ def test_workspace_full_learning_loop(context, workspace_page):
           const comparisonResponse = await requestJson(bootstrap.urls.comparison_template.replace('{{run_id}}', analyzed.analysis_run_id));
           const explanationResponse = await requestJson(bootstrap.urls.explanation_template.replace('{{run_id}}', analyzed.analysis_run_id));
           const levelOneRoot = document.createElement('section');
-          const levelOne = showLevelOne({{ ...analyzed, predictionId: completedPrediction.prediction_id }}, data, saved.draft_version);
+          const reportResponse = await requestJson(bootstrap.urls.report_template.replace('{{run_id}}', analyzed.analysis_run_id));
+          const teaching = buildTeachingView({{payload:{{metadata:{{analysis_run_id:analyzed.analysis_run_id,model_revision_id:data.model_revision_id,source_draft_version:saved.draft_version}},status:'SUCCESS',data,comparison:comparisonResponse.body.comparison,explanation:explanationResponse.body.explanation,report:reportResponse.body,reflection:null}},runNumber:1,workspace:{{projectId:bootstrap.project.id,draftVersion:saved.draft_version,dirty:false}}}});
+          const levelOne = showLevelOne(teaching);
           renderLevelOne(levelOneRoot, levelOne);
           const detailsRoot = document.createElement('section');
           renderEngineeringDetails(detailsRoot, showEngineeringDetails(data.result_json), false);
@@ -3081,7 +3106,6 @@ def test_workspace_soft_gates(context, workspace_page):
     page = workspace_page(user=owner, project=project)
     result = page.evaluate(
         f"""async () => {{
-          document.cookie = 'csrftoken=' + 'a'.repeat(64) + '; path=/';
           const bootstrap = JSON.parse(document.querySelector('#workspace-bootstrap').textContent);
           const {{ createWorkspaceWorkflow }} = await import('/static/projects/workspace/workflow.js');
           const {{ createPredictionWorkspace }} = await import('/static/projects/workspace/prediction.js');

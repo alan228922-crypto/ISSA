@@ -48,7 +48,7 @@ def test_participant_sees_only_owned_projects_with_workspace_links(client):
     assert "我的桁架" in response.content.decode()
     assert "他人的桁架" not in response.content.decode()
     assert reverse("projects:workspace", kwargs={"project_id": owned.id}) in response.content.decode()
-    assert "进入工作区" in response.content.decode()
+    assert "继续建模" in response.content.decode()
 
 
 @pytest.mark.django_db

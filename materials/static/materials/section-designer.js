@@ -1,3 +1,5 @@
+import { drawSection } from './section-graphics.js';
+
 const NS = "http://www.w3.org/2000/svg";
 
 function numeric(form, name) {
@@ -5,37 +7,6 @@ function numeric(form, name) {
   if (value == null || value.trim() === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function draw(svg, rectangles, dimensioned = false) {
-  svg.replaceChildren();
-  const vertices = rectangles.flatMap(({ width_mm: w, height_mm: h, center_x_mm: x = 0, center_y_mm: y = 0, angle_deg: a = 0 }) => {
-    const radians = a * Math.PI / 180;
-    return [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([dx,dy]) => [x + dx*Math.cos(radians)-dy*Math.sin(radians), y + dx*Math.sin(radians)+dy*Math.cos(radians)]);
-  });
-  const xs = vertices.map(v => v[0]), ys = vertices.map(v => v[1]);
-  const left = Math.min(...xs), right = Math.max(...xs), bottom = Math.min(...ys), top = Math.max(...ys);
-  const pad = Math.max(right-left, top-bottom, 1) * .15;
-  svg.setAttribute("viewBox", `${left-pad} ${-top-pad} ${right-left+2*pad} ${top-bottom+2*pad}`);
-  rectangles.forEach(({ width_mm: w, height_mm: h, center_x_mm: x = 0, center_y_mm: y = 0, angle_deg: a = 0 }) => {
-    const rect = document.createElementNS(NS, "rect");
-    for (const [key,value] of Object.entries({ x:x-w/2, y:-y-h/2, width:w, height:h, transform:`rotate(${-a} ${x} ${-y})`, fill:"#86b6d7", stroke:"#17324a" })) rect.setAttribute(key, String(value));
-    svg.append(rect);
-  });
-  if (dimensioned) {
-    const { width_mm: w, height_mm: h } = rectangles[0];
-    function element(tag, attributes, content = "") {
-      const node = document.createElementNS(NS, tag);
-      for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
-      node.textContent = content;
-      svg.append(node);
-    }
-    const style = { fill: "#17324a", "font-size": pad * .55, "text-anchor": "middle" };
-    element("line", { x1: -w/2, y1: h/2 + pad*.35, x2: w/2, y2: h/2 + pad*.35, stroke: "#17324a", "stroke-width": pad*.04 });
-    element("text", { x: 0, y: h/2 + pad*.85, ...style }, `${w} mm`);
-    element("line", { x1: -w/2-pad*.35, y1: -h/2, x2: -w/2-pad*.35, y2: h/2, stroke: "#17324a", "stroke-width": pad*.04 });
-    element("text", { x: -w/2-pad*.7, y: 0, transform: `rotate(-90 ${-w/2-pad*.7} 0)`, ...style }, `${h} mm`);
-  }
 }
 
 function showProperties(target, values) {
@@ -120,11 +91,18 @@ export function bindSectionDesigner(root) {
   const form = root.querySelector("form"), svg = root.querySelector("[data-section-preview-svg]"), properties = root.querySelector("[data-section-properties]"), status = root.querySelector("[data-section-preview-status]");
   let token = 0;
   let timer;
+  let geometry=null, currentProperties=null;
+  function renderGeometry() { if(geometry)drawSection(svg,geometry.rectangles,currentProperties,geometry.rectangle); }
+  const resize=new ResizeObserver(renderGeometry);
+  resize.observe(svg);
   function schedule() {
     ++token;
     clearTimeout(timer);
     properties.replaceChildren();
     svg.replaceChildren();
+    geometry=null;currentProperties=null;
+    status.dataset.state='loading';
+    status.textContent='输入已修改，正在更新预览…';
     timer = setTimeout(update, 180);
   }
   async function update() {
@@ -132,17 +110,23 @@ export function bindSectionDesigner(root) {
     properties.replaceChildren();
     svg.replaceChildren();
     const definition = root.dataset.sectionDesigner === "composite" ? compositeDefinition(root) : rectangleDefinition(form);
-    if (!definition) { status.textContent = "请输入有效的正数尺寸和非负密度。"; return; }
-    draw(svg,definition.type === "composite" ? definition.components : [definition],definition.type === "rectangle");
+    if (!definition) { geometry=null;currentProperties=null;status.dataset.state='error';status.textContent = "请输入有效的正数尺寸和非负密度。"; return; }
+    geometry={rectangles:definition.type === "composite" ? definition.components : [definition],rectangle:definition.type === "rectangle"};
+    currentProperties=null;
+    renderGeometry();
+    status.dataset.state='loading';
     status.textContent = "正在计算截面属性…";
     try {
       const response = await fetch(root.dataset.previewUrl, { method:"POST", credentials:"same-origin", headers:{ "Content-Type":"application/json", "X-CSRFToken":form.elements.namedItem("csrfmiddlewaretoken").value }, body:JSON.stringify(definition) });
       const result = await response.json();
       if (current !== token) return;
-      if (!response.ok || !result.ok) { status.textContent = result.error?.message || "截面预览失败，请检查输入。"; return; }
+      if (!response.ok || !result.ok) { status.dataset.state='error';status.textContent = result.error?.message || "截面预览失败，请检查输入。"; return; }
+      currentProperties=result.properties;
+      renderGeometry();
       showProperties(properties,result.properties);
+      status.dataset.state='ready';
       status.textContent = "截面属性已更新；尚未保存。";
-    } catch (_) { if (current === token) status.textContent = "无法取得截面预览，请稍后重试。"; }
+    } catch (_) { if (current === token) { status.dataset.state='error';status.textContent = "无法取得截面预览，请稍后重试。"; } }
   }
   form.addEventListener("input",schedule);
   form.addEventListener("change",schedule);

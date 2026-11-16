@@ -1,7 +1,7 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 import { GRID_SPACING, visibleGridLevels } from "./grid.js";
 import { createStudentLabelResolver } from "./labels.js";
-import { structuralSymbolDefs, renderNode, renderMember, renderConnection, renderSupport, renderLoad } from "./structural-symbols.js";
+import { useWorkspaceGraphics, structuralSymbolDefs, renderNode, renderMember, renderConnection, renderSupport, renderLoad } from "./structural-symbols.js";
 import { candidateMembersAtNode } from "./joint-candidates.js";
 import { readCoordinateSpace, cssPixelsPerWorldUnit,visibleSvgViewport,svgLocalToWorld } from './coordinate-space.js';
 const topologyCache=new WeakMap(),renderedUnits=new WeakMap();
@@ -64,6 +64,17 @@ export function workspaceWorldBounds(draft) {
   return { minX: Math.min(...points.map((node) => node.x_mm)), minY: Math.min(...points.map((node) => node.y_mm)), maxX: Math.max(...points.map((node) => node.x_mm)), maxY: Math.max(...points.map((node) => node.y_mm)) };
 }
 
+// Adapt only camera framing to the screen-space glyph envelope. The existing
+// FIT_VIEW reducer and model/world coordinates remain authoritative.
+export function workspaceFitViewport(svg, coordinates) {
+  const viewport = visibleSvgViewport(svg, coordinates);
+  if (!useWorkspaceGraphics()) return viewport;
+  const unit = 1 / Math.hypot(coordinates.svgToClient.a, coordinates.svgToClient.b);
+  const inset = Math.max(0, 60 * unit - 40);
+  return { left: viewport.left + inset, top: viewport.top + inset,
+    width: Math.max(1, viewport.width - 2 * inset), height: Math.max(1, viewport.height - 2 * inset) };
+}
+
 function gridLayer(unit) {
   const levels = visibleGridLevels(1 / unit);
   const grid = element("g", { "data-canvas-grid": "true", "data-grid-visible-levels": [levels.minor && "minor", levels.medium && "medium", "major"].filter(Boolean).join(" "), "pointer-events": "none" });
@@ -83,7 +94,31 @@ function gridLayer(unit) {
   return grid;
 }
 
-function orientationLayer() {
+const orientationObservers = new WeakMap();
+function orientationLayer(svg) {
+  if (useWorkspaceGraphics() && svg?.isConnected && svg.getScreenCTM()) {
+    // Screen-space direction key. It is not the model origin or a world transform.
+    const matrix = svg.getScreenCTM();
+    const box = svg.getBoundingClientRect();
+    const origin = new DOMPoint(box.left + 24, box.bottom - 24).matrixTransform(matrix.inverse());
+    const unit = 1 / Math.hypot(matrix.a, matrix.b);
+    const group = element("g", { "data-canvas-orientation": "true", "data-orientation-style": "axes", "pointer-events": "none", "aria-label": "坐标方向：X 向右，Y 向上；非模型原点", transform: `translate(${origin.x} ${origin.y}) scale(${unit})`, fill: "var(--text, #17242c)", stroke: "var(--text, #17242c)", "stroke-width": 1.5 });
+    group.append(element("path", { "data-orientation-axis": "x", d: "M0 0H42", fill: "none" }), element("path", { "data-orientation-axis": "y", d: "M0 0V-42", fill: "none" }));
+    group.append(element("path", { d: "M42 0L35 -3V3Z M0 -42L-3 -35H3Z", stroke: "none" }), element("circle", { "data-orientation-origin": "true", r: 2.3, stroke: "none" }));
+    for (const [text,x,y] of [["X",48,4],["Y",-3,-49]]) { const label=element("text",{x,y,"font-size":11,"font-family":"var(--mono, monospace)",stroke:"none"});label.textContent=text;group.append(label); }
+    return group;
+  }
+  return legacyOrientationLayer();
+}
+function observeOrientation(svg) {
+  if (!svg.isConnected || orientationObservers.has(svg)) return;
+  const observer = new ResizeObserver(() => {
+    const layer = svg.querySelector('[data-canvas-orientation]');
+    if (layer && svg.isConnected) layer.replaceWith(orientationLayer(svg));
+  });
+  observer.observe(svg);orientationObservers.set(svg,observer);
+}
+function legacyOrientationLayer() {
   const group = element("g", { "data-canvas-orientation": "true", "pointer-events": "none", fill: "#34445c", stroke: "#34445c", "stroke-width": 3 });
   group.append(element("path", { d: "M 42 552 L 92 552 M 42 552 L 42 502" }));
   const label = element("text", { x: 98, y: 556, "font-size": 20, stroke: "none" }); label.textContent = "+X → +Y ↑"; group.append(label);
@@ -241,19 +276,29 @@ export function renderWorkspace(svg, draft, uiState = {}, coordinates = null) {
     }
     layers[3].append(group);
   }
-  if (uiState.cad?.activeCommand === "SELECT" && !uiState.readOnly) for (const item of uiState.selectedObjects || []) {
-    if (item.kind !== "GEOMETRY_NODE") continue;
-    const point = nodePositions.get(item.clientKey); if (!point) continue;
-    layers[3].append(element("rect", { "data-cad-node-grip": item.clientKey,
-      x: point.x - 5 * unit, y: point.y - 5 * unit, width: 10 * unit, height: 10 * unit,
-      fill: "#f59e0b", stroke: "#854d0e", "stroke-width": 1.5 * unit, cursor: "move" }));
+  if (uiState.cad?.activeCommand === "SELECT" && !uiState.readOnly) {
+    const keys = new Set();
+    for (const item of uiState.selectedObjects || []) {
+      if (item.kind === 'GEOMETRY_NODE') keys.add(item.clientKey);
+      if (item.kind === 'PHYSICAL_MEMBER') {
+        const member = draft.physical_members.find(row => row.client_key === item.clientKey);
+        if (member) { keys.add(member.start_node_client_key); keys.add(member.end_node_client_key); }
+      }
+    }
+    for (const clientKey of keys) {
+      const point = nodePositions.get(clientKey); if (!point) continue;
+      layers[3].append(element("rect", { "data-cad-node-grip": clientKey,
+        x: point.x - 5 * unit, y: point.y - 5 * unit, width: 10 * unit, height: 10 * unit,
+        fill: "#f59e0b", stroke: "#854d0e", "stroke-width": 1.5 * unit, cursor: "move" }));
+    }
   }
 
   const defs = structuralSymbolDefs();
   const world = element("g", { "data-world-layer": "true", transform: viewTransform(uiState.viewTransform) });
   if (uiState.cad?.gridVisible !== false) world.append(grid);
   world.append(...layers, cadPresentationLayer(uiState.cad, unit));
-  svg.replaceChildren(defs, world, orientationLayer());
+  svg.replaceChildren(defs, world, orientationLayer(svg));
+  observeOrientation(svg);
   renderedUnits.set(svg,unit);
   if(svg.isConnected)updateGridViewport(svg,coordinates||readCoordinateSpace(svg,uiState.viewTransform));
 }

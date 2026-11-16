@@ -1,0 +1,4 @@
+# Clean source exports omit local repository controls and historical verification artifacts.
+.gitattributes export-ignore
+/docs/development/evidence export-ignore
+/docs/development/issa-ui-* export-ignore

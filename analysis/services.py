@@ -28,6 +28,7 @@ def get_or_create_revision(*,project,actor):
     with transaction.atomic():
         # 鎖定 Project，讓建立 Snapshot 和讀取 draft_version 在同一個資料庫交易中完成。
         project=type(project).objects.select_for_update().get(pk=project.pk)
+        if not can_modify_project(actor,project): raise RevisionError('PROJECT_WRITE_DENIED')
         # Snapshot 是草稿在這一刻的固定資料；hash 是這份 Snapshot 的內容指紋。
         snapshot=build_physical_snapshot(project); digest=model_hash(snapshot)
         # latest 是這個 Project 最近建立的 Revision，用來判斷是否已有相同版本可重用。

@@ -33,7 +33,7 @@ def test_new_student_sees_purpose_stage_and_can_draw_first_member(live_server):
         page.locator('input[name="password"]').fill("StudyPass123!")
         page.get_by_role("button", name="登录").click()
         assert page.get_by_text("从第一根构件开始").is_visible()
-        page.get_by_role("link", name="进入工作区").click()
+        page.get_by_role("link", name="继续建模").click()
         assert page.locator("[data-ux-stage-nav]").get_by_role("button", name="建模").is_visible()
         assert "构件" in page.locator("[data-ux-next-task]").inner_text()
         page.locator('[data-member-material]').select_option(str(material.pk))
@@ -101,7 +101,8 @@ def test_node_joint_does_not_reuse_stale_selection_on_blank_canvas(context, work
     assert page.locator('[data-object-kind="PhysicalMember"]').count() == 1
     assert page.locator('[data-object-kind="Connection"]').count() == 2
     page.locator('[data-workspace-tool="NODE"]').click()
-    canvas.click(position={"x": 500, "y": 350})
+    box = canvas.bounding_box()
+    canvas.click(position={"x": box["width"]*.8, "y": box["height"]*.75})
     assert page.locator('[data-object-kind="Connection"]').count() == 2
 
 
@@ -138,6 +139,7 @@ def test_created_support_and_load_show_controls_and_persist(context, workspace_p
     save_physical_draft(actor=owner, project=project, payload=draft)
     page = workspace_page(user=owner, project=project)
     page.set_viewport_size({"width": 1024, "height": 768})
+    page.locator('[data-cad-fit]').click()
     connection = page.locator('[data-client-key="c1"] rect')
 
     page.locator('[data-workspace-tool="SUPPORT"]').click()
@@ -245,10 +247,14 @@ def test_saving_draft_clears_previous_summary_selection(context, workspace_page)
     page.wait_for_function("document.querySelector('#workspace-report').dataset.runSelected === 'true'")
     page.locator('[data-ux-stage-target="build"]').click()
     page.locator('[data-workspace-tool="NODE"]').click()
-    page.locator('#workspace-canvas').click(position={"x": 500, "y": 360})
+    canvas=page.locator('#workspace-canvas');box=canvas.bounding_box()
+    canvas.click(position={"x": box["width"]*.8, "y": box["height"]*.8})
     page.locator('[data-ux-stage-target="summary"]').click()
+    assert page.locator('#workspace-save').is_disabled()
+    page.locator('[data-ux-stage-target="build"]').click()
     page.locator('#workspace-save').click()
     page.wait_for_function("document.querySelector('#workspace-save-status').textContent === '未保存修改：无'")
+    page.locator('[data-ux-stage-target="summary"]').click()
     page.wait_for_function("document.querySelector('#workspace-run-select').value === ''")
     assert page.locator('#workspace-report').get_attribute('data-run-selected') == 'false'
     assert not page.locator('#workspace-report-view').is_visible()
@@ -268,7 +274,10 @@ def test_repeat_save_without_changes_preserves_analysis(context, workspace_page)
     page.wait_for_function("document.querySelector('#workspace-report').dataset.runSelected === 'true'")
     save_requests = []
     page.on('request', lambda request: save_requests.append(request.url) if '/model/save/' in request.url else None)
+    assert page.locator('#workspace-save').is_disabled()
+    page.locator('[data-ux-stage-target="build"]').click()
     page.locator('#workspace-save').click()
+    page.locator('[data-ux-stage-target="summary"]').click()
     assert save_requests == []
     assert page.locator('#workspace-draft-version').inner_text() == '当前草稿 v1'
     assert page.locator('#workspace-run-select').input_value() == str(run.id)
@@ -299,11 +308,13 @@ def test_save_failure_is_visible_and_retry_preserves_draft(context, workspace_pa
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
 def test_analysis_opens_conclusions_then_evidence_tabs(context, workspace_page):
+    from playwright.sync_api import expect
+    from tests.browser.av01_harness import follow_saved_member_link
     owner, project, material, section = context
     save_bt01_draft(owner, project, material, section)
     page = workspace_page(user=owner, project=project)
     page.locator('[data-ux-stage-target="prediction"]').click()
-    assert page.get_by_text("先记录你的判断，也可以直接分析。").is_visible()
+    assert page.get_by_text("预测是你的判断，不是计算结果。先记录，也可以直接分析。").is_visible()
     page.locator('[data-prediction-skip]').click()
     page.locator('[data-ux-stage-target="analyze"]').click()
     assert page.get_by_text("将分析已保存的草稿 v1。").is_visible()
@@ -318,16 +329,14 @@ def test_analysis_opens_conclusions_then_evidence_tabs(context, workspace_page):
     assert page.get_by_role('tab', name='技术数据').get_attribute('aria-selected') == 'true'
     page.keyboard.press('Home')
     assert page.get_by_role('tab', name='结论').get_attribute('aria-selected') == 'true'
-    assert page.locator('[data-result-conclusion]').get_by_text('最大位移', exact=False).is_visible()
-    page.locator('[data-result-conclusion] [data-teaching-member="m1"]').click()
-    assert page.locator('[data-client-key="m1"]').get_attribute('data-selected') == 'true'
+    expect(page.locator('[data-result-conclusion] [data-av01-conclusion-slot] p').filter(has_text='最大位移')).to_be_visible()
+    follow_saved_member_link(page, page.locator('[data-result-conclusion] [data-teaching-member="m1"]'))
     page.get_by_role('tab', name='预测对比').click()
     assert page.get_by_text('这次没有保存预测，因此暂时无法比较。').is_visible()
     page.get_by_role('tab', name='为什么').click()
     assert page.locator('[data-result-explanation]').is_visible()
     assert '轴力' in page.locator('[data-result-explanation]').inner_text()
-    page.locator('[data-client-key="m1"] line').click(force=True)
-    assert page.locator('[data-result-explanation] [data-teaching-member="m1"][data-teaching-focused="true"]').count() >= 1
+    follow_saved_member_link(page, page.locator('[data-result-explanation] [data-teaching-member="m1"]').first)
     page.get_by_role('tab', name='技术数据').click()
     assert page.locator('#workspace-engineering-details').is_visible()
 

@@ -1,4 +1,6 @@
 function csrfToken(documentRef = document) {
+  const rendered = documentRef.querySelector?.('meta[name="csrf-token"]')?.content;
+  if (rendered) return rendered;
   return documentRef.cookie.split("; ").find((value) => value.startsWith("csrftoken="))?.split("=")[1] || "";
 }
 

@@ -123,13 +123,15 @@ export function bindCanvasInteractions(svg, initialState, render) {
   let pointerMoveHandler = null;
   let fitHandler = null;
   let gripHandlers = null;
+  let transformDragHandlers = null;
+  let commandHandlers = null;
   let propertiesHandler = null;
   let hoveredElement = null;
   let overlapChooser = null;
   let lastMiddleClick = null;
   let lastClientPointer=null;
   let navigationHandler=null;
-  const resolvePresentation=()=>{if(lastClientPointer)pointerMoveHandler?.(worldPointFromEvent(svg,{clientX:lastClientPointer.x,clientY:lastClientPointer.y}),state,lastClientPointer);};
+  const resolvePresentation=()=>{if(lastClientPointer){const world=worldPointFromEvent(svg,{clientX:lastClientPointer.x,clientY:lastClientPointer.y});pointerMoveHandler?.(world,state,lastClientPointer);commandHandlers?.onMove?.(world,lastClientPointer);}};
   const visibleIdentity = (item) => {
     if (item?.kind !== "CONNECTION") return item;
     const connection = state.draft.connections?.find((record) => record.client_key === item.clientKey);
@@ -147,7 +149,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
       else if (index < 0) identities.push(item);
     }
     state = Object.freeze({ ...state, selectedObjects: identities, selectedObject: identities.at(-1) || null });
-    if (redrawSelection) redraw();
+    if (redrawSelection) { redraw(); if (state.cad?.activeCommand === "SELECT") svg.focus({ preventScroll: true }); }
     notifyStateChange();
   };
   const dispatchViewEvent = (event) => {
@@ -198,6 +200,13 @@ export function bindCanvasInteractions(svg, initialState, render) {
     closeChooser();
     const precisePoint = lastPointerUp && Math.abs(lastPointerUp.x - event.clientX) <= 1 && Math.abs(lastPointerUp.y - event.clientY) <= 1 ? lastPointerUp : null;
     lastPointerUp = null;
+    if (commandHandlers?.active?.()) {
+      const gripKey = event.target?.closest?.('[data-cad-node-grip]')?.getAttribute('data-cad-node-grip');
+      const target = gripKey ? { kind: 'GEOMETRY_NODE', clientKey: gripKey } : pointerSelection || selectionFromElement(event.target?.closest?.('[data-object-kind]')) || pickAt({x:event.clientX,y:event.clientY}, renderedObjectsFromSvg(svg));
+      pointerSelection = null;
+      try { commandHandlers.onPoint(worldPointFromEvent(svg, precisePoint ? {clientX:precisePoint.x,clientY:precisePoint.y} : event), target, {x:event.clientX,y:event.clientY}); } catch (error) { svg.dispatchEvent(new CustomEvent('cad-coordinate-error',{detail:error})); }
+      event.preventDefault(); return;
+    }
     const createdSelection = canvasClickHandler?.(event, pointerSelection, precisePoint);
     if (createdSelection === true) { pointerSelection=null; return; }
     const direct = createdSelection || pointerSelection || selectionFromElement(event.target?.closest?.("[data-object-kind]"));
@@ -261,6 +270,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   };
   document.addEventListener("keydown", (event) => {
     if (event.code === "Space" && !event.repeat && !document.activeElement?.closest?.("input, textarea, select, [contenteditable], [role='textbox']")) { spaceHeld = true; spaceTapEligible = document.activeElement === svg || document.activeElement === document.body; }
+    if (event.key === "Escape" && (gesture?.gripTarget || gesture?.transformMove)) cancelGesture();
     if (event.key === "Escape" && overlapChooser) closeChooser();
     else if (event.key === "Escape" && marqueeAnchor) { marqueeAnchor = null; removeMarquee(); }
     else if (event.key === "Escape" && state.cad?.activeCommand === "SELECT" && state.selectedObject) select(null);
@@ -275,14 +285,22 @@ export function bindCanvasInteractions(svg, initialState, render) {
     if (event.button !== 0 && event.button !== 1) return;
     if (event.button === 1) event.preventDefault();
     if (spaceHeld) spaceTapEligible = false;
-    const grip = event.button === 0 && !spaceHeld && state.cad?.activeCommand === "SELECT" ? event.target?.closest?.("[data-cad-node-grip]") : null;
-    gesture = { pointerId:event.pointerId,start: { x: event.clientX, y: event.clientY }, last: { x: event.clientX, y: event.clientY }, moved: false, pan: event.button === 1 || spaceHeld, select: event.button === 0 && !grip && state.cad?.activeCommand === "SELECT", gripTarget: grip?.getAttribute("data-cad-node-grip") || null, additive: event.shiftKey };
+    const grip = event.button === 0 && !spaceHeld && !commandHandlers?.active?.() && state.cad?.activeCommand === "SELECT" ? event.target?.closest?.("[data-cad-node-grip]") : null;
+    const directMoveTarget = selectionFromElement(event.target?.closest?.("[data-object-kind]"));
+    const transformMove = event.button === 0 && !spaceHeld && !event.shiftKey && !grip && state.cad?.activeCommand === "SELECT" && Boolean(transformDragHandlers?.onStart?.(directMoveTarget, worldPointFromEvent(svg, event)));
+    gesture = { transformMove, pointerId:event.pointerId,start: { x: event.clientX, y: event.clientY }, last: { x: event.clientX, y: event.clientY }, moved: false, pan: event.button === 1 || spaceHeld, select: event.button === 0 && !commandHandlers?.active?.() && !grip && !transformMove && state.cad?.activeCommand === "SELECT", gripTarget: grip?.getAttribute("data-cad-node-grip") || null, additive: event.shiftKey };
     pointerSelection = grip ? { kind: "GEOMETRY_NODE", clientKey: grip.getAttribute("data-cad-node-grip") } : selectionFromElement(event.target?.closest?.("[data-object-kind]"));
     if(gesture.pan)navigationHandler?.('START');
     svg.setPointerCapture?.(event.pointerId);
   });
   svg.addEventListener("pointermove", (event) => {
     lastClientPointer={x:event.clientX,y:event.clientY};
+    if (gesture?.transformMove) {
+      const point = { x: event.clientX, y: event.clientY };
+      if (distance(point, gesture.start) >= 4) gesture.moved = true;
+      if (gesture.moved) transformDragHandlers?.onPreview?.(worldPointFromEvent(svg, event));
+      gesture.last = point; return;
+    }
     if (gesture?.gripTarget) {
       const point = { x: event.clientX, y: event.clientY };
       if (distance(point, gesture.start) >= 4) gesture.moved = true;
@@ -313,6 +331,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
   svg.addEventListener("pointerup", (event) => {
     if (!gesture) return;
     lastPointerUp = { x: event.clientX, y: event.clientY };
+    if (gesture.transformMove && gesture.moved) { suppressClick = true; transformDragHandlers?.onCommit?.(worldPointFromEvent(svg, event)); }
     if (gesture.gripTarget && gesture.moved) {
       suppressClick = true;
       gripHandlers?.onCommit?.(gesture.gripTarget, worldPointFromEvent(svg, event), { x: event.clientX, y: event.clientY });
@@ -336,6 +355,7 @@ export function bindCanvasInteractions(svg, initialState, render) {
     if (svg.hasPointerCapture?.(event.pointerId)) svg.releasePointerCapture(event.pointerId);
   });
   const cancelGesture=()=>{
+    if(gesture?.transformMove)transformDragHandlers?.onCancel?.();
     if(gesture?.gripTarget)gripHandlers?.onCancel?.();
     if(gesture?.pan)navigationHandler?.('END');
     const pointerId=gesture?.pointerId;gesture=null;lastPointerUp=null;spaceHeld=false;spaceTapEligible=false;marqueeAnchor=null;suppressClick=false;removeMarquee();
@@ -364,6 +384,8 @@ export function bindCanvasInteractions(svg, initialState, render) {
     setNavigationHandler:(handler)=>{navigationHandler=handler;},
     setFitHandler: (handler) => { fitHandler = handler; },
     setGripHandlers: (handlers) => { gripHandlers = handlers; },
+    setCommandHandlers: (handlers) => { commandHandlers = handlers; },
+    setTransformDragHandlers: (handlers) => { transformDragHandlers = handlers; },
     setPropertiesHandler: (handler) => { propertiesHandler = handler; },
   });
 }

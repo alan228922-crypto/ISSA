@@ -1,5 +1,7 @@
 # ARCHITECTURE_DECISION_REGISTER.md
 
+Post-M8 status sync (2026-10-21): **M8 CLOSED — STABLE ON MAIN**, stable implementation baseline `main@96c335dc1c1d742d4143817c02a51a0fc3961892`. D-M7-001/002/003 and D-M8-001/002/003/004 are **RESOLVED**. O-003 **RESOLVED**; O-006 **RESOLVED — APPROVED SCOPE ONLY**; O-004 **OPEN**; O-001 **OPEN — MECHANICS REVIEW REQUIRED**. This is status synchronization only, not new product semantics or completion of all Event administration. See [MASTER_SPEC](MASTER_SPEC.md) for the current scope and superseded historical status handling. M9 approved plan/Native execution has completed technical Tasks 1–8: **M9 IMPLEMENTED — TEACHER REVIEW PENDING**; Owner acceptance PENDING, not merged. See [implementation evidence](../development/M9_IMPLEMENTATION_EVIDENCE.md).
+
 | ID | Topic | Status | Current decision / next action |
 |---|---|---|---|
 | ADR-01 | P0 analysis type | Confirmed | `TRUSS_2D` only |
@@ -9,18 +11,19 @@
 | ADR-05 | P0 loads | Confirmed | Manual nodal Fx/Fy only |
 | ADR-06 | Self Weight | Confirmed deferred | P0.x/P1 |
 | ADR-07 | Initial password | Confirmed | Captain student ID; hash only; forced change |
-| ADR-08 | Euler K + controlling I / weak-axis policy | MECHANICS REVIEW REQUIRED | Master O-001: no default/automatic K, controlling-axis selection, final risk bands or related wording until review; explicit-input formula only |
+| ADR-08 | Euler K + controlling I / weak-axis policy | OPEN — MECHANICS REVIEW REQUIRED | Master O-001: no default/automatic K, controlling-axis selection, final risk bands or related wording until review; explicit-input formula only, not product screening |
 | ADR-09 | Roller orientation | Confirmed | Master O-002 resolved: P0 ROLLER restrains global X or Y only; arbitrary-angle support is out of scope |
-| ADR-10 | FINISHED_GRACE user access | Open Decision | Master O-003: read-only recommended only; edit/analyze allow/deny remains open |
-| ADR-11 | Account lifecycle after purge | Open Decision | Master O-004: do not auto-delete/disable until confirmed; Project Operational Data purge proceeds independently |
+| ADR-10 | FINISHED_GRACE user access | RESOLVED | D-M7-003: READ-ONLY HISTORY; authorized historical Results/Report; no Project create/Save/Check/Analyze or Prediction/Reflection/Reasoning/other student authoring; PURGED operational GET/write including residual rows fails closed |
+| ADR-11 | Account lifecycle after purge | OPEN | Master O-004: do not auto-delete/disable until confirmed; Project Operational Data purge proceeds independently |
 | ADR-12 | Composite strip overlap | Open if feature requires | Define before overlap-capable free-composite implementation |
 | ADR-13 | MASTER_SPEC | Resolved | `MASTER_SPEC.md v1.0` established as Source of Truth |
 | ADR-14 | Architecture freeze state | Final Frozen | P0 implementation may proceed with scoped gates |
-| ADR-15 | Implementation sequencing | Current baseline | M0 complete → M1 Mechanics → M2 Secure Skeleton → M3 Analysis → M4 Teaching → M5 Purge/Research |
+| ADR-15 | Implementation sequencing | Historical sequencing; superseded current-status label | Original grouping: M0 → M1 Mechanics → M2 Secure Skeleton → M3 Analysis → M4 Teaching → M5 Purge/Research. Current milestone status is M8 CLOSED — STABLE ON MAIN; this old grouping is not proof that full Event purge/scheduler/research orchestration shipped. M9 scope is OWNER SCOPE APPROVED; plan/method approval remains pending. |
 | ADR-16 | Solver/postprocess authority | Confirmed | Solver kernel: u/R/N; pure postprocess: stress/mass/Euler; Teaching: explanation only |
 | ADR-17 | Payload schema distinction | Confirmed | Mutable authoring: physical-draft-v1; immutable ModelRevision canonical snapshot: physical-snapshot-v1 |
 | ADR-18 | Platform Language | Confirmed | Simplified Chinese (zh-CN) for user-facing copy and Chinese comments/docstrings; program identifiers and mechanics machine codes remain English; P0 has no i18n framework |
-| ADR-19 | ACTIVE Event Team Provisioning | Open Decision | Master O-006. Current safe implementation is fail-closed with PROVISIONING_STATUS_POLICY_GAP; this temporary behavior is not final product policy |
+| ADR-19 | ACTIVE Event Team Provisioning | RESOLVED — APPROVED SCOPE ONLY | Owner accepted M8 on 2026-10-20: DRAFT CSV and four approved DRAFT/ACTIVE single operations only. ACTIVE CSV and all unapproved provisioning/admin capabilities remain fail closed; see ADR-35. |
+| ADR-35 | M8 scoped participant management | RESOLVED — Owner acceptance PASS | D-M8-001..004 resolved, Owner decision 2026-10-20 Asia/Shanghai. Active global Developer or exact assigned active global Manager; active-only mixed conflict; DRAFT CSV and DRAFT/ACTIVE CREATE_USER/JOIN_EXISTING/REACTIVATE/DEACTIVATE; opaque DB Session previews with expired credential cleanup; SUCCESS/NOOP receipts, one audit AddField. O-006 resolved only for this scope. ACTIVE CSV, public signup/join codes, Manager assignment/revoke/promotion, admin password reset, global recovery, Event transitions/scheduler and automatic Project provisioning excluded. O-004 OPEN. See ../superpowers/specs/2026-10-18-m8-event-participant-management-decisions.md. |
 | ADR-20 | Prediction and result reveal evidence | Confirmed | M4A hybrid `prediction-v1`, Project+draft binding, immutable completed records, nullable Run FK, PhysicalPointRef, and unique owner-only StudentResultReveal; no Prediction UI/Compare in M4A |
 | ADR-21 | Engineering zero-force classification | Confirmed — M4B Gate 1B SPEC-gap resolution | Master O-007 resolved: Compare derives teaching `ZERO_FORCE` for every authoritative analysis segment when `abs(N_i) <= max(1e-6 N, 0.001 * max_j |N_j|)`, with `j` spanning all segments. M1 numerical `ZERO` remains `abs(N) <= 1e-9 N` cleanup; real force values and `truss2d-result-v1` remain unchanged. |
 | ADR-22 | Project operational purge boundary | Confirmed — Task 5 Option 1 | Preserve historical PROTECT FKs; raw Project.delete is unsupported with protected history. Use atomic ordered `purge_project_operational_data`, Project last, durable minimal unique ProjectOperationalPurgeAudit, deterministic repeat; no User deletion. Editable-draft references are governed by ADR-34. Event orchestration remains outside M4A. |

@@ -27,6 +27,12 @@ def test_core_student_blank_member_to_analysis_journey(context,workspace_page):
     from projects.models import Project
     from modeling.services import save_physical_draft
     owner,legacy,material,section=context
+    # Keep the normal analysis fixture inside its existing retention window.
+    from datetime import timedelta
+    from django.utils import timezone
+    legacy.event.starts_at=timezone.now()-timedelta(days=1)
+    legacy.event.ends_at=timezone.now()+timedelta(days=1)
+    legacy.event.save()
     complete=Project.objects.create(event=legacy.event,owner_user=owner,name='Complete core triangle')
     save_physical_draft(actor=owner,project=complete,payload={
         'schema_version':'physical-draft-v2','expected_draft_version':0,

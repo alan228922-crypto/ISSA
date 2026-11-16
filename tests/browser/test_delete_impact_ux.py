@@ -190,6 +190,16 @@ def test_second_level_summary_keyboard_responsive_and_undo(context,workspace_pag
 
 def draw_triangle(page, points):
     a,b,c=points
+    # Navigate the public view before drawing; the command dock reduces short-screen Canvas height.
+    from tests.browser.test_cad_core_drawing import client_point
+    for _ in range(8):
+        box=page.locator('#workspace-canvas').bounding_box()
+        screen=[client_point(page,*point) for point in points]
+        if all(box['x']+16<p['x']<box['x']+box['width']-16 and box['y']+16<p['y']<box['y']+box['height']-16 for p in screen):break
+        page.locator('[data-cad-zoom-out]').click()
+    box=page.locator('#workspace-canvas').bounding_box()
+    screen=[client_point(page,*point) for point in points]
+    assert all(box['x']+16<p['x']<box['x']+box['width']-16 and box['y']+16<p['y']<box['y']+box['height']-16 for p in screen)
     for start,end in [(a,b),(a,c),(b,c)]:member(page,start,end)
     page.locator('[data-workspace-tool="SUPPORT"]').click()
     page.locator('[data-support-choice="PINNED"]').click();move_world(page,*a,click=True)
@@ -216,7 +226,7 @@ def test_second_build_public_journey_removes_old_draft_and_restores_once(context
     modal=dialog(page)
     expect(modal.locator('[data-delete-impact-related-summary]')).to_have_text('3 个构件 · 2 个支座 · 1 个荷载')
     modal.locator('summary').click()
-    expect(modal).to_contain_text('构件 1')
+    expect(modal).to_contain_text('构件 M1')
     modal.get_by_role('button',name='一起删除相关物件',exact=True).click()
     assert page.locator('[data-draft-object-key]').count()==0
     page.locator('[data-cad-undo]').click()

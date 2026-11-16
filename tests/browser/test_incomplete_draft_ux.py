@@ -191,8 +191,8 @@ def test_model_check_groups_audit_case_by_six_incomplete_objects(context, worksp
     first = cards.first.inner_text()
     assert "位置节点" in first and "参与构件" in first
     assert "connection-1" not in first
-    assert "连接 1" in first
-    assert "连接 5" in cards.nth(4).inner_text()
+    assert "连接 C1" in first
+    assert "连接 C5" in cards.nth(4).inner_text()
     page.screenshot(path=str(captures / "audit-check.png"))
     page.locator('[data-ux-stage-target="analyze"]').click()
     with page.expect_response(lambda response: response.url.endswith("/analyze/")) as response_info:

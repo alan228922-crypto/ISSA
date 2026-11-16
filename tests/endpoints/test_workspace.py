@@ -90,6 +90,7 @@ def test_owner_gets_bootstrap_and_manager_gets_read_only(context, client):
         "reflection_template",
         "reflection_complete_template",
         "materials",
+        "visualization_template",
     }
     assert owner_bootstrap["urls"] == {
         "save": f"/projects/{project.id}/model/save/", "check": f"/projects/{project.id}/model/check/",
@@ -99,6 +100,7 @@ def test_owner_gets_bootstrap_and_manager_gets_read_only(context, client):
         "explanation_template": f"/projects/{project.id}/analyses/{{run_id}}/explanation/", "reflection_template": f"/projects/{project.id}/analyses/{{run_id}}/reflection/",
         "reflection_complete_template": f"/projects/{project.id}/analyses/{{run_id}}/reflection/complete/",
         "materials": f"/projects/{project.id}/materials/",
+        "visualization_template": f"/projects/{project.id}/analyses/{{run_id}}/visualization/",
     }
     assert owner_bootstrap["draft"]["physical_members"] == [{"client_key": "m1", "start_node_client_key": "n1", "end_node_client_key": "n2", "material_id": material.id, "section_id": section.id, "label": "杆件", "is_active": True}]
     assert owner_bootstrap["draft"]["connections"] == [{"client_key": "c1", "geometry_node_client_key": "n1", "participating_member_client_keys": ["m1"]}]

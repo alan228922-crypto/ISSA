@@ -1,19 +1,12 @@
-# Showcase screenshot provenance
+# 新版產品畫面
 
-All images are unedited browser screenshots of the stable `838cb57` implementation,
-captured during fresh main regression journeys. They show synthetic test data, not
-real students, uploaded projects or production accounts. The visible `physical-owner`
-account and `Core drawing` title belong to test fixtures. Draft `v1`/`v2` badges in
-the status bar denote the draft revision counter, not the physical schema version.
+六張1280×800真實Django後端畫面，源於已驗證RC的獨立QA環境。帳號與結構均為合成練習資料，不是真實學生或賽事；Results來自真正的Saved Run。保留原圖，不把設計預覽或固定SVG當成已實作結果。
 
-- `modeling-workspace.png`: member drawing, numeric input and snap feedback from the
-  CAD core drawing regression (`blank-member-preview.png`).
-- `model-check.png`: successful check following the Bridge second-build journey
-  (`second-build-check-pass.png`).
-- `delete-impact.png`: the 1280 px Bridge delete-confirmation screenshot
-  (`delete-impact-1280.png`).
+- login.png：登入
+- workspace.png：Build／CAD
+- results.png：Results／AV-01
+- materials.png：材料與截面目錄
+- sections.png：組合截面真實幾何預覽
+- reflection.png：歷史分析的已完成反思，只讀狀態
 
-Privacy inspection found no passwords, personal identifiers, local absolute paths,
-tracebacks or private project names in these three images. Technical modeling status
-is intentional. Results and Calculation Report images are still missing and are not
-represented by synthetic mockups. No database, browser profile or test log is included.
+其餘大量QA截圖不隨公開發行提供，原始證據保留在來源分支。

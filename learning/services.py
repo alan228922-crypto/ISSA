@@ -237,7 +237,7 @@ def validate_prediction_payload(project, payload):
 def _authorize_student_owner(project, actor):
     """Prediction evidence belongs only to the active participant who owns the Project."""
     if (
-        project.event.status == CompetitionEvent.Status.PURGED
+        not can_view_project(actor, project)
         or actor.role in {User.Role.MANAGER, User.Role.DEVELOPER}
         or actor.id != project.owner_user_id
         or not EventMembership.objects.filter(
@@ -250,11 +250,18 @@ def _authorize_student_owner(project, actor):
         raise PredictionError("PROJECT_WRITE_DENIED", 403)
 
 
+def _authorize_prediction_author(project, actor):
+    _authorize_student_owner(project, actor)
+    if not can_modify_project(actor, project):
+        raise PredictionError("PROJECT_WRITE_DENIED", 403)
+
+
 def _authorize_reflection_author(project, actor):
     if project.event.status != CompetitionEvent.Status.ACTIVE:
         raise ReflectionError("REFLECTION_EVENT_NOT_ACTIVE", 403)
     if (
-        actor.role in {User.Role.MANAGER, User.Role.DEVELOPER}
+        not can_modify_project(actor, project)
+        or actor.role in {User.Role.MANAGER, User.Role.DEVELOPER}
         or actor.id != project.owner_user_id
         or not EventMembership.objects.filter(
             user=actor,
@@ -347,6 +354,8 @@ def get_reflection_for_read(*, reflection, actor):
     except Reflection.DoesNotExist as exc:
         raise ReflectionError("REFLECTION_NOT_FOUND", 404) from exc
     project = reflection.analysis_run.project
+    if not can_view_project(actor, project):
+        raise ReflectionError("REFLECTION_READ_DENIED", 403)
     if actor.id == project.owner_user_id:
         return reflection
     if reflection.status == Reflection.Status.COMPLETED and can_view_project(actor, project):
@@ -362,6 +371,11 @@ def _current_predictions(project):
 
 def discover_current_prediction(project, actor=None):
     """Return the sole current-draft Prediction, or fail closed on ambiguity."""
+    # 未显式传 actor 的既有内部调用仍以 owner 权限读取；两条路径都
+    # 经过当前持久化 Event 状态，不能靠 HTTP wrapper 或缓存状态保护。
+    reader = actor if actor is not None else project.owner_user
+    if not can_view_project(reader, project):
+        raise PredictionError('PROJECT_READ_DENIED', 403)
     predictions = _current_predictions(project)
     if not predictions:
         return {"state": "NONE", "source_draft_version": project.draft_version}
@@ -374,7 +388,7 @@ def discover_current_prediction(project, actor=None):
 def _create_prediction_once(*, project, actor, expected_draft_version):
     with transaction.atomic():
         project = Project.objects.select_for_update().select_related("event").get(pk=project.pk)
-        _authorize_student_owner(project, actor)
+        _authorize_prediction_author(project, actor)
         if project.draft_version != expected_draft_version:
             raise PredictionError("PREDICTION_STALE_DRAFT", 409)
         current = discover_current_prediction(project)
@@ -418,7 +432,7 @@ def complete_prediction(*, prediction, actor, expected_draft_version, payload):
     with transaction.atomic():
         project = Project.objects.select_for_update().select_related("event").get(pk=prediction.project_id)
         prediction = Prediction.objects.select_for_update().get(pk=prediction.pk, project=project)
-        _authorize_student_owner(project, actor)
+        _authorize_prediction_author(project, actor)
 
         if prediction.status == Prediction.Status.COMPLETED:
             raise PredictionError("PREDICTION_ALREADY_COMPLETED", 409)

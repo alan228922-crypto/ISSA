@@ -50,7 +50,7 @@ def test_participant_navigates_from_events_to_authorized_workspace(entry_page):
 
     assert page.get_by_text("浏览器赛事").is_visible()
     assert page.get_by_text("浏览器桁架").is_visible()
-    page.get_by_role("link", name="进入工作区").click()
+    page.get_by_role("link", name="继续建模").click()
     assert page.locator("#workspace-bootstrap").count() == 1
 
 
@@ -85,7 +85,7 @@ def test_participant_configures_empty_project_and_saves_first_member(entry_page)
     page = entry_page(user=participant)
 
     assert page.get_by_text("当前账号：blank-journey-owner").is_visible()
-    page.get_by_role("link", name="进入工作区").click()
+    page.get_by_role("link", name="继续建模").click()
     assert page.get_by_text("可编辑（项目所有者）").is_visible()
     page.get_by_role("link", name="管理材料与截面").click()
     page.get_by_role("link", name="新建材料").click()

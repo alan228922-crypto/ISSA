@@ -98,6 +98,11 @@
 #workspace-results[data-ux-results-view="compare"] [data-result-panel]:not([data-result-panel="compare"]),
 #workspace-results[data-ux-results-view="explain"] [data-result-panel]:not([data-result-panel="explain"]),
 #workspace-results[data-ux-results-view="technical"] [data-result-panel] { display:none; }
+[data-teaching-level] { min-width:0; margin-block:14px; overflow-wrap:anywhere; }
+[data-teaching-level] > section { padding:10px 0; border-top:1px solid var(--ux-line); }
+[data-teaching-level] h4 { margin:7px 0; }
+[data-result-explanation] > details { padding:12px; border:1px solid var(--ux-line); border-radius:9px; }
+[data-result-explanation] > details > summary { cursor:pointer; font-weight:700; }
 #workspace-root[data-ux-stage="understanding"] #workspace-engineering-details { display:none; }
 #workspace-root[data-ux-stage="understanding"]:has(#workspace-results[data-ux-results-view="technical"]) #workspace-engineering-details { display:block; }
 #workspace-root[data-ux-stage="analyze"] [data-ux-back-to-build] { margin-left:8px; }

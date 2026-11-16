@@ -1,17 +1,8 @@
-{% load static %}
-<!doctype html>
-<html lang="zh-Hans"><meta charset="utf-8"><title>{% if editing %}编辑{% else %}新建{% endif %}组合截面</title>
-<body>{% include "shared/product_header.html" %}<main data-section-designer="composite" data-preview-url="{% url 'projects:section_preview' project.id %}">
-<h1>{% if editing %}编辑{% else %}新建{% endif %}组合截面</h1>
-<p>以不重叠的矩形组件组成截面；边缘接触可以，面积重叠不能保存。尺寸单位为 mm。</p>
-{% if form.errors or formset.errors or formset.non_form_errors %}<p role="alert">请检查以下输入。</p>{% endif %}
-<form method="post">{% csrf_token %}{{ form.as_p }}{{ formset.management_form }}{{ formset.non_form_errors }}
-<div data-component-rows>
-{% for row in formset %}<fieldset data-component-row><legend>矩形组件 {{ forloop.counter }}</legend>{{ row.as_p }}<button type="button" data-remove-component>移除组件</button></fieldset>{% endfor %}
-</div>
-<template data-empty-component><fieldset data-component-row><legend>矩形组件</legend>{{ formset.empty_form.as_p }}<button type="button" data-remove-component>移除组件</button></fieldset></template>
-<button type="button" data-add-component>新增矩形组件</button>
-{% if not editing %}<div aria-label="示例布局"><button type="button" data-section-preset="h">H/I 示例</button><button type="button" data-section-preset="t">T 示例</button><button type="button" data-section-preset="box">箱形示例</button></div>{% endif %}
-<button type="submit">保存截面</button></form>
-<section aria-label="截面预览"><h2>截面预览</h2><svg data-section-preview-svg viewBox="0 0 240 240" width="240" height="240" role="img" aria-label="截面几何预览"></svg><p data-section-preview-status role="status">输入有效组件后显示预览。</p><dl data-section-properties></dl></section>
-<a href="{% url 'materials:index' project.id %}">取消</a></main><script type="module" src="{% static 'materials/section-designer.js' %}"></script></body></html>
+{% extends 'shared/base.html' %}{% load static %}{% block title %}{% if editing %}编辑{% else %}新建{% endif %}组合截面 · ISSA{% endblock %}
+{% block main_attributes %}data-section-designer="composite" data-preview-url="{% url 'projects:section_preview' project.id %}"{% endblock %}
+{% block content %}<div class="ui-page-head"><div><p class="ui-eyebrow">SECTION DESIGNER / 组合</p><h1>{% if editing %}编辑{% else %}新建{% endif %}组合截面</h1><p class="ui-lead">以不重叠的矩形组件组成截面；边缘接触可以，面积重叠不能保存。尺寸单位为 mm。</p></div></div><div class="ui-form-layout"><form class="ui-card" method="post" data-ui-form>{% csrf_token %}{% include 'shared/form_errors.html' %}{% if not form.errors %}{% if formset.errors or formset.non_form_errors %}<div class="ui-alert ui-alert--error" role="alert">请检查以下输入。</div>{% endif %}{% endif %}{{ formset.non_form_errors }}{% include 'shared/form_field.html' with field=form.name %}{{ formset.management_form }}
+{% if not editing %}<div class="ui-actions" aria-label="示例布局"><button type="button" data-section-preset="h">H/I 示例</button><button type="button" data-section-preset="t">T 示例</button><button type="button" data-section-preset="box">箱形示例</button></div>{% endif %}
+<div data-component-rows>{% for row in formset %}<fieldset data-component-row {% if row.DELETE.value %}hidden{% endif %}><legend>矩形组件 {{ forloop.counter }}</legend>{{ row.non_field_errors }}<div class="ui-field-grid">{% for field in row %}{% if field.name != 'DELETE' %}{% include 'shared/form_field.html' %}{% endif %}{% endfor %}</div><div hidden>{{ row.DELETE }}</div><button type="button" data-remove-component>移除组件</button></fieldset>{% endfor %}</div>
+<template data-empty-component><fieldset data-component-row><legend>矩形组件</legend><div class="ui-field-grid">{% for field in formset.empty_form %}{% if field.name != 'DELETE' %}{% include 'shared/form_field.html' %}{% endif %}{% endfor %}</div><div hidden>{{ formset.empty_form.DELETE }}</div><button type="button" data-remove-component>移除组件</button></fieldset></template>
+<button type="button" data-add-component>{% include 'shared/icon.html' with name='plus' %}新增矩形组件</button><div class="ui-form-footer"><button class="ui-primary" type="submit">保存截面</button><a href="{% url 'materials:index' project.id %}">取消</a></div></form>{% include 'materials/section_preview.html' %}</div>{% endblock %}
+{% block scripts %}<script type="module" src="{% static 'materials/section-designer.js' %}"></script>{% endblock %}

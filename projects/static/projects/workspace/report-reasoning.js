@@ -1,3 +1,4 @@
+import {createUiIcon} from "../../ui/icons.js";
 import { postJson, requestJson, urlFromTemplate } from "./api.js";
 
 const FIELDS = [["modeling_rationale", "建模说明", "为什么采用这样的结构形式和连接方式？"], ["material_section_rationale", "材料与截面说明", "为什么选择这些材料和截面？"], ["support_load_rationale", "支座与荷载说明", "为什么这样简化支座和荷载？"], ["result_interpretation", "结果理解", "你如何理解这次分析结果？"], ["design_change_rationale", "设计修改", "根据结果，你做了哪些修改？为什么？"], ["scheme_comparison", "方案比较", "不同方案之间有哪些差异和权衡？"], ["final_conclusion", "最终结论", "请用自己的话总结最终设计。"]];
@@ -16,20 +17,21 @@ export function bindReportReasoning({ root, template, get = requestJson, post = 
   const renderEditor = (runId, reasoning = {}) => {
     root.replaceChildren();
     const title = document.createElement("h3");
-    title.textContent = "我的设计说明";
+    title.textContent = "我的设计说明";title.prepend(createUiIcon("member"));
     root.append(title);
     const notice = document.createElement("p"); notice.textContent = "由你自己填写，平台不会替你生成设计理由。"; root.append(notice);
     const overview = document.createElement("p"); overview.dataset.reasoningOverview = ""; root.append(overview);
     const form = document.createElement("form");
     const refreshOverview = () => { overview.textContent = `已填写 ${FIELDS.filter(([name]) => form.elements[name]?.value.trim()).length} / ${FIELDS.length} 项；可随时保存草稿。`; };
+    let group;
     for (const [index, [name, label, prompt]] of FIELDS.entries()) {
-      if (index === 0 || index === 3 || index === 6) form.append(Object.assign(document.createElement("h4"), { textContent: index === 0 ? "结构与材料" : index === 3 ? "结果与修改" : "最终结论" }));
+      if (index === 0 || index === 3 || index === 6) {group=document.createElement("fieldset");const legend=document.createElement("legend");legend.textContent=index===0?"01 / 结构与材料":index===3?"02 / 结果与修改":"03 / 最终结论";group.append(legend);form.append(group);}
       const field = document.createElement("label"); field.textContent = `${label}：${prompt}`;
       const area = document.createElement("textarea"); area.name = name; area.value = reasoning[name] || "";
       area.addEventListener("input", refreshOverview);
-      field.append(area); form.append(field);
+      field.append(area); group.append(field);
     }
-    const save = document.createElement("button"); save.type = "submit"; save.textContent = "保存设计说明";
+    const save = document.createElement("button"); save.type = "submit"; save.textContent = "保存设计说明";save.prepend(createUiIcon("save"));
     const status = document.createElement("p"); status.setAttribute("aria-live", "polite"); form.append(save, status);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();

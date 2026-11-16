@@ -109,6 +109,8 @@ def save_physical_draft(*, actor, project, payload):
         # 從這裡開始把整份草稿視為一次替換：舊圖刪除、新圖寫入、版本增加要一起成功。
         # 鎖住專案後，檢查版本、刪除舊草稿、寫入新草稿會一起完成，避免只完成一半。
         project = type(project).objects.select_for_update().get(pk=project.pk)
+        if not can_modify_project(actor, project):
+            raise DraftSaveError("PROJECT_WRITE_DENIED")
         if project.draft_schema_version != "physical-draft-v1":
             raise DraftSaveError("UNSUPPORTED_DRAFT_SCHEMA")
         if project.draft_version != expected_version:
@@ -241,6 +243,8 @@ def save_physical_draft_v2(*, actor, project, payload):
         coordinates[key] = point
     with transaction.atomic():
         project = type(project).objects.select_for_update().get(pk=project.pk)
+        if not can_modify_project(actor, project):
+            raise DraftSaveError("PROJECT_WRITE_DENIED")
         if project.draft_schema_version != "physical-draft-v2":
             raise DraftSaveError("UNSUPPORTED_DRAFT_SCHEMA")
         if project.draft_version != expected_version:

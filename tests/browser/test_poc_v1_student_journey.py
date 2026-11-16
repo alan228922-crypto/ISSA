@@ -1,3 +1,5 @@
+from datetime import timedelta
+from django.utils import timezone
 import pytest
 
 from tests.endpoints.test_event_landing import add_membership, make_event
@@ -5,14 +7,30 @@ from tests.endpoints.test_event_landing import add_membership, make_event
 
 @pytest.mark.browser
 @pytest.mark.django_db(transaction=True)
-def test_poc_v1_full_student_journey_uses_public_controls(live_server):
+def test_poc_v1_full_student_journey_uses_public_controls(live_server, monkeypatch):
     playwright = pytest.importorskip("playwright.sync_api")
     from accounts.models import User
     from competitions.models import CompetitionEvent, EventMembership
     from projects.models import Project
+    from learning import services as learning_services
+    original_authorize = learning_services._authorize_reflection_author
+    def traced_authorize(project, actor):
+        try:
+            return original_authorize(project, actor)
+        except Exception as exc:
+            print('M7_REFLECTION_AUTH_TRACE', getattr(exc, 'code', str(exc)),
+                'actor', actor.pk, actor.role, actor.is_active, 'owner', project.owner_user_id,
+                'event', CompetitionEvent.objects.filter(pk=project.event_id).values('id', 'status').first(),
+                'memberships', list(EventMembership.objects.filter(user=actor, event_id=project.event_id).values()),
+                'audits', list(project.draft_migration_audits.values('status')))
+            raise
+    monkeypatch.setattr(learning_services, '_authorize_reflection_author', traced_authorize)
 
     student = User.objects.create_user("poc-v1-student", password="JourneyPass123!")
     event = make_event(name="POC V1 验收赛事", code="POC-V1-JOURNEY")
+    event.starts_at = timezone.now() - timedelta(days=1)
+    event.ends_at = timezone.now() + timedelta(days=1)
+    event.save()
     CompetitionEvent.objects.filter(pk=event.id).update(status=CompetitionEvent.Status.ACTIVE)
     add_membership(user=student, event=event, membership_type=EventMembership.Type.PARTICIPANT)
     Project.objects.create(event=event, owner_user=student, name="学生空白桁架", draft_schema_version="physical-draft-v1")
@@ -21,13 +39,19 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
     browser = runtime.chromium.launch()
     context = browser.new_context(viewport={"width": 1280, "height": 900})
     page = context.new_page()
+    def trace_response(response):
+        if '/reflection/' in response.url and response.status >= 400:
+            print('M7_REFLECTION_HTTP_TRACE', response.request.method, response.status, response.url, response.text())
+    page.on('response', trace_response)
+    page.on('requestfailed', lambda request: print('M7_REFLECTION_REQUEST_FAILED', request.method, request.url, request.failure)
+        if '/reflection/' in request.url else None)
     try:
         page.goto(live_server.url + "/accounts/login/")
         page.locator('input[name="username"]').fill("poc-v1-student")
         page.locator('input[name="password"]').fill("JourneyPass123!")
         page.get_by_role("button", name="登录").click()
         assert page.get_by_text("POC V1 验收赛事").is_visible()
-        page.get_by_role("link", name="进入工作区").click()
+        page.get_by_role("link", name="继续建模").click()
         assert page.get_by_text("可编辑（项目所有者）").is_visible()
 
         page.get_by_role("link", name="管理材料与截面").click()
@@ -106,50 +130,67 @@ def test_poc_v1_full_student_journey_uses_public_controls(live_server):
         page.wait_for_function("document.querySelector('[data-prediction-status]').textContent.includes('已完成')")
 
         page.locator('[data-ux-stage-target="analyze"]').click()
-        page.locator("#workspace-analyze").click()
-        page.wait_for_function("document.querySelector('#workspace-run-select').value !== ''")
-        first_run = page.locator("#workspace-run-select").input_value()
+        with page.expect_response('**/analyze/') as first_analysis:
+            page.locator("#workspace-analyze").click()
+        assert first_analysis.value.ok and first_analysis.value.json()['status'] == 'SUCCESS'
+        first_run = str(first_analysis.value.json()['analysis_run_id'])
+        page.wait_for_function("id => document.querySelector('#workspace-run-select').value === id", arg=first_run)
         page.wait_for_function("document.querySelector('[data-result-compare]')")
         page.locator("[data-result-compare]").click()
         page.wait_for_function("document.querySelector('[data-result-comparison]').textContent.length > 0")
-        first_member_key = page.locator('[data-object-kind="PhysicalMember"]').first.get_attribute("data-client-key")
-        page.locator(f'[data-client-key="{first_member_key}"] line').click(force=True)
-        page.wait_for_function("key => document.activeElement?.dataset.teachingMember === key", arg=first_member_key)
-        assert page.locator(f'[data-result-comparison] [data-teaching-member="{first_member_key}"][data-teaching-focused="true"]').count() == 1
+        from tests.browser.av01_harness import follow_saved_member_link
+        comparison_member = page.locator('[data-result-comparison] [data-teaching-member]').first
+        playwright.expect(comparison_member).to_be_visible()
+        first_member_key = comparison_member.get_attribute('data-teaching-member')
+        follow_saved_member_link(page, comparison_member)
         page.locator("[data-result-explain]").click()
         page.wait_for_function("document.querySelector('[data-result-explanation]').textContent.length > 0")
-        page.locator(f'[data-client-key="{first_member_key}"] line').click(force=True)
-        page.wait_for_function("key => document.activeElement?.dataset.teachingMember === key", arg=first_member_key)
-        assert page.locator(f'[data-result-explanation] [data-teaching-member="{first_member_key}"][data-teaching-focused="true"]').count() == 1
+        explanation_member = page.locator(f'[data-result-explanation] [data-teaching-member="{first_member_key}"]').first
+        playwright.expect(explanation_member).to_be_visible()
+        follow_saved_member_link(page, explanation_member)
         page.locator('[data-ux-stage-target="summary"]').click()
         assert "计算依据" in page.locator("#workspace-report-view").text_content()
 
         page.get_by_role("tab", name="我的设计说明").click()
         reasoning = page.locator('#workspace-report-reasoning [name="final_conclusion"]')
         reasoning.fill("第一次分析：三角形传力路径完整。")
-        page.get_by_role("button", name="保存设计说明").click()
+        with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith(f'/analyses/{first_run}/reasoning/')) as saved_reasoning:
+            page.get_by_role("button", name="保存设计说明").click()
+        assert saved_reasoning.value.ok and saved_reasoning.value.json()['analysis_run_id'] == int(first_run)
         page.wait_for_function("document.querySelector('#workspace-report-reasoning form p').textContent.includes('已保存')")
         page.get_by_role("tab", name="反思（可选）").click()
         page.get_by_role("button", name="开始反思").click()
         page.locator('#workspace-reflection [name="original_reasoning"]').fill("我先判断三角形整体受力。")
         page.locator('#workspace-reflection [name="unexpected_results"]').fill("位移位置值得继续观察。")
         page.locator('#workspace-reflection [name="next_iteration_intent"]').fill("下一版调整荷载后比较。")
-        page.get_by_role("button", name="保存草稿").click()
+        with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith(f'/analyses/{first_run}/reflection/')) as saved_reflection:
+            page.get_by_role("button", name="保存草稿").click()
+        assert saved_reflection.value.ok and saved_reflection.value.json()['analysis_run_id'] == int(first_run)
+        page.wait_for_function("!document.querySelector('#workspace-reflection [name=original_reasoning]').disabled")
         page.wait_for_function("document.querySelector('#workspace-reflection textarea').value.includes('三角形')")
 
         page.locator('[data-ux-stage-target="analyze"]').click()
-        page.locator("#workspace-analyze").click()
-        page.wait_for_function("previous => document.querySelector('#workspace-run-select').value !== previous", arg=first_run)
-        second_run = page.locator("#workspace-run-select").input_value()
+        with page.expect_response('**/analyze/') as second_analysis:
+            page.locator("#workspace-analyze").click()
+        assert second_analysis.value.ok and second_analysis.value.json()['status'] == 'SUCCESS'
+        second_run = str(second_analysis.value.json()['analysis_run_id'])
+        assert second_run != first_run
         page.wait_for_function("document.querySelector('#workspace-root').dataset.uxStage === 'understanding'")
+        page.wait_for_function("id => document.querySelector('#workspace-run-select').value === id", arg=second_run)
         page.locator('[data-ux-stage-target="summary"]').click()
         page.get_by_role("tab", name="我的设计说明").click()
         page.locator('#workspace-report-reasoning [name="final_conclusion"]').fill("第二次分析：保留同一模型作为历史对照。")
-        page.get_by_role("button", name="保存设计说明").click()
+        with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith(f'/analyses/{second_run}/reasoning/')) as saved_reasoning:
+            page.get_by_role("button", name="保存设计说明").click()
+        assert saved_reasoning.value.ok and saved_reasoning.value.json()['analysis_run_id'] == int(second_run)
+        page.wait_for_function("document.querySelector('#workspace-report-reasoning form p').textContent.includes('已保存')")
         page.get_by_role("tab", name="反思（可选）").click()
         page.get_by_role("button", name="开始反思").click()
         page.locator('#workspace-reflection [name="original_reasoning"]').fill("第二次运行用于验证历史隔离。")
-        page.get_by_role("button", name="保存草稿").click()
+        with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith(f'/analyses/{second_run}/reflection/')) as saved_reflection:
+            page.get_by_role("button", name="保存草稿").click()
+        assert saved_reflection.value.ok and saved_reflection.value.json()['analysis_run_id'] == int(second_run)
+        page.wait_for_function("!document.querySelector('#workspace-reflection [name=original_reasoning]').disabled")
 
         page.reload()
         page.locator('[data-ux-stage-target="summary"]').click()

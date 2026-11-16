@@ -1,0 +1,2 @@
+{% extends 'shared/base.html' %}{% block title %}赛事管理 · ISSA{% endblock %}
+{% block content %}<nav class="ui-subnav" aria-label="赛事管理导航"><a href="/events/">我的赛事</a>{% if event %}<a href="{% url 'event_management' event.id %}">赛事管理</a><a href="{% url 'participant_list' event.id %}">参赛队伍</a>{% endif %}</nav>{% if event %}<p class="ui-eyebrow">{{ event.name }} / {{ event.get_status_display }}</p>{% endif %}{% block management_content %}{% endblock %}{% endblock %}

@@ -15,7 +15,56 @@ class SectionServiceError(ValueError):
 
 def can_manage_material(actor,material):
     """所有权在服务端判断；Manager 默认不能修改学生材料。"""
-    return actor.role==User.Role.DEVELOPER or actor.id==material.owner_user_id
+    return bool(getattr(actor, 'is_authenticated', False) and actor.is_active and
+        (actor.role==User.Role.DEVELOPER or actor.id==material.owner_user_id))
+
+
+@transaction.atomic
+def assert_resource_mutable(*, actor, resource):
+    """所有现有资源 mutation 的服务级门禁，包含跨 Project 的间接引用。"""
+    from django.db.models import F, Q
+    from modeling.models import PhysicalMember
+    from projects.models import Project
+
+    if not isinstance(resource, (Material, Section, Strip)):
+        raise SectionServiceError('INVALID_RESOURCE')
+    if not can_manage_material(actor, resource):
+        raise SectionServiceError('FORBIDDEN')
+    projects = Project.objects.filter(owner_user_id=resource.owner_user_id)
+    # SQLite 的 select_for_update 不生效：先写锁再读引用；不变更版本/时间。
+    projects.update(draft_version=F('draft_version'))
+    list(projects.select_for_update().order_by('pk'))
+    if not type(resource).objects.select_for_update().filter(pk=resource.pk, owner_user_id=resource.owner_user_id).exists():
+        raise SectionServiceError('RESOURCE_NOT_FOUND')
+    if isinstance(resource, Section):
+        affected = Q(section_id=resource.pk)
+    else:
+        strip_ids = ({str(resource.pk)} if isinstance(resource, Strip) else
+            set(map(str, Strip.objects.filter(material_id=resource.pk).values_list('pk', flat=True))))
+        section_ids = [section_id for section_id, definition in Section.objects.filter(
+            owner_user_id=resource.owner_user_id).values_list('pk', 'definition_json')
+            if str(definition.get('strip_id')) in strip_ids]
+        affected = Q(section_id__in=section_ids)
+        if isinstance(resource, Material):
+            affected |= Q(material_id=resource.pk)
+    if PhysicalMember.objects.filter(affected, project__event__status__in=['FINISHED_GRACE', 'PURGED']).exists():
+        raise SectionServiceError('PROJECT_WRITE_DENIED')
+
+
+@transaction.atomic
+def update_material(*, actor, material, fields):
+    """现有材料表单更新也必须经过同一个 service mutation authority。"""
+    assert_resource_mutable(actor=actor, resource=material)
+    allowed = {'name', 'E_MPa', 'density_g_per_mm3', 'tensile_strength_MPa',
+        'compressive_strength_MPa', 'source_type', 'note'}
+    if not isinstance(fields, dict) or set(fields) - allowed:
+        raise SectionServiceError('INVALID_RESOURCE')
+    current = Material.objects.get(pk=material.pk)
+    for key, value in fields.items():
+        setattr(current, key, value)
+    current.full_clean()
+    current.save(update_fields=[*fields, 'updated_at'])
+    return current
 
 
 def _canonical_definition(definition):
@@ -87,8 +136,7 @@ def create_section(*, owner, name, definition):
 @transaction.atomic
 def update_section(*, actor, section, name, definition):
     """重新计算并原子更新一个可管理的截面。"""
-    if not can_manage_material(actor, section):
-        raise SectionServiceError("FORBIDDEN")
+    assert_resource_mutable(actor=actor, resource=section)
     values = _section_values(owner=section.owner_user, name=name, definition=definition)
     for field, value in values.items():
         setattr(section, field, value)
@@ -110,6 +158,7 @@ def delete_resource(*, actor, resource):
         raise SectionServiceError("INVALID_RESOURCE")
     if not can_manage_material(actor, resource):
         raise SectionServiceError("FORBIDDEN")
+    assert_resource_mutable(actor=actor, resource=resource)
 
     # Saves lock Projects before resolving catalog resources. Lock every owner
     # Project in the same order so no concurrent save can introduce a new
@@ -147,8 +196,7 @@ def delete_resource(*, actor, resource):
 @transaction.atomic
 def rebind_strip_material(*, actor, strip, material_id):
     """Assign an owned Material to a retained Strip, or leave it incomplete."""
-    if not can_manage_material(actor, strip):
-        raise SectionServiceError("FORBIDDEN")
+    assert_resource_mutable(actor=actor, resource=strip)
     material = None
     if material_id is not None:
         try:
