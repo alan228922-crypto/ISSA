@@ -27,3 +27,18 @@ blob-report/
 
 # Preserved original handoff; CURRENT specifications are in docs/specs/
 /architecture_round5_final_master_spec_v1/
+
+# Private development settings, local databases and release output
+/config/local_settings.py
+*.sqlite
+*.sqlite3-*
+*.db
+*.db-*
+*.pem
+*.p12
+*.pfx
+/dist/
+/build/
+/release-output/
+/docs/development/issa-ui-*/
+/docs/development/evidence/

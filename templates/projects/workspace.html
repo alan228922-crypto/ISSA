@@ -4,13 +4,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>项目工作区</title>
+  <title>{{ bootstrap.project.name }} · ISSA 工作区</title>
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <link rel="stylesheet" href="{% static 'projects/workspace/workspace.css' %}">
   <link rel="stylesheet" href="{% static 'projects/workspace/ux-v2.css' %}">
+  <link rel="stylesheet" href="{% static 'ui/controls.css' %}">
+  <link rel="stylesheet" href="{% static 'projects/workspace/workspace-ui.css' %}">
+  <link rel="stylesheet" href="{% static 'projects/workspace/results-ui.css' %}">
+  <link rel="stylesheet" href="{% static 'projects/workspace/learning-ui.css' %}">
 </head>
-<body>
+<body class="issa-workspace">
   {% include "shared/product_header.html" %}
-  <main id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}" data-ux-stage="build">
+  <main class="ui-controls" id="workspace-root" data-read-only="{{ bootstrap.read_only|yesno:'true,false' }}" data-ux-stage="build">
     <dialog data-delete-impact-dialog aria-labelledby="delete-impact-title" aria-describedby="delete-impact-description">
       <h2 id="delete-impact-title">删除会影响其他物件</h2>
       <div id="delete-impact-description" data-delete-impact-content></div>
@@ -21,10 +26,11 @@
       </div>
     </dialog>
     <header id="workspace-project-header">
-      <div><p class="ux-eyebrow">结构学习工作区 · {{ bootstrap.access.event.name }}</p><h1>{{ bootstrap.project.name }}</h1></div>
+      <div><p class="ux-eyebrow">WORKSPACE / 结构学习 · {{ bootstrap.access.event.name }}</p><h1>{{ bootstrap.project.name }}</h1></div>
       <p id="workspace-read-only"{% if not bootstrap.read_only %} hidden{% endif %}>只读查看</p>
       {% if bootstrap.migration_blocked %}<p data-legacy-migration-blocked role="alert">{{ bootstrap.access.read_only_reason }} <a data-legacy-draft-export href="{{ bootstrap.urls.legacy_export }}" download="legacy-draft.json">导出保留的旧草稿</a></p>{% endif %}
-      <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>保存模型</button>
+      <button class="ui-help-button" type="button" data-cad-shortcuts-open>?</button>
+      <button id="workspace-save" type="button"{% if bootstrap.read_only %} disabled{% endif %}>{% include 'shared/icon.html' with name='save' %}保存模型</button>
     </header>
     <nav class="ux-stage-nav" data-ux-stage-nav aria-label="学习阶段">
       <button type="button" data-ux-stage-target="build" aria-current="step">建模</button>
@@ -34,32 +40,66 @@
       <button type="button" data-ux-stage-target="understanding">理解</button>
       <button type="button" data-ux-stage-target="summary">总结</button>
     </nav>
-    <div class="ux-stage-heading"><div><p data-ux-current-stage>当前：建模</p><p data-ux-next-task>下一步：选择「构件」，点击起点，再点击终点，绘制第一根构件。</p></div><span data-ux-save-indicator role="status" aria-live="polite">已保存</span></div>
+    <p data-cad-shortcut-notice role="status" aria-live="polite" hidden></p>
+    <div class="ux-stage-heading"><div><p data-ux-current-stage>当前：建模</p><p data-ux-next-task>下一步：选择「构件」，点击起点，再点击终点，绘制第一根构件。</p></div><span data-ux-save-indicator role="status" aria-live="polite" aria-atomic="true">已保存</span></div>
     <section class="workspace-layout" aria-label="结构学习工作区">
       <aside id="workspace-modeling-panel" aria-label="建模工具">
-        <h2>当前工具</h2>
+        <h2 class="ui-rail-heading">绘图</h2>
         {% if not bootstrap.read_only %}
-          <div class="workspace-tool-list" role="toolbar" aria-label="建模工具">
-            <button type="button" data-workspace-tool="SELECT" aria-pressed="true"><span data-tool-icon aria-hidden="true">↖</span>选择</button>
-            <button type="button" data-workspace-tool="NODE" aria-pressed="false"><span data-tool-icon aria-hidden="true">●</span>节点</button>
-            <button type="button" data-workspace-tool="MEMBER" aria-pressed="false"><span data-tool-icon aria-hidden="true">╱</span>构件</button>
-            <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false"><span data-tool-icon aria-hidden="true">△</span>支座</button>
-            <button type="button" data-workspace-tool="LOAD" aria-pressed="false"><span data-tool-icon aria-hidden="true">↓</span>荷载</button>
+          <div class="workspace-tool-list" role="toolbar" aria-label="绘图工具">
+            <button type="button" data-workspace-tool="SELECT" aria-pressed="true"><span data-tool-icon aria-hidden="true">{% include 'shared/icon.html' with name='select' %}</span>选择</button>
+            <button type="button" data-workspace-tool="NODE" aria-pressed="false"><span data-tool-icon aria-hidden="true">{% include 'shared/icon.html' with name='node' %}</span>节点</button>
+            <button type="button" data-workspace-tool="MEMBER" aria-pressed="false"><span data-tool-icon aria-hidden="true">{% include 'shared/icon.html' with name='member' %}</span>构件</button>
+            <button type="button" data-workspace-tool="SUPPORT" aria-pressed="false"><span data-tool-icon aria-hidden="true">{% include 'shared/icon.html' with name='support' %}</span>支座</button>
+            <button type="button" data-workspace-tool="LOAD" aria-pressed="false"><span data-tool-icon aria-hidden="true">{% include 'shared/icon.html' with name='load' %}</span>荷载</button>
           </div>
-          <div class="sketch-tool-palette" data-support-palette hidden aria-label="选择支座形式">
+
+
+        {% endif %}
+
+        {% if not bootstrap.read_only %}<div data-cad-transform-toolbar role="toolbar" aria-label="编辑工具"><h2 class="ui-rail-heading">编辑</h2>
+          <button type="button" data-cad-copy>{% include 'shared/icon.html' with name='copy' %}<span>复制</span></button><button type="button" data-cad-paste disabled>{% include 'shared/icon.html' with name='copy' %}<span>粘贴</span></button>
+          <button type="button" data-cad-move disabled>{% include 'shared/icon.html' with name='move' %}<span>移动</span></button><button type="button" data-cad-rotate disabled>{% include 'shared/icon.html' with name='rotate' %}<span>旋转</span></button>
+          <button type="button" data-cad-stretch disabled>{% include 'shared/icon.html' with name='stretch' %}<span>拉伸</span></button><button type="button" data-cad-length disabled>{% include 'shared/icon.html' with name='length' %}<span>修改长度</span></button>
+          <button type="button" data-cad-clear-selection>{% include 'shared/icon.html' with name='close' %}<span>清除选择</span></button>
+
+
+        </div>{% endif %}
+      </aside>
+      <section class="workspace-center" aria-label="结构画布"><div class="ui-canvas-heading"><span>模型几何 · mm</span>        <div class="workspace-view-controls" role="toolbar" aria-label="画布视图">
+          <button type="button" data-cad-zoom-in aria-label="放大画布">{% include 'shared/icon.html' with name='zoomIn' %}<span>放大 +</span></button>
+          <button type="button" data-cad-zoom-out aria-label="缩小画布">{% include 'shared/icon.html' with name='zoomOut' %}<span>缩小 −</span></button>
+          <button type="button" data-cad-fit aria-label="显示全图">{% include 'shared/icon.html' with name='fit' %}<span>Fit 全图</span></button>
+        </div></div>
+        {% if not bootstrap.read_only %}<div data-cad-input-reserve><div data-cad-dynamic-overlay hidden aria-label="动态精确输入">
+          <div data-cad-xy-fields><label>X (mm)<input type="number" step="any" data-cad-x></label><label>Y (mm)<input type="number" step="any" data-cad-y></label></div>
+          <div data-cad-polar-fields hidden><label>长度 (mm)<input type="number" step="any" min="0" data-cad-dynamic-length></label><label>角度 (°)<input type="number" step="any" data-cad-dynamic-angle></label></div>
+          <div data-cad-relative-fields hidden><label>ΔX (mm)<input type="number" step="any" data-cad-dynamic-dx></label><label>ΔY (mm)<input type="number" step="any" data-cad-dynamic-dy></label></div>
+        </div><p id="cad-node-input-error" data-cad-node-input-error role="status" aria-live="polite" aria-atomic="true" hidden></p></div>{% endif %}
+        <svg id="workspace-canvas" role="img" tabindex="0" aria-label="结构画布；使用方向键平移，使用放大、缩小和全图按钮调整视图" aria-describedby="workspace-canvas-keyboard-help" viewBox="0 0 1000 600"></svg>
+        {% if not bootstrap.read_only %}<div data-ux-empty-state class="ux-empty-state"{% if bootstrap.draft.nodes %} hidden{% endif %}><h2>开始绘制结构</h2><p>选择「构件」，点击起点，再点击终点，绘制第一根构件。</p>{% if not bootstrap.materials or not bootstrap.sections %}<p>绘制前，请在右侧「管理材料与截面」准备并选择材料与截面。</p>{% endif %}<button type="button" data-ux-start-modeling>开始建模</button></div>{% endif %}
+        <p id="workspace-canvas-keyboard-help" class="visually-hidden">画布取得焦点后，可使用方向键平移；使用放大、缩小和全图按钮调整视图。</p>
+        {% if not bootstrap.read_only %}<div class="ui-command-dock">          <p data-modeling-instruction role="status" aria-live="polite">选择工具已启用。</p><div class="ui-command-fields">          <label class="workspace-command"><span data-cad-command-label>坐标命令</span>
+            <input type="text" data-cad-command-input inputmode="decimal" autocomplete="off" placeholder="1000,500 / @1000,0 / 1000&lt;30">
+          </label>          <label class="cad-transform-command">命令 / 数值<input type="text" data-cad-transform-command autocomplete="off" spellcheck="false" placeholder="CO / M / RO / ST / LEN，Enter 确认"></label></div></div>{% endif %}
+        <p class="ui-canvas-note">交叉不自动连接 · 荷载箭头为显示尺度，请以数值为准</p>
+      </section>
+      <aside id="workspace-workflow-panel" aria-label="当前阶段与对象">
+        <h2 data-ux-panel-title>现在做什么</h2>
+        <p data-ux-panel-guidance>选择「构件」，点击起点，再点击终点，绘制第一根构件。</p>
+        <p data-check-recovery-guidance role="status" hidden></p>
+        {% if not bootstrap.read_only %}          <div class="sketch-tool-palette" data-support-palette hidden aria-label="选择支座形式">
             <p>支座形式</p>
-            <button type="button" data-support-choice="PINNED" aria-pressed="true"><span class="sketch-support-icon" data-icon-support="pinned" aria-hidden="true"></span><span>铰支座</span></button>
-            <button type="button" data-support-choice="ROLLER_Y" aria-pressed="false"><span class="sketch-support-icon" data-icon-support="roller-y" aria-hidden="true"></span><span>滚动支座<br><small>限制竖向移动</small></span></button>
-            <button type="button" data-support-choice="ROLLER_X" aria-pressed="false"><span class="sketch-support-icon" data-icon-support="roller-x" aria-hidden="true"></span><span>滚动支座<br><small>限制水平移动</small></span></button>
+            <button type="button" data-support-choice="PINNED" aria-pressed="true"><span class="sketch-support-icon" data-icon-support="pinned" aria-hidden="true">{% include 'shared/support_symbol.html' with kind='pinned' %}</span><span>铰支座</span></button>
+            <button type="button" data-support-choice="ROLLER_Y" aria-pressed="false"><span class="sketch-support-icon" data-icon-support="roller-y" aria-hidden="true">{% include 'shared/support_symbol.html' with kind='roller-y' %}</span><span>滚动支座<br><small>限制竖向移动</small></span></button>
+            <button type="button" data-support-choice="ROLLER_X" aria-pressed="false"><span class="sketch-support-icon" data-icon-support="roller-x" aria-hidden="true">{% include 'shared/support_symbol.html' with kind='roller-x' %}</span><span>滚动支座<br><small>限制水平移动</small></span></button>
           </div>
           <div class="sketch-tool-palette" data-load-palette hidden aria-label="集中力工具">
-            <p><span class="sketch-load-icon" aria-hidden="true">↓</span> 集中力</p>
+            <p>{% include 'shared/icon.html' with name='load' %} 集中力</p>
             <small>点击构件节点放置；在右侧输入水平力 Fx 和竖向力 Fy（N）。</small>
           </div>
-          <details class="ux-precision"><summary>精确绘制</summary>
-          <label class="workspace-command">坐标命令
-            <input type="text" data-cad-command-input inputmode="decimal" autocomplete="off" placeholder="1000,500 / @1000,0 / 1000&lt;30">
-          </label>
+          <p data-transform-status role="status" aria-live="polite"></p>          <details class="ux-precision"><summary>精确绘制</summary>
+
           <div class="workspace-dynamic-input" aria-label="构件动态输入">
             <label>距离 (mm)<input type="number" step="any" min="0" data-cad-distance disabled></label>
             <label>角度 (°)<input type="number" step="any" data-cad-angle disabled></label>
@@ -69,29 +109,15 @@
             <label>ΔY (mm)<input type="number" step="any" data-cad-relative-y></label>
             <button type="button" data-cad-relative-place>放置相对点</button>
           </div>
-          <p data-cad-command-help>节点或构件工具中输入绝对、相对或极坐标；构件也可输入距离和角度。Enter 确认，Tab 切换，Esc 取消。</p></details>
-          <p data-modeling-instruction role="status" aria-live="polite">选择工具已启用。</p>
-        {% endif %}
-        <div class="workspace-view-controls" role="toolbar" aria-label="画布视图">
-          <button type="button" data-cad-zoom-in aria-label="放大画布">放大 +</button>
-          <button type="button" data-cad-zoom-out aria-label="缩小画布">缩小 −</button>
-          <button type="button" data-cad-fit aria-label="显示全图">Fit 全图</button>
-        </div>
-      </aside>
-      <section class="workspace-center" aria-label="结构画布">
-        <svg id="workspace-canvas" role="img" tabindex="0" aria-label="结构画布；使用方向键平移，使用放大、缩小和全图按钮调整视图" aria-describedby="workspace-canvas-keyboard-help" viewBox="0 0 1000 600"></svg>
-        {% if not bootstrap.read_only %}<div data-cad-dynamic-overlay hidden aria-label="游标动态输入">
-          <div data-cad-xy-fields><label>X (mm)<input type="number" step="any" data-cad-x></label><label>Y (mm)<input type="number" step="any" data-cad-y></label></div>
-          <div data-cad-polar-fields hidden><label>长度 (mm)<input type="number" step="any" min="0" data-cad-dynamic-length></label><label>角度 (°)<input type="number" step="any" data-cad-dynamic-angle></label></div>
-          <div data-cad-relative-fields hidden><label>ΔX (mm)<input type="number" step="any" data-cad-dynamic-dx></label><label>ΔY (mm)<input type="number" step="any" data-cad-dynamic-dy></label></div>
-        </div>{% endif %}
-        {% if not bootstrap.read_only %}<div data-ux-empty-state class="ux-empty-state"{% if bootstrap.draft.nodes %} hidden{% endif %}><h2>开始绘制结构</h2><p>选择「构件」，点击起点，再点击终点，绘制第一根构件。</p>{% if not bootstrap.materials or not bootstrap.sections %}<p>绘制前，请在右侧「管理材料与截面」准备并选择材料与截面。</p>{% endif %}<button type="button" data-ux-start-modeling>开始建模</button></div>{% endif %}
-        <p id="workspace-canvas-keyboard-help" class="visually-hidden">画布取得焦点后，可使用方向键平移；使用放大、缩小和全图按钮调整视图。</p>
-      </section>
-      <aside id="workspace-workflow-panel" aria-label="当前阶段与对象">
-        <h2 data-ux-panel-title>现在做什么</h2>
-        <p data-ux-panel-guidance>选择「构件」，点击起点，再点击终点，绘制第一根构件。</p>
-        <p data-check-recovery-guidance role="status" hidden></p>
+          <p data-cad-command-help>节点或构件工具中输入绝对、相对或极坐标；构件也可输入距离和角度。Enter 确认，Tab 切换，Esc 取消。</p></details>{% endif %}
+        {% if not bootstrap.read_only %}
+        <fieldset data-transform-panel hidden><legend data-transform-title>操作预览</legend>
+          <div data-transform-translate hidden><label>ΔX (mm)<input type="number" step="any" data-transform-dx></label><label>ΔY (mm)<input type="number" step="any" data-transform-dy></label></div>
+          <div data-transform-rotate hidden><label>角度 (°)<input type="number" step="any" data-transform-angle></label></div>
+          <p data-transform-attachments></p><label data-transform-ack-label hidden><input type="checkbox" data-transform-ack>已了解附件随节点移动，方向和数值不变</label>
+          <button type="button" data-transform-preview-button hidden>预览</button>
+          <button type="button" data-transform-apply>应用</button><button type="button" data-transform-cancel>取消</button>
+        </fieldset>{% endif %}
         <section id="workspace-properties-panel" aria-label="对象属性"><p>选择对象后可在这里查看属性。</p></section>
         {% if not bootstrap.read_only %}<fieldset class="workspace-member-properties">
             <legend>新构件属性</legend>
@@ -108,7 +134,7 @@
             </label>
           </fieldset>{% endif %}
         {% if not bootstrap.read_only %}<a class="ux-material-link" href="{{ bootstrap.urls.materials }}">管理材料与截面</a>{% endif %}
-        <button id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>检查模型</button>
+        <button class="ui-primary" id="workspace-model-check" type="button"{% if bootstrap.read_only %} disabled{% endif %}>{% include 'shared/icon.html' with name='check' %}检查模型</button>
         <section id="workspace-check-issues" aria-live="polite"></section>
         <div class="ux-legacy-progress" hidden>
         <ol id="workspace-workflow-steps">
@@ -117,89 +143,112 @@
         </div>
         <section id="workspace-prediction" aria-label="预测">
           <h2>预测</h2>
-          <p>先记录你的判断，也可以直接分析。</p>
+          <p class="ui-task-intro">预测是你的判断，不是计算结果。先记录，也可以直接分析。</p>
           <p data-prediction-status aria-live="polite">预测状态：加载中。</p>
-          <div data-prediction-members aria-label="构件受力状态预测"></div>
-          <p data-prediction-maximum>最大位移预测位置：请在画布选择连接后设置。</p>
-          <button type="button" data-prediction-maximum-select>用当前画布选择设置最大位移位置</button>
-          <p data-prediction-path>请选择你认为比较关键的一条传力路径。</p>
+          <section class="ui-prediction-step"><h3>01 / 构件受力判断</h3><div data-prediction-members aria-label="构件受力状态预测"></div></section>
+          <section class="ui-prediction-step"><h3>02 / 最大位移位置</h3><p data-prediction-maximum>最大位移预测位置：请在画布选择连接后设置。</p>
+          <button type="button" data-prediction-maximum-select>用当前画布选择设置最大位移位置</button></section>
+          <section class="ui-prediction-step"><h3>03 / 代表性传力路径</h3><p data-prediction-path>请选择你认为比较关键的一条传力路径。</p>
           <button type="button" data-prediction-path-add>将当前画布选择加入路径</button>
-          <button type="button" data-prediction-path-clear>清空路径</button>
+          <button type="button" data-prediction-path-clear>清空路径</button></section><div class="ui-prediction-actions">
           <button type="button" data-prediction-start>开始预测</button>
           <button type="button" data-prediction-complete>完成预测</button>
-          <button type="button" data-prediction-skip>跳过预测，直接分析</button>
+          <button type="button" data-prediction-skip>跳过预测，直接分析</button></div>
         </section>
-        <p data-ux-analyze-context>将分析当前已保存模型。</p>
+        <section class="ui-analysis-assumptions"><h3>分析范围</h3><p>将使用已保存模型。当前为二维桁架、轴向构件与节点集中力假定；分析完成不等于工程安全合格。</p></section><p data-ux-analyze-context>将分析当前已保存模型。</p>
         <p data-ux-analyze-status role="status" aria-live="polite"></p>
-        <button id="workspace-analyze" type="button"{% if bootstrap.read_only %} disabled{% endif %}>开始分析</button>
+        <button class="ui-primary" id="workspace-analyze" type="button"{% if bootstrap.read_only %} disabled{% endif %}>开始分析</button>
         <button type="button" data-ux-back-to-build>返回建模</button>
         <section id="workspace-results" aria-label="分析结果"></section>
+        <section class="ui-results-empty"><h2>尚未选定分析记录</h2><p>请在「总结」选择已保存分析，或回到建模保存并分析。</p></section>
         <details id="workspace-engineering-details"><summary>技术数据</summary><section data-engineering-content></section></details>
       </aside>
     </section>
     <section id="workspace-report" data-run-selected="false" data-ux-summary-view="report" aria-label="总结">
-      <h2>总结这次分析</h2>
+      <div class="learning-page-heading"><p class="learning-kicker">证据 → 说明 → 反思</p><h2>总结这次分析</h2></div>
       <p>选择一次分析，再查看计算依据、填写自己的说明，或稍后反思。</p>
-      <label for="workspace-run-select">当前分析</label>
+      <div class="learning-summary-grid"><aside class="learning-run-sidebar"><h3>{% include "shared/icon.html" with name="history" %}分析记录</h3><label for="workspace-run-select">当前分析</label>
       <select id="workspace-run-select"><option value="">请选择分析记录</option></select>
+      <p data-learning-run-context role="status" aria-live="polite">尚未选定分析记录。</p>{% if bootstrap.read_only %}<p class="learning-notice">当前为只读查看，保留已有学习记录。</p>{% endif %}</aside><div class="learning-summary-main">
       <nav class="ux-summary-nav" role="tablist" aria-label="总结内容">
-        <button type="button" role="tab" data-ux-summary-target="report" aria-selected="true">计算依据</button>
-        {% if not bootstrap.read_only %}<button type="button" role="tab" data-ux-summary-target="reasoning" aria-selected="false">我的设计说明</button>{% endif %}
-        <button type="button" role="tab" data-ux-summary-target="reflection" aria-selected="false">反思（可选）</button>
+        <button type="button" role="tab" data-ux-summary-target="report" aria-selected="true">{% include "shared/icon.html" with name="book" %}计算依据</button>
+        {% if not bootstrap.read_only %}<button type="button" role="tab" data-ux-summary-target="reasoning" aria-selected="false">{% include "shared/icon.html" with name="member" %}我的设计说明</button>{% endif %}
+        <button type="button" role="tab" data-ux-summary-target="reflection" aria-selected="false">{% include "shared/icon.html" with name="reflect" %}反思（可选）</button>
+        <button type="button" role="tab" data-ux-summary-target="history" aria-selected="false">{% include "shared/icon.html" with name="history" %}历史记录</button>
       </nav>
       <p data-ux-summary-empty>请先选择一次分析。</p>
       <button id="workspace-report-open" type="button" disabled>查看计算依据</button>
       <section id="workspace-report-view" aria-live="polite"></section>
       {% if not bootstrap.read_only %}<section id="workspace-report-reasoning" aria-label="我的设计说明"></section>{% endif %}
       <section id="workspace-reflection" aria-label="反思（可选）"></section>
+      <section id="workspace-history" aria-label="历史分析记录"></section></div></div>
     </section>
     <footer id="workspace-status-bar" role="status" aria-label="建模状态" aria-live="polite" aria-atomic="false">
       {% if not bootstrap.read_only %}<div class="workspace-drafting-status" role="toolbar" aria-label="绘图辅助">
-        <button type="button" data-cad-grid-visible aria-pressed="true">网格</button>
-        <button type="button" data-cad-snap aria-pressed="true">网格吸附 · 1 mm</button>
-        <button type="button" data-cad-object-snap aria-pressed="true">物件捕捉 · 节点/交点</button>
-        <button type="button" data-cad-ortho aria-pressed="false">正交 · 仅水平/竖直</button>
-        <button type="button" data-cad-tracking aria-pressed="true">追踪</button>
-        <button type="button" data-cad-dynamic-input aria-pressed="true">动态输入</button>
-        <button type="button" data-cad-undo disabled>撤销</button>
-        <button type="button" data-cad-redo disabled>重做</button>
+        <button type="button" data-cad-grid-visible aria-pressed="true">{% include 'shared/icon.html' with name='grid' %}<span>网格</span></button>
+        <button type="button" data-cad-snap aria-pressed="true">{% include 'shared/icon.html' with name='snap' %}<span>网格吸附 · 1 mm</span></button>
+        <button type="button" data-cad-object-snap aria-pressed="true">{% include 'shared/icon.html' with name='snap' %}<span>物件捕捉 · 节点/交点</span></button>
+        <button type="button" data-cad-ortho aria-pressed="false">{% include 'shared/icon.html' with name='ortho' %}<span>正交 · 仅水平/竖直</span></button>
+        <button type="button" data-cad-tracking aria-pressed="true">{% include 'shared/icon.html' with name='track' %}<span>追踪</span></button>
+        <button type="button" data-cad-dynamic-input aria-pressed="true">{% include 'shared/icon.html' with name='dynamic' %}<span>动态输入</span></button>
+        <button type="button" data-cad-undo disabled>{% include 'shared/icon.html' with name='undo' %}<span>撤销</span></button>
+        <button type="button" data-cad-redo disabled>{% include 'shared/icon.html' with name='redo' %}<span>重做</span></button>
       </div>{% endif %}
       <span id="workspace-pointer-x">X: —</span><span id="workspace-pointer-y">Y: —</span><span id="workspace-delta-length">ΔL: —</span><span id="workspace-angle">Angle: —</span>
       <span id="workspace-snap-indicator">ORTHO: 关 · SNAP: 开 · 捕捉: 无</span>
-      <span id="workspace-save-status">未保存修改：无</span><span id="workspace-draft-version">当前草稿 v{{ bootstrap.draft.version }}</span>
+      <span class="visually-hidden" id="workspace-save-status">未保存修改：无</span><span id="workspace-draft-version">当前草稿 v{{ bootstrap.draft.version }}</span>
     </footer>
     <section id="workspace-error" hidden aria-live="polite"></section>
+    {% if phase2c_review %}<small class="ui-review-marker">Phase 2C 私人展示环境 · 保存分析与学习记录／独立数据库</small>{% elif phase2b2_review %}<small class="ui-review-marker">Phase 2B-2 私人展示环境 · 保存分析／独立数据库</small>{% elif phase2b1_review %}<small class="ui-review-marker">Phase 2B-1 私人展示环境 · 真实后端／独立数据库</small>{% endif %}
   </main>
   {{ bootstrap|json_script:"workspace-bootstrap" }}
   <script type="module">
     import { applyWorkspaceSaveSuccess, createWorkspaceState, focusWorkspaceIssue, readWorkspaceBootstrap } from "{% static 'projects/workspace/state.js' %}";
-    import { renderWorkspace, workspaceWorldBounds } from "{% static 'projects/workspace/renderer.js' %}";
+    import { renderWorkspace, workspaceWorldBounds, workspaceFitViewport } from "{% static 'projects/workspace/renderer.js' %}";
     import { bindCanvasInteractions } from "{% static 'projects/workspace/canvas-interaction.js' %}";
     import { readCoordinateSpace, visibleSvgViewport } from "{% static 'projects/workspace/coordinate-space.js' %}";
+    import { bindCanvasContextMenu } from "{% static 'projects/workspace/canvas-context-menu.js' %}";
+    import { bindToolbarShortcuts } from "{% static 'projects/workspace/toolbar-shortcuts.js' %}";
+    import { bindTransformTools } from "{% static 'projects/workspace/transform-interaction.js' %}";
     import { bindModelingInteractions } from "{% static 'projects/workspace/modeling-interaction.js' %}";
     import { bindPropertyPanel } from "{% static 'projects/workspace/properties.js' %}";
     import { groupDraftCheckIssues } from "{% static 'projects/workspace/incomplete-objects.js' %}";
     import { createWorkspaceWorkflow, presentModelCheckIssue } from "{% static 'projects/workspace/workflow.js' %}";
     import { bindPredictionWorkspace } from "{% static 'projects/workspace/prediction.js' %}";
-    import { createResultsWorkspace, renderComparison, renderExplanation, renderLevelOne, renderResultActions, showLevelOne, showEngineeringDetails, renderEngineeringDetails } from "{% static 'projects/workspace/results.js' %}";
+    import { createResultsWorkspace, renderComparison, renderExplanation, renderLevelOne, renderResultActions, showLevelOne, showEngineeringDetails, renderEngineeringDetails, teachingContextText, attachAnalysisVisualization } from "{% static 'projects/workspace/results.js' %}";
     import { renderWorkspaceError } from "{% static 'projects/workspace/errors.js' %}";
     import { createReflectionWorkspace, renderReflection } from "{% static 'projects/workspace/reflection.js' %}";
     import { renderReport } from "{% static 'projects/workspace/report.js' %}";
     import { bindReportReasoning } from "{% static 'projects/workspace/report-reasoning.js' %}";
     import { createRunContext } from "{% static 'projects/workspace/run-context.js' %}";
+    import { buildTeachingView, canLinkCanvas } from "{% static 'projects/workspace/teaching-view.js' %}";
     import { createWorkflowProgress } from "{% static 'projects/workspace/workflow-progress.js' %}";
     import { createStudentLabelResolver } from "{% static 'projects/workspace/labels.js' %}";
+    import { bindLearningPresentation } from "{% static 'projects/workspace/learning-ui.js' %}";
     import { bindStudentShell, bindTabKeys } from "{% static 'projects/workspace/student-shell.js' %}";
+    import { createAnalysisVisualization } from "{% static 'projects/workspace/analysis-visualization.js' %}";
     const bootstrap = readWorkspaceBootstrap();
+    let resultVisualization=null,visualizationMount=null;
+    // Existing editable document listeners must never process Results keys.
+    // Native text, checkbox and tab defaults are preserved (no preventDefault).
+    const isolateResultsKeys=event=>{
+      if(document.getElementById('workspace-root').dataset.uxStage!=='understanding')return;
+      if(['Escape','Shift',' '].includes(event.key)||event.code==='Space'){
+        if(event.type==='keydown'&&event.key==='Escape')resultVisualization?.dismissHover();
+        event.stopImmediatePropagation();
+      }
+    };
+    document.addEventListener('keydown',isolateResultsKeys);
+    document.addEventListener('keyup',isolateResultsKeys);
     const canvas = document.getElementById("workspace-canvas");
     const state = createWorkspaceState(bootstrap);
     renderWorkspace(canvas, state.draft, state);
     const canvasController = bindCanvasInteractions(canvas, state, renderWorkspace);
     const studentShell = bindStudentShell({ root: document.getElementById("workspace-root"), canvasController });
-    canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(state.draft), viewport: visibleSvgViewport(canvas,readCoordinateSpace(canvas,state.viewTransform)) });
+    canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(state.draft), viewport: workspaceFitViewport(canvas,readCoordinateSpace(canvas,state.viewTransform)) });
     const fitCanvas = () => {
       const current = canvasController.getState();
-      canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(current.draft), viewport: visibleSvgViewport(canvas,readCoordinateSpace(canvas,current.viewTransform)) });
+      canvasController.dispatchViewEvent({ type: "FIT_VIEW", worldBounds: workspaceWorldBounds(current.draft), viewport: workspaceFitViewport(canvas,readCoordinateSpace(canvas,current.viewTransform)) });
     };
     canvasController.setFitHandler(fitCanvas);
     document.querySelector("[data-cad-fit]")?.addEventListener("click", fitCanvas);
@@ -209,9 +258,13 @@
     const workflow = createWorkspaceWorkflow({ urls: bootstrap.urls });
     const errorPanel = document.getElementById("workspace-error");
     const issuePanel = document.getElementById("workspace-check-issues");
-    const showError = (error) => renderWorkspaceError(errorPanel, error);
+    let learningPresentation=null;
+    const showError = (error) => { renderWorkspaceError(errorPanel, error); learningPresentation?.showRequestError(); };
     const workflowProgress = createWorkflowProgress(document.getElementById("workspace-workflow-steps"), { draft: state.draft });
     bindModelingInteractions({ root: document.getElementById("workspace-root"), svg: canvas, canvasController, showError, readOnly: state.readOnly });
+    const transformTools = bindTransformTools({ root: document.getElementById("workspace-root"), svg: canvas, canvasController, materials: bootstrap.materials, sections: bootstrap.sections, readOnly: state.readOnly });
+    bindCanvasContextMenu({ root: document.getElementById("workspace-root"), svg: canvas, canvasController, transforms: transformTools });
+    bindToolbarShortcuts({ root: document.getElementById("workspace-root"), svg: canvas, canvasController, transforms: transformTools });
     bindPropertyPanel({ root: document.getElementById("workspace-properties-panel"), canvasController, materials: bootstrap.materials, sections: bootstrap.sections, showError });
     const predictionWorkspace = bindPredictionWorkspace({ root: document.getElementById("workspace-prediction"), urls: { current: bootstrap.urls.prediction_current, create: bootstrap.urls.prediction_create, completeTemplate: bootstrap.urls.prediction_complete_template }, draft: state.draft, canvasController, showError, readOnly: state.readOnly, onStateChange: (view) => workflowProgress.project({ prediction: view }) });
     const resultsWorkspace = createResultsWorkspace({ urls: { analyze: bootstrap.urls.analyze, resultTemplate: bootstrap.urls.result_template, comparisonTemplate: bootstrap.urls.comparison_template, explanationTemplate: bootstrap.urls.explanation_template } });
@@ -220,6 +273,7 @@
     const reportSelect = document.getElementById("workspace-run-select");
     const reportOpen = document.getElementById("workspace-report-open");
     const reportRoot = document.getElementById("workspace-report");
+    learningPresentation=bindLearningPresentation({root:reportRoot,select:reportSelect});
     for (const button of reportRoot.querySelectorAll("[data-ux-summary-target]")) button.addEventListener("click", () => {
       reportRoot.dataset.uxSummaryView = button.dataset.uxSummaryTarget;
       for (const item of reportRoot.querySelectorAll("[data-ux-summary-target]")) {
@@ -231,18 +285,48 @@
     reportRoot.querySelector('[data-ux-summary-target="report"]').click();
     const reportView = document.getElementById("workspace-report-view");
     const reasoningWorkspace = bootstrap.read_only ? null : bindReportReasoning({ root: document.getElementById("workspace-report-reasoning"), template: bootstrap.urls.reasoning_template, showError });
-    const renderReflectionView = (reflection) => { workflowProgress.project({ reflection }); renderReflection(reflectionRoot, reflection, {
-      readOnly: state.readOnly,
-      onStart: () => renderReflectionView({ status: "DRAFT", original_reasoning: "", unexpected_results: "", next_iteration_intent: "" }),
-      onSave: async (fields) => { try { renderReflectionView(await reflectionWorkspace.saveReflection(fields)); errorPanel.hidden = true; } catch (error) { showError(error); } },
-      onComplete: async () => { try { renderReflectionView(await reflectionWorkspace.completeReflection()); errorPanel.hidden = true; } catch (error) { showError(error); } },
-      onSkip: () => { reflectionRoot.replaceChildren(); const note = document.createElement("p"); note.textContent = "已跳过反思，之后仍可继续编辑或分析。"; reflectionRoot.append(note); },
+    let selectedRunEpoch = 0;
+    let selectedRunReady = false;
+    let reflectionHasUnsavedText = false;
+    let discardedReflectionNotice = false;
+    reflectionRoot.addEventListener("input", () => { reflectionHasUnsavedText = true; });
+    const renderReflectionView = (reflection) => { const epoch = selectedRunEpoch; reflectionHasUnsavedText = false; workflowProgress.project({ reflection }); renderReflection(reflectionRoot, reflection, {
+      readOnly: state.readOnly || !selectedRunReady,
+      onStart: () => { if (epoch === selectedRunEpoch) renderReflectionView({ status: "DRAFT", original_reasoning: "", unexpected_results: "", next_iteration_intent: "" }); },
+      onSave: async (fields) => { if (epoch !== selectedRunEpoch) return; try { const saved = await reflectionWorkspace.saveReflection(fields); if (epoch !== selectedRunEpoch || !saved) return; renderReflectionView(saved); errorPanel.hidden = true; } catch (error) { if (epoch === selectedRunEpoch) showError(error); } },
+      onComplete: async () => { if (epoch !== selectedRunEpoch) return; try { const completed = await reflectionWorkspace.completeReflection(); if (epoch !== selectedRunEpoch || !completed) return; renderReflectionView(completed); errorPanel.hidden = true; } catch (error) { if (epoch === selectedRunEpoch) showError(error); } },
+      onSkip: () => { if (epoch !== selectedRunEpoch) return; reflectionRoot.replaceChildren(); const note = document.createElement("p"); note.textContent = "已跳过反思，之后仍可继续编辑或分析。"; reflectionRoot.append(note); },
     }); };
     renderReflectionView(null);
     const resultsRoot = document.getElementById("workspace-results");
-    const focusMember = (clientKey) => { const now = canvasController.getState(); const selected = { kind: "PHYSICAL_MEMBER", clientKey }; canvasController.replaceState({ ...now, selectedObject: selected, selectedObjects: [selected], focusedObject: selected }); canvas.querySelector(`[data-client-key="${CSS.escape(clientKey)}"]`)?.focus(); };
+    let selectedTeachingView = null;
+    const teachingContext = current => ({ projectId: bootstrap.project.id, draftVersion: current.draftVersion, dirty: Boolean(current.dirty) });
+    const contextualTeachingView = () => selectedTeachingView && ({ ...selectedTeachingView, historical: !canLinkCanvas(selectedTeachingView, teachingContext(canvasController.getState())) });
+    const focusMember = (clientKey) => {
+      if(document.getElementById('workspace-root').dataset.uxStage==='understanding'&&resultVisualization){
+        if(resultVisualization.focusPhysicalMember(clientKey)){
+          resultsRoot.querySelector('[data-result-view="conclusion"]')?.click();
+          resultVisualization.setVisible(true);
+          const readonlyCanvas=visualizationMount.querySelector('[data-av01-canvas]');
+          readonlyCanvas.scrollIntoView({block:'nearest'});readonlyCanvas.focus({preventScroll:true});
+        }
+        return;
+      }
+      const now = canvasController.getState(); if (!selectedTeachingView || !canLinkCanvas(selectedTeachingView, teachingContext(now))) return; const selected = { kind: "PHYSICAL_MEMBER", clientKey }; canvasController.replaceState({ ...now, selectedObject: selected, selectedObjects: [selected], focusedObject: selected }); canvas.querySelector(`[data-client-key="${CSS.escape(clientKey)}"]`)?.focus(); };
     canvasController.subscribeStateChange((currentState) => {
+      const context = contextualTeachingView();
+      if (context) {
+        for (const note of document.querySelectorAll('[data-teaching-context],[data-learning-visible-context]')) { note.textContent = teachingContextText(context); if(note.hasAttribute('data-learning-visible-context'))note.dataset.historical=String(Boolean(context.historical)); }
+        const notice = resultsRoot.querySelector('[data-result-context]');
+        if (notice) notice.textContent = context.historical
+          ? (currentState.dirty ? "模型已有未保存修改；以下证据仍属于所选分析，不代表当前草稿。" : "这份分析结果对应较早的模型版本，不能代表当前草稿。请重新分析当前模型，才能得到当前结果。")
+          : "分析已完成，对应当前模型版本。";
+      }
       for (const item of resultsRoot.querySelectorAll("[data-teaching-focused]")) item.removeAttribute("data-teaching-focused");
+      if (!selectedTeachingView || !canLinkCanvas(selectedTeachingView, teachingContext(currentState))) {
+        if (currentState.resultOverlay) canvasController.replaceState({ ...currentState, resultOverlay: null });
+        return;
+      }
       const selected = currentState.selectedObject;
       if (!["PHYSICAL_MEMBER", "PhysicalMember"].includes(selected?.kind)) return;
       const matches = [...resultsRoot.querySelectorAll(`[data-teaching-member="${CSS.escape(selected.clientKey)}"]`)].filter(item => item.getClientRects().length > 0);
@@ -252,56 +336,128 @@
       target.focus({ preventScroll: true });
       target.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
-    const renderSelectedRun = (payload) => {
+    const attachVisualization=()=>{
+      if(!visualizationMount)return;
+      const id=runContext.state().currentRunId;
+      const runNumber=[...runContext.state().runs].sort((a,b)=>a.analysis_run_id-b.analysis_run_id).findIndex(run=>run.analysis_run_id===id)+1;
+      attachAnalysisVisualization(resultsRoot,visualizationMount,{runNumber,onTechnical:()=>{
+        const details=document.getElementById('workspace-engineering-details');details.open=true;
+        const content=details.querySelector('[data-engineering-content]');if(!content.textContent)content.textContent='仍可在结论的结构视图展开完整保存数值。';
+      }});
+    };
+    const renderSelectedRun = (payload, epoch) => {
+      const selectedMetadata=payload?.metadata||runContext.state().runs.find(run=>run.analysis_run_id===runContext.state().currentRunId)||null;
+      learningPresentation.setSelection(selectedMetadata,{loading:!payload&&Boolean(selectedMetadata)});
+      const sameEpoch=epoch===selectedRunEpoch,tab=sameEpoch?resultsRoot.dataset.uxResultsView:null;
+      const focused=document.activeElement,focusInVisualization=sameEpoch&&visualizationMount?.contains(focused),focusWasExact=focused?.matches?.('[data-av01-exact] summary');
+      const focusWasTab=sameEpoch&&focused?.matches?.('#workspace-results [role="tab"]');
+      const restorePresentation=()=>{
+        if(tab)resultsRoot.querySelector(`[data-result-view="${tab}"]`)?.click();
+        if(focusWasTab)resultsRoot.querySelector(`[data-result-view="${tab}"]`)?.focus({preventScroll:true});
+        if(focusInVisualization&&visualizationMount?.getClientRects().length)(focused.isConnected?focused:focusWasExact?visualizationMount.querySelector("[data-av01-exact] summary"):null)?.focus({preventScroll:true});
+      };
+      if(!payload||!sameEpoch){resultVisualization?.destroy();resultVisualization=null;visualizationMount?.remove();visualizationMount=null;delete resultsRoot.dataset.uxResultsView;}
+      else visualizationMount?.remove();
+      selectedRunEpoch = epoch;
+      selectedRunReady = false;
+      discardedReflectionNotice ||= reflectionHasUnsavedText;
+      selectedTeachingView = null;
       resultsRoot.replaceChildren(); reportView.replaceChildren(); document.querySelector("[data-engineering-content]").replaceChildren(); reasoningWorkspace?.render(null, null); reflectionWorkspace.useReflection(null, null); workflowProgress.project({ selectedRun: payload?.metadata || null, reflection: payload?.reflection || null }); renderReflectionView(null); reportOpen.disabled = !payload; reportRoot.dataset.runSelected = payload?.status === "SUCCESS" ? "true" : "false";
       const previous = canvasController.getState();
       if (previous.resultOverlay) canvasController.replaceState({ ...previous, resultOverlay: null });
       if (!payload) return;
-      if (payload.status !== "SUCCESS") { const note = document.createElement("p"); note.textContent = `分析 #${payload.metadata.analysis_run_id} 状态为 ${payload.status}，没有可展示的结果。`; resultsRoot.append(note); return; }
+      if (payload.status !== "SUCCESS") { const note = document.createElement("p"); note.textContent = "这次分析未完成，没有可展示的结果。请检查模型后重试。"; resultsRoot.append(note); return; }
       const runId = payload.metadata.analysis_run_id;
       const current = canvasController.getState();
       const snapshot = payload.report?.report?.geometry_connectivity || {};
       const labels = createStudentLabelResolver(snapshot);
       const runNumber = [...runContext.state().runs].sort((left, right) => left.analysis_run_id - right.analysis_run_id).findIndex(run => run.analysis_run_id === runId) + 1;
-      const view = showLevelOne({ analysis_run_id: runId, runNumber, predictionId: payload.comparison?.comparison_available ? 0 : null }, payload.data, current.draftVersion, snapshot);
+      selectedTeachingView = buildTeachingView({ payload, runNumber, workspace: teachingContext(current) });
+      if (!selectedTeachingView.available) { attachVisualization();resultVisualization?.useTeachingView(selectedTeachingView,epoch);const note = document.createElement("p"); note.textContent = "这次分析的证据暂不可用，请重新选择分析记录后重试。"; resultsRoot.append(note);restorePresentation(); return; }
+      selectedRunReady = true;
+      const openReflection = () => { if (epoch !== selectedRunEpoch) return; studentShell.selectStage("summary"); reportRoot.querySelector('[data-ux-summary-target="reflection"]').click(); };
+      const view = showLevelOne(selectedTeachingView);
       renderLevelOne(resultsRoot, view, focusMember);
       renderResultActions(resultsRoot, {
-        onCompare: () => renderComparison(resultsRoot.querySelector("[data-result-comparison]"), payload.comparison, focusMember, labels),
-        onExplain: () => renderExplanation(resultsRoot.querySelector("[data-result-explanation]"), payload.explanation, focusMember, labels),
+        onCompare: () => renderComparison(resultsRoot.querySelector("[data-result-comparison]"), contextualTeachingView(), { onFocusMember: focusMember, onReflect: openReflection }),
+        onExplain: () => renderExplanation(resultsRoot.querySelector("[data-result-explanation]"), contextualTeachingView(), { onFocusMember: focusMember, onReflect: openReflection }),
         onTechnical: () => { document.getElementById("workspace-engineering-details").open = true; },
       });
-      renderEngineeringDetails(document.querySelector("[data-engineering-content]"), showEngineeringDetails(payload.data.result_json), view.stale);
+      renderEngineeringDetails(document.querySelector("[data-engineering-content]"), showEngineeringDetails(payload.data.result_json), view.stale, snapshot, selectedTeachingView.labels);
+      attachVisualization();resultVisualization?.useTeachingView(selectedTeachingView,epoch);
+      restorePresentation();
       const overlay = Object.fromEntries(Object.entries(view.overlay).map(([key, memberState]) => [key, { state: memberState, label: memberState === "TENSION" ? "受拉" : memberState === "COMPRESSION" ? "受压" : memberState === "MIXED" ? "混合状态" : "近似零力", color: memberState === "TENSION" ? "#b91c1c" : memberState === "COMPRESSION" ? "#1d4ed8" : memberState === "MIXED" ? "#7c3aed" : "#6b7280", dash: memberState === "TENSION" ? "none" : memberState === "COMPRESSION" ? "10 5" : memberState === "MIXED" ? "14 5 3 5" : "2 4" }]));
-      canvasController.replaceState({ ...current, resultOverlay: overlay });
+      // Painting result colors must not notify Draft-selection focus subscribers.
+      canvasController.replaceState({ ...current, resultOverlay: overlay }, false);
       renderReport(reportView, payload.report, { runNumber });
       reasoningWorkspace?.render(runId, payload.reasoning);
-      reflectionWorkspace.useReflection(runId, payload.reflection);
+      reflectionWorkspace.useReflection(runId, payload.reflection, epoch);
       renderReflectionView(payload.reflection);
+      if (discardedReflectionNotice) { const note = document.createElement("p"); note.textContent = "已切换分析记录；反思内容不会带入此记录，切换不会自动保存。若已提交保存，请返回上一记录确认结果。"; reflectionRoot.append(note); discardedReflectionNotice = false; }
       errorPanel.hidden = true;
     };
-    const runContext = createRunContext({ urls: { runs: bootstrap.urls.analysis_runs, resultTemplate: bootstrap.urls.result_template, comparisonTemplate: bootstrap.urls.comparison_template, explanationTemplate: bootstrap.urls.explanation_template, reportTemplate: bootstrap.urls.report_template, reasoningTemplate: bootstrap.urls.reasoning_template, reflectionTemplate: bootstrap.urls.reflection_template }, select: reportSelect, editable: !bootstrap.read_only, onSelect: renderSelectedRun, onRunsChange: (runs) => workflowProgress.project({ runs }) });
+    const runContext = createRunContext({ projectId:bootstrap.project.id, urls: { visualizationTemplate:bootstrap.urls.visualization_template, runs: bootstrap.urls.analysis_runs, resultTemplate: bootstrap.urls.result_template, comparisonTemplate: bootstrap.urls.comparison_template, explanationTemplate: bootstrap.urls.explanation_template, reportTemplate: bootstrap.urls.report_template, reasoningTemplate: bootstrap.urls.reasoning_template, reflectionTemplate: bootstrap.urls.reflection_template }, select: reportSelect, editable: !bootstrap.read_only, onSelect: renderSelectedRun, onVisualization:event=>{
+      if(event.epoch!==selectedRunEpoch)return;
+      if(!resultVisualization){visualizationMount=document.createElement('section');visualizationMount.dataset.av01Mount='';attachVisualization();resultVisualization=createAnalysisVisualization({root:visualizationMount,onRetry:()=>runContext.retryVisualization()});resultVisualization.setSelection({runId:event.runId,epoch:event.epoch,metadata:event.metadata});}
+      attachVisualization();resultVisualization.useProjection(event);if(selectedTeachingView)resultVisualization.useTeachingView(selectedTeachingView,event.epoch);
+      resultVisualization.setVisible(document.getElementById('workspace-root').dataset.uxStage==='understanding'&&resultsRoot.dataset.uxResultsView==='conclusion');
+    }, onRunsChange: (runs) => {workflowProgress.project({ runs });learningPresentation.renderHistory(runs);} });
+    let previousStage=document.getElementById('workspace-root').dataset.uxStage;
+    const resultsVisibility=new MutationObserver(()=>{
+      const stage=document.getElementById('workspace-root').dataset.uxStage;
+      if(stage==='understanding'&&previousStage!==stage)canvas.dispatchEvent(new Event('pointercancel'));
+      previousStage=stage;
+      resultVisualization?.setVisible(stage==='understanding'&&resultsRoot.dataset.uxResultsView==='conclusion');
+    });
+    resultsVisibility.observe(document.getElementById('workspace-root'),{subtree:true,attributes:true,attributeFilter:['data-ux-stage','data-ux-results-view']});
     reportSelect.addEventListener("change", async () => { try { if (!reportSelect.value) { resultsRoot.replaceChildren(); reportView.replaceChildren(); document.getElementById("workspace-report-reasoning")?.replaceChildren(); reflectionRoot.replaceChildren(); } await runContext.selectRun(reportSelect.value ? Number(reportSelect.value) : null); } catch (error) { showError(error); } });
     reportOpen.addEventListener("click", () => document.getElementById("workspace-report").scrollIntoView({ behavior: "smooth", block: "start" }));
     document.querySelector("[data-prediction-skip]")?.addEventListener("click", () => studentShell.selectStage("analyze"));
     document.querySelector("[data-ux-back-to-build]")?.addEventListener("click", () => studentShell.selectStage("build"));
-    predictionWorkspace.ready.then(() => runContext.refreshRuns()).then((runs) => { if (!runs.some((run) => run.status === "SUCCESS")) reportView.textContent = "还没有可用的计算书资料。请先完成一次成功分析。"; }).catch(showError);
+    predictionWorkspace.ready.then(() => runContext.refreshRuns()).then((runs) => { if (runs !== null && !runs.some((run) => run.status === "SUCCESS")) reportView.textContent = "还没有可用的计算书资料。请先完成一次成功分析。"; }).catch(showError);
     document.getElementById("workspace-analyze").addEventListener("click", async () => {
       const status = document.querySelector("[data-ux-analyze-status]");
       const button = document.getElementById("workspace-analyze");
       const current = canvasController.getState();
       if (current.dirty) { status.textContent = "请先保存模型，再开始分析。"; return; }
+      const epoch = selectedRunEpoch;
+      let refreshing = false;
       status.textContent = `正在分析草稿 v${current.draftVersion}…`; button.disabled = true;
-      try { const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze()); await runContext.refreshRuns({ selectRunId: result.run.analysis_run_id }); status.textContent = "分析已完成。"; studentShell.selectStage("understanding"); errorPanel.hidden = true; }
-      catch (error) { status.textContent = "模型暂时无法完成分析。请检查连接、支座和荷载，也可以返回建模。"; showError(error); }
+      try {
+        const result = await resultsWorkspace.analyze(current.draftVersion, predictionWorkspace.predictionForAnalyze());
+        if (epoch !== selectedRunEpoch) return;
+        refreshing = true;
+        const refreshed = await runContext.refreshRuns({ selectRunId: result.run.analysis_run_id });
+        if (refreshed === null) return;
+        status.textContent = "分析已完成。"; studentShell.selectStage("understanding"); errorPanel.hidden = true;
+      }
+      catch (error) { if (refreshing || epoch === selectedRunEpoch) { status.textContent = "模型暂时无法完成分析。请检查连接、支座和荷载，也可以返回建模。"; showError(error); } }
       finally { button.disabled = false; }
     });
     document.getElementById("workspace-save").addEventListener("click", async () => {
-      if (!canvasController.getState().dirty) return;
       const button = document.getElementById("workspace-save");
-      button.disabled = true; studentShell.setSaveState("保存中");
-      try { const submittedDraft = canvasController.getState().draft; const response = await workflow.saveDraft(submittedDraft); const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft); canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null }); workflowProgress.project({ draft: next.draft, selectedRun: null, reflection: null }); document.getElementById("workspace-results").replaceChildren(); await predictionWorkspace.refreshDraft(next.draft); await runContext.refreshRuns(); document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`; document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无"; studentShell.setSaveState(next.dirty ? "有未保存修改" : "已保存"); errorPanel.hidden = true; }
-      catch (error) { studentShell.setSaveState("保存失败"); showError(error); }
-      finally { button.disabled = false; }
+      if (canvasController.getState().readOnly || document.getElementById("workspace-root").dataset.uxStage !== "build" || button.disabled || !canvasController.getState().dirty) return;
+      const epoch = selectedRunEpoch;
+      let refreshing = false;
+      button.disabled = true; button.setAttribute("aria-busy", "true"); studentShell.setSaveState("保存中");
+      try {
+        const submittedDraft = canvasController.getState().draft;
+        const response = await workflow.saveDraft(submittedDraft);
+        const next = applyWorkspaceSaveSuccess(canvasController.getState(), response, submittedDraft);
+        canvasController.replaceState({ ...next, resultOverlay: null, analysisResult: null });
+        const ownsSelection = epoch === selectedRunEpoch;
+        workflowProgress.project(ownsSelection ? { draft: next.draft, selectedRun: null, reflection: null } : { draft: next.draft });
+        if (ownsSelection) resultsRoot.replaceChildren();
+        await predictionWorkspace.refreshDraft(next.draft);
+        let refreshed = null;
+        if (epoch === selectedRunEpoch) { refreshing = true; refreshed = await runContext.refreshRuns(); }
+        document.getElementById("workspace-draft-version").textContent = `当前草稿 v${next.draftVersion}`;
+        document.getElementById("workspace-save-status").textContent = next.dirty ? "未保存修改：有" : "未保存修改：无";
+        studentShell.setSaveState(next.dirty ? "有未保存修改" : "已保存");
+        if (refreshed !== null) errorPanel.hidden = true;
+      }
+      catch (error) { studentShell.setSaveState("保存失败"); if (refreshing || epoch === selectedRunEpoch) showError(error); }
+      finally { button.removeAttribute("aria-busy"); button.disabled = canvasController.getState().readOnly || document.getElementById("workspace-root").dataset.uxStage !== "build"; }
     });
     const recoveryGuidance = document.querySelector("[data-check-recovery-guidance]");
     function recoverCheckIssue(issue, presentation) {
@@ -352,7 +508,8 @@
         for (const issue of grouped.other) {
           const presentation = presentModelCheckIssue(issue);
           const card = document.createElement("article"); card.className = "ux-check-issue";
-          const title = document.createElement("h3"); title.textContent = presentation.title;
+          const objectName = issue.physical_object ? createStudentLabelResolver(current.draft).label(issue.physical_object.kind, issue.physical_object.client_key) : null;
+          const title = document.createElement("h3"); title.textContent = objectName ? `${objectName}：${presentation.title}` : presentation.title;
           const message = document.createElement("p"); message.textContent = presentation.explanation;
           const next = document.createElement("p"); next.textContent = "下一步：回到建模，检查连接、支座和荷载，再保存并重新检查。";
           card.append(title, message, next);

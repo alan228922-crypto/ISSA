@@ -3,6 +3,8 @@ import json
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.cache import cache_control
+from django.utils import timezone
 
 from analysis.models import AnalysisRun
 from analysis.orchestration import AnalysisError, analyze_project, check_project
@@ -47,6 +49,7 @@ MESSAGES = {
     'RESULT_REVEAL_FAILED': '无法安全记录结果查看，请稍后重试。',
     'ANALYSIS_NOT_SUCCESS': '分析尚未成功完成，暂无可用的比较或解释结果。',
     'REPORT_ANALYSIS_NOT_SUCCESS': '该分析尚未成功完成，暂时无法生成计算书资料。',
+    'VISUALIZATION_REVEAL_REQUIRED': '请先打开这次分析的结果，再重试结构视图。',
     'INTERNAL_ERROR': '服务器暂时无法处理请求，请稍后重试。',
 }
 
@@ -272,3 +275,38 @@ def section_preview(request, project_id):
         status = 403 if exc.args[0] == 'PROJECT_WRITE_DENIED' else 422
         return _error(exc.args[0], status)
     return JsonResponse({'ok': True, 'schema_version': 'section-properties-v1', 'properties': properties})
+
+
+@cache_control(private=True, no_store=True)
+@login_required
+@require_GET
+def analysis_visualization(request, project_id, run_id):
+    """Existing authorized/revealed Run facts only; this GET never reveals/writes."""
+    from accounts.models import User
+    from analysis.visualization import build_visualization_projection
+    from learning.models import StudentResultReveal
+
+    project = _project(project_id)
+    if project is None:
+        return _error('PROJECT_NOT_FOUND', 404)
+    if not can_view_project(request.user, project) or timezone.now() >= project.event.purge_at:
+        return _error('PROJECT_READ_DENIED', 403)
+    run = AnalysisRun.objects.select_related('model_revision').filter(
+        pk=run_id, project_id=project.pk, model_revision__project_id=project.pk,
+    ).first()
+    if run is None:
+        return _error('PROJECT_NOT_FOUND', 404)
+    if run.status != AnalysisRun.Status.SUCCESS:
+        return _error('ANALYSIS_NOT_SUCCESS', 422)
+    if request.user.role not in {User.Role.MANAGER, User.Role.DEVELOPER}:
+        if request.user.pk != project.owner_user_id:
+            return _error('PROJECT_READ_DENIED', 403)
+        if not StudentResultReveal.objects.filter(
+            project_id=project.pk, source_draft_version=run.model_revision.source_draft_version,
+        ).exists():
+            return _error('VISUALIZATION_REVEAL_REQUIRED', 409)
+    try:
+        projection = build_visualization_projection(run=run)
+        return JsonResponse({'ok': True, 'visualization': projection}, json_dumps_params={'allow_nan': False})
+    except Exception:
+        return _error('INTERNAL_ERROR', 500)

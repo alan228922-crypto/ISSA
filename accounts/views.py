@@ -3,12 +3,14 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView,LogoutView
 from django.db.models import Exists, OuterRef
 from django.shortcuts import redirect,render
+from django.utils import timezone
 from analysis.models import AnalysisRun
-from competitions.authorization import can_view_event
+from competitions.authorization import can_manage_event, can_view_event
 from learning.models import Prediction
 from modeling.models import GeometryNode
 from projects.models import Project
 from projects.services import can_view_project
+from projects.creation import project_creation_error
 
 from .forms import ForcedPasswordChangeForm
 
@@ -63,10 +65,23 @@ def event_landing(request):
             else:
                 project.ux_status, project.ux_next = "已有模型", "检查模型并进行预测或分析"
             projects_by_event[project.event_id].append(project)
-    event_entries = [
-        {"event": event, "projects": projects_by_event[event.id]}
-        for event in events
-    ]
+    owned_by_event = {event.id: [] for event in events}
+    for project in Project.objects.filter(event_id__in=owned_by_event, owner_user=request.user).order_by('pk'):
+        owned_by_event[project.event_id].append(project)
+    event_entries = []
+    for event in events:
+        owned = owned_by_event[event.id]
+        state = 'UNAVAILABLE'
+        if len(owned) > 1:
+            state = 'MULTIPLE'
+        elif len(owned) == 1:
+            existing = owned[0]
+            if existing.analysis_type == 'TRUSS_2D' and existing.draft_schema_version in {'physical-draft-v1', 'physical-draft-v2'}:
+                state = 'CONTINUE'
+        elif project_creation_error(actor=request.user, event=event, now=timezone.now()) is None:
+            state = 'CREATE'
+        event_entries.append({'event': event, 'projects': projects_by_event[event.id], 'project_entry_state': state,
+                              'can_manage': can_manage_event(request.user, event)})
     return render(request, "accounts/event_landing.html", {"event_entries": event_entries})
 
 

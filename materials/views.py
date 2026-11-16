@@ -1,16 +1,27 @@
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.core.exceptions import PermissionDenied
+from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 
 from projects.models import Project
 
 from .forms import CompositeComponentFormSet, CompositeSectionForm, MaterialForm, RectangleSectionForm
 from .models import Material, Section, Strip
-from .services import SectionServiceError, create_section, delete_resource, rebind_strip_material, update_section
+from .services import SectionServiceError, create_section, delete_resource, rebind_strip_material, update_section, update_material
 
 
-def _owned_project(request, project_id):
-    return get_object_or_404(Project, pk=project_id, owner_user=request.user)
+def _owned_project(request, project_id, *, write=False):
+    from projects.services import can_view_project, can_modify_project
+    project = get_object_or_404(Project, pk=project_id, owner_user=request.user)
+    if not can_view_project(request.user, project):
+        raise Http404
+    if write and not can_modify_project(request.user, project):
+        raise PermissionDenied('当前项目只读，不能修改资源。请返回赛事页查看历史。')
+    return project
+
+
+def _readonly_resource_response(request):
+    return render(request, "shared/request_error.html", {"error_message": "此资源被只读历史项目使用，不能修改或删除。请返回材料与截面列表，选择其他可用资源。"}, status=403)
 
 
 def _section_initial(section):
@@ -25,9 +36,11 @@ def _section_initial(section):
 
 @login_required
 def index(request, project_id):
+    from projects.services import can_modify_project
     project = _owned_project(request, project_id)
     return render(request, "materials/index.html", {
         "project": project,
+        "read_only": not can_modify_project(request.user, project),
         "materials": Material.objects.filter(owner_user=request.user).order_by("name", "id"),
         "sections": Section.objects.filter(owner_user=request.user).order_by("name", "id"),
         "strips": Strip.objects.filter(owner_user=request.user).select_related("material").order_by("name", "id"),
@@ -37,7 +50,7 @@ def index(request, project_id):
 
 @login_required
 def material_create(request, project_id):
-    project = _owned_project(request, project_id)
+    project = _owned_project(request, project_id, write=True)
     form = MaterialForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         material = form.save(commit=False)
@@ -49,11 +62,14 @@ def material_create(request, project_id):
 
 @login_required
 def material_edit(request, project_id, material_id):
-    project = _owned_project(request, project_id)
+    project = _owned_project(request, project_id, write=True)
     material = get_object_or_404(Material, pk=material_id, owner_user=request.user)
     form = MaterialForm(request.POST or None, instance=material)
     if request.method == "POST" and form.is_valid():
-        form.save()
+        try:
+            update_material(actor=request.user, material=material, fields=form.cleaned_data)
+        except SectionServiceError:
+            return _readonly_resource_response(request)
         return redirect("materials:index", project_id=project.id)
     return render(request, "materials/material_form.html", {"project": project, "form": form, "editing": True})
 
@@ -63,7 +79,10 @@ def _delete_page(request, project, resource):
     from .models import Strip
 
     if request.method == "POST":
-        receipt = delete_resource(actor=request.user, resource=resource)
+        try:
+            receipt = delete_resource(actor=request.user, resource=resource)
+        except SectionServiceError:
+            return _readonly_resource_response(request)
         request.session["resource_delete_feedback"] = (
             f"已删除{resource.name}。{receipt.object_counts_json['members']} 个构件"
             f"和 {receipt.object_counts_json['strips']} 个条材需要重新指定；这些对象不会被删除。"
@@ -80,27 +99,29 @@ def _delete_page(request, project, resource):
 
 @login_required
 def material_delete(request, project_id, material_id):
-    project = _owned_project(request, project_id)
+    project = _owned_project(request, project_id, write=True)
     material = get_object_or_404(Material, pk=material_id, owner_user=request.user)
     return _delete_page(request, project, material)
 
 
 @login_required
 def section_delete(request, project_id, section_id):
-    project = _owned_project(request, project_id)
+    project = _owned_project(request, project_id, write=True)
     section = get_object_or_404(Section, pk=section_id, owner_user=request.user)
     return _delete_page(request, project, section)
 
 
 @login_required
 def strip_material(request, project_id, strip_id):
-    project = _owned_project(request, project_id)
+    project = _owned_project(request, project_id, write=True)
     strip = get_object_or_404(Strip, pk=strip_id, owner_user=request.user)
     error = None
     if request.method == "POST":
         try:
             rebind_strip_material(actor=request.user, strip=strip, material_id=request.POST.get("material_id") or None)
-        except SectionServiceError:
+        except SectionServiceError as exc:
+            if str(exc) == 'PROJECT_WRITE_DENIED':
+                return _readonly_resource_response(request)
             error = "请选择自己的材料。"
         else:
             return redirect("materials:index", project_id=project.id)
@@ -113,7 +134,7 @@ def strip_material(request, project_id, strip_id):
 
 @login_required
 def section_create(request, project_id):
-    project = _owned_project(request, project_id)
+    project = _owned_project(request, project_id, write=True)
     form = RectangleSectionForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         try:
@@ -143,6 +164,8 @@ def _composite_editor(request, project, section=None):
                 else:
                     create_section(owner=request.user, name=form.cleaned_data["name"], definition=definition)
             except SectionServiceError as exc:
+                if str(exc) == 'PROJECT_WRITE_DENIED':
+                    return _readonly_resource_response(request)
                 form.add_error(None, "矩形组件不能重叠，请调整位置或尺寸。" if str(exc) == "OVERLAP_UNSUPPORTED" else "请检查组件尺寸、位置与密度。")
             else:
                 return redirect("materials:index", project_id=project.id)
@@ -153,13 +176,13 @@ def _composite_editor(request, project, section=None):
 
 @login_required
 def composite_section_create(request, project_id):
-    project = _owned_project(request, project_id)
+    project = _owned_project(request, project_id, write=True)
     return _composite_editor(request, project)
 
 
 @login_required
 def section_edit(request, project_id, section_id):
-    project = _owned_project(request, project_id)
+    project = _owned_project(request, project_id, write=True)
     section = get_object_or_404(Section, pk=section_id, owner_user=request.user)
     if section.section_type == "COMPOSITE":
         return _composite_editor(request, project, section)
@@ -169,7 +192,9 @@ def section_edit(request, project_id, section_id):
     if request.method == "POST" and form.is_valid():
         try:
             update_section(actor=request.user, section=section, name=form.cleaned_data["name"], definition=form.definition())
-        except SectionServiceError:
+        except SectionServiceError as exc:
+            if str(exc) == 'PROJECT_WRITE_DENIED':
+                return _readonly_resource_response(request)
             form.add_error(None, "请检查截面尺寸与密度。")
         else:
             return redirect("materials:index", project_id=project.id)

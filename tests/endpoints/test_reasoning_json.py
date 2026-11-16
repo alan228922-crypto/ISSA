@@ -78,7 +78,7 @@ def test_non_owner_and_failed_run_cannot_access_or_create_reasoning(successful_r
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     "event_status, expected",
-    [("DRAFT", 200), ("ACTIVE", 200), ("FINISHED_GRACE", 200), ("PURGED", 403)],
+    [("DRAFT", 200), ("ACTIVE", 200), ("FINISHED_GRACE", 403), ("PURGED", 403)],
 )
 def test_reasoning_write_reuses_project_authority_without_active_only_gate(successful_run, client, event_status, expected):
     owner, project, run = successful_run

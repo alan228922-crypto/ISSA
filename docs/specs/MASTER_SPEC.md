@@ -9,14 +9,24 @@
 - 核准日期：2026-09-10
 - 目前產品路線：**Truss-first Progressive Structural Learning Platform**
 - P0 核心分析類型：`TRUSS_2D`
-- First POC V1：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**（2026-09-23）
-- UX V2：**UX V2 IMPLEMENTED — MANUAL PRODUCT ACCEPTANCE PENDING**（2026-09-24）
+- 当前里程碑：**M8 CLOSED — STABLE ON MAIN**；M7 / M8 已完成。
+- 稳定实现基线：`main@96c335dc1c1d742d4143817c02a51a0fc3961892`；后续 docs-only commit 不代表实现基线变化。
+- First POC V1 历史检查点：**POC V1 FRONTEND CONTRACT COMPLETE — MANUAL PRODUCT ACCEPTANCE PENDING**（2026-09-23）
+- UX V2 历史检查点：**UX V2 IMPLEMENTED — MANUAL PRODUCT ACCEPTANCE PENDING**（2026-09-24）
 
 > 本文件已由 Product Owner 指示執行升格，作為目前專案唯一最高層級 Source of Truth。
 >
 > 本文件管理產品方向、力學邊界、資料治理、角色權限、研究需求與架構原則；不取代各專項規格的細節。所有專項 CURRENT Specs、Implementation Plan 與後續程式碼不得與本文件衝突。
 >
 > `Open Decision` / `MECHANICS REVIEW REQUIRED` 仍保持未決狀態。正式 MASTER_SPEC 的存在不代表這些項目已被默認核准。
+
+### Post-M8 decision-status synchronization — 2026-10-21
+
+本次仅同步既有已批准决策，不改变 M7 / M8 产品语义：D-M7-001/002/003、D-M8-001/002/003/004 均为 **RESOLVED**。O-003 **RESOLVED**（§22.4 READ-ONLY HISTORY）；O-006 **RESOLVED — APPROVED SCOPE ONLY**（§41 的 DRAFT CSV / 四种 DRAFT/ACTIVE 单笔操作）；O-004 **OPEN**；O-001 **OPEN — MECHANICS REVIEW REQUIRED**。未批准管理能力继续 fail closed / out of scope，不表示所有 Event administration 完成。
+
+这些当前状态取代本规格集中所有较早的 O-003/O-006 未决状态说明（包括 M0–M7 review/conflict-check/freeze/test/implementation-plan 状态表、旧 milestone evidence、POC known-issues、Prediction/Report/Reflection/API 文档）；仅这些状态说明视为 superseded historical decision state，其余契约不因此改变。历史记录的“当时尚未关闭”不再是当前政策，也不得抹去历史验收归属。
+
+当前为 **CONTROLLED TEACHING / PILOT**，不是 unattended production deployment。[M9 scope](../superpowers/specs/2026-10-21-m9-results-teaching-loop-decisions.md) 与 [TDD implementation plan](../superpowers/plans/2026-10-21-m9-results-teaching-loop.md) 已按批准方式完成 Tasks 1–8 技术门槛，状态 **M9/CAD INTEGRATED — FRESH QA VERIFIED — OWNER ACCEPTANCE PENDING**；已于 2026-11-10 受控 fast-forward 至 main `b5873ecc80996dc0561bba313f7053bf65ad023d`，551 Browser / 816 non-browser +22 skipped /131 Mechanics（子集）。Teacher Formal Review 延后至功能及美化完成后，非 PASS；M9/CAD 完整 Owner Acceptance 与 OA-16 仍 PENDING。P1-001 待正式 Owner 结案；P2-001 明确接受为 UI POLISH follow-up。AV-01 仅文件纳管/状态同步及 Task 1–2 本轮获准，后续 Tasks 未授权。见 [evidence](../development/M9_IMPLEMENTATION_EVIDENCE.md)。不改变 O-001 / O-004 或现有 Source of Truth 层级。
 
 ---
 
@@ -1106,6 +1116,8 @@ Team 01
 
 # 21. Bulk User Account Creation
 
+【Confirmed — M8 D-M8-001..004, 2026-10-18; RESOLVED after Owner acceptance 2026-10-20】Scoped participant management is implemented and Owner-accepted under `../superpowers/specs/2026-10-18-m8-event-participant-management-decisions.md`. Active global Developer or exact assigned active global Manager only; mixed identity uses ACTIVE Memberships only. DRAFT CSV and DRAFT/ACTIVE single-entry share opaque server-side credential preview, fresh authority and Event-serialized atomic business receipts. Only SUCCESS/NOOP qualification receipts persist; invalid/denied attempts are not BulkImportBatch business records. One bounded operation_details_json AddField only; M7 self-create, schemas outside that field and mechanics remain unchanged. O-006 is RESOLVED — APPROVED SCOPE ONLY; ACTIVE CSV is not approved. The old OPEN / FAIL CLOSED implementation-stage state is historical; this scoped resolution supersedes blanket ACTIVE denial only for the four approved single-entry operations.
+
 【Confirmed】
 
 至少支援：
@@ -1172,17 +1184,17 @@ DRAFT
 
 ## 22.4 FINISHED_GRACE Access
 
-【Open Decision】
+【Confirmed — D-M7-003, 2026-10-17】READ-ONLY HISTORY。
 
-目前尚未正式確認 User 在 `FINISHED_GRACE` 是否：
+允许依既有角色权限查看 Event、Project、历史 Analysis / Results / Report；禁止创建 Project、Save Draft、Model Check、Analyze、Prediction / Reflection / Reasoning authoring 及其他学生写入。PURGED 即使残留 operational rows 也必须拒绝所有 operational GET / write。
 
-- read-only
-- 可繼續修改
-- 完全禁止進入
+### M7 Project creation decisions
 
-【Recommended】
+【Confirmed / RESOLVED — D-M7-001/002, 2026-10-17】ACTIVE Event 中既有 authenticated、active USER，且具有该 Event 的 active PARTICIPANT Membership，可以自行建立本人的 Project；必须 `now < purge_at`。不允许 Manager / Developer 代建。历史 M7 范围未开放 ACTIVE User / Membership provisioning，当时 O-006 保持 OPEN / FAIL CLOSED；其后仅 M8 批准范围由 §41 O-006 的 scoped resolution 取代，不改变 M7 self-create。
 
-建議 read-only，供學生查看 / 匯出結果，但不再改模型。
+正常流程每个 `(Event, owner User)` 最多一个 Project。已有一个合法 Project 则原样返回，不覆盖名称或 Draft；legacy 多 Project 全部保留，不合并、不删除、不选 latest，不再建立新 Project。
+
+创建表单仅项目名称；成功直接 Workspace。固定 TRUSS_2D、physical-draft-v2、empty Draft version 0，不预建 AnalysisRun / Snapshot，不 seed Material / Section。资源沿用 owner library；共享资源写入不能间接修改 FINISHED_GRACE / PURGED Project。不新增 Team / Project status / archive / hard delete / schema / migration。
 
 ---
 
@@ -1964,9 +1976,9 @@ FrameModel
 
 ---
 
-# 41. Open Decisions
+# 41. Decision Status — Open and Resolved
 
-以下尚未升格為 Confirmed：
+以下保留未决事项与已解决事项的正式状态；已 RESOLVED 的 O-003 / O-006 不再是 Open Decision。历史问题保留其明确的 superseded 标记。
 
 ## O-001 — Euler Effective Length / Buckling-axis Policy
 
@@ -1976,7 +1988,7 @@ FrameModel
 
 Status：
 
-> `MECHANICS REVIEW REQUIRED`
+> `OPEN — MECHANICS REVIEW REQUIRED`
 
 ---
 
@@ -1992,9 +2004,7 @@ P0 Roller 仅支持被约束的全局 X 或全局 Y 平移轴。PINNED 固定 ux
 
 **Owner：Product Owner**
 
-【Recommended】
-
-read-only。
+【RESOLVED — D-M7-003, 2026-10-17】READ-ONLY HISTORY，详见 22.4；O-004 仍 OPEN，O-006 已由 M8 解决限定范围，见下文。
 
 ---
 
@@ -2008,7 +2018,7 @@ read-only。
 - disable
 - delete
 
-目前不得自動決定。
+**Status：OPEN**。目前不得自動決定。
 
 ---
 
@@ -2024,17 +2034,19 @@ read-only。
 
 **Owner：Product Owner**
 
-【Open Decision】
+【RESOLVED — APPROVED SCOPE ONLY】
 
-CompetitionEvent.status == ACTIVE 时是否允许新增参赛队伍账号尚未确认。未来决策应明确以下之一，或提供另一条明确规则：
+【RESOLVED — APPROVED SCOPE ONLY; Owner acceptance PASS, 2026-10-20 Asia/Shanghai】D-M8-001..004 已完成实施并获 Owner 正式验收：DRAFT CSV，以及 DRAFT/ACTIVE 的 CREATE_USER、JOIN_EXISTING、REACTIVATE、DEACTIVATE 单笔资格操作，沿用 active Developer / exact assigned active global Manager authority。ACTIVE CSV、public signup、join code、Manager assignment/revoke/promotion、admin password reset、global User recovery、Event transition UI/scheduler、automatic Project provisioning 均不属于 resolution scope，继续 fail closed / out of scope。O-004 仍 OPEN。下方原始未决选项仅保留为历史决策背景，不得推翻此后续 scoped resolution；这不代表所有 Event administration 已完成。
+
+**Historical / SUPERSEDED — 以下保留 M8 前的未决问题与 fallback，不是当前政策。** 当时 CompetitionEvent.status == ACTIVE 是否允许新增参赛队伍账号尚未确认，原候选为：
 
 - ACTIVE 后完全禁止 provisioning。
 - ACTIVE 后仅 Developer 可 provisioning。
 - ACTIVE 后 Developer 与 assigned Manager 均可 provisioning。
 
-当前服务端采用 temporary fail-closed behavior：拒绝 provisioning 并返回稳定 machine-readable code PROVISIONING_STATUS_POLICY_GAP。涉及账号创建、Event membership 与竞赛参与资格的未决政策，在没有明确授权时不得自行放开。
+当时服务端采用 temporary fail-closed behavior：拒绝 provisioning 并返回稳定 machine-readable code PROVISIONING_STATUS_POLICY_GAP。此历史 blanket fallback 已被上方 M8 approved scope 取代；ACTIVE CSV 及未批准能力仍不开放。
 
-此安全 fallback **不是最终产品政策**。O-006 关闭后，必须先更新 MASTER_SPEC、ADR 与 tests，再修改 implementation。
+此历史安全 fallback **不是最终产品政策**。原要求先更新 MASTER_SPEC、ADR 与 tests 再实施；M8 已完成该决策、实施与 Owner 验收，不再是当前未决执行点。
 
 ---
 
@@ -2114,7 +2126,7 @@ Architecture 狀態：
 
 - Euler automatic risk behavior → 等待 `O-001 / MRR-001`
 - Roller UI / Support JSON final shape → 已由 O-002 冻结为 restrained_axis X/Y
-- FINISHED_GRACE final UX permission → 等待 `O-003`
+- FINISHED_GRACE final UX permission → `O-003` 已由 D-M7-003 确认 READ-ONLY HISTORY
 - post-purge User lifecycle → 等待 `O-004`
 - overlap-capable free composite geometry → 等待 `O-005`
 
@@ -2219,7 +2231,7 @@ CODEX_IMPLEMENTATION_PLAN.md
 
 - [ ] Euler effective length factor `K`
 - [x] Roller orientation
-- [ ] FINISHED_GRACE user access
+- [x] FINISHED_GRACE user access — D-M7-003 READ-ONLY HISTORY
 - [ ] account lifecycle after purge
 - [ ] composite strip overlap policy（若 feature 需要）
 
@@ -2254,7 +2266,7 @@ POC V1 已以真实浏览器公开控件完成纵向验收：Login → Events �
 - 历史 Run 保持不可变，当前草稿变化只产生 stale 呈现；
 - 1024×900 桌面布局、初学者错误层级与报告表格溢出均有浏览器回归。
 
-本记录不关闭 O-001、O-003、O-004、O-005、O-006 或 T-M6-001/002/003，不增加 Euler 自动判断、复合截面重叠编辑、任意角 Roller、导出或 AI 力学权威。
+【历史记录 — 2026-09-21】本次 reconciliation 当时不关闭 O-001、O-003、O-004、O-005、O-006 或 T-M6-001/002/003；O-003 / O-006 后续状态以上方 post-M8 同步与 §41 为准。本记录不增加 Euler 自动判断、复合截面重叠编辑、任意角 Roller、导出或 AI 力学权威。
 
 ---
 

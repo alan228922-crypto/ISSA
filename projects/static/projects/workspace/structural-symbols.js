@@ -1,3 +1,7 @@
+export function useWorkspaceGraphics() {
+  return ["build", "check", "prediction", "analyze"].includes(document.querySelector("#workspace-root")?.dataset.uxStage);
+}
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 function element(name, attributes = {}) {
@@ -11,6 +15,111 @@ function symbol(name, kind, attributes) {
 }
 
 export function structuralSymbolDefs() {
+  if (!useWorkspaceGraphics()) return legacystructuralSymbolDefs();
+  const defs = element("defs");
+  const marker = element("marker", { id: "workspace-load-arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" });
+  marker.append(element("path", { d: "M 0 0 L 8 4 L 0 8 z", fill: "currentColor" }));
+  defs.append(marker);
+  const hatch = element("pattern", { id: "workspace-support-hatch", patternUnits: "userSpaceOnUse", width: 6, height: 6 });
+  hatch.append(element("path", { d: "M -2 6 L 4 0 M 4 6 L 10 0", fill: "none", stroke: "var(--brand, #183c51)", "stroke-width": 1.2, "pointer-events": "none" }));
+  defs.append(hatch);
+  return defs;
+}
+
+export function renderMember(member, start, end, unit, visualState = {}) {
+  if (!useWorkspaceGraphics()) return legacyrenderMember(member, start, end, unit, visualState);
+  const fragment = document.createDocumentFragment();
+  const d = `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+  const dash = visualState.result?.dash || "none";
+  fragment.append(element("path", { "data-hover-outline": "true", d, fill: "none", stroke: "var(--accent, #0c6672)", "stroke-width": 8 * unit, "stroke-dasharray": dash, "pointer-events": "none" }));
+  fragment.append(element("path", { "data-selection-outline": "true", d, fill: "none", stroke: "var(--focus, #076dcb)", "stroke-width": 7 * unit, "stroke-dasharray": dash, "pointer-events": "none" }));
+  fragment.append(symbol("line", "member", { "data-member-body": "true", x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: visualState.result?.color || "var(--brand, #183c51)", "stroke-width": 2 * unit, "stroke-dasharray": dash, "stroke-linecap": "round", "pointer-events": "none" }));
+  fragment.append(element("path", { "data-symbol-hit": "true", d, fill: "none", stroke: "transparent", "stroke-width": 18 * unit, "pointer-events": "stroke" }));
+  return fragment;
+}
+
+export function renderSupport(support, target, unit) {
+  if (!useWorkspaceGraphics() || support.target_connection_client_key) return legacyrenderSupport(support, target, unit);
+  const fragment = document.createDocumentFragment();
+  const roller = support.support_type === "ROLLER";
+  const transform = `translate(${target.x} ${target.y}) scale(${unit})${roller && support.restrained_axis === "X" ? " rotate(-90)" : ""}`;
+  const visual = element("g", { "data-structural-symbol": "support", transform, "pointer-events": "none" });
+  visual.append(element("path", { d: "M0 -4V-9", stroke: "var(--brand, #183c51)", "stroke-width": 1.5 }));
+  visual.append(element("path", { "data-support-part": "triangle", d: "M 0 -9 L -13 -27 L 13 -27 Z", fill: "var(--surface, #fff)", stroke: "var(--brand, #183c51)", "stroke-width": 1.5, "pointer-events": "none" }));
+  if (roller) for (const x of [-8, 8]) visual.append(element("circle", { "data-support-part": "wheel", cx: x, cy: -31, r: 2.5, fill: "var(--surface, #fff)", stroke: "var(--brand, #183c51)", "stroke-width": 2, "pointer-events": "none" }));
+  const baseY = roller ? -34 : -30;
+  visual.append(element("line", { "data-support-part": "base", x1: -19, y1: baseY, x2: 19, y2: baseY, stroke: "var(--brand, #183c51)", "stroke-width": 1.5, "pointer-events": "none" }));
+  visual.append(element("rect", { "data-support-part": "hatch", x: -19, y: baseY - 5, width: 38, height: 5, fill: "url(#workspace-support-hatch)", "pointer-events": "none" }));
+  fragment.append(visual);
+  for (const [attribute, color, inset] of [["data-hover-outline", "var(--accent, #0c6672)", 3], ["data-selection-outline", "var(--focus, #076dcb)", 1]]) {
+    fragment.append(element("rect", { [attribute]: "true", x: -24 + inset, y: (roller ? -55 : -46) + inset, width: 48 - 2 * inset, height: (roller ? 42 : 33) - 2 * inset, rx: 3, fill: "none", stroke: color, "stroke-width": 2, transform, "pointer-events": "none" }));
+  }
+  const hit = element("g", { transform, "data-symbol-hit": "true" });
+  hit.append(element("rect", { x: -23, y: roller ? -54 : -45, width: 46, height: roller ? 39 : 30, fill: "transparent", "pointer-events": "all" }));
+  fragment.append(hit);
+  return fragment;
+}
+
+export function renderLoad(load, target, unit, visualState = {}) {
+  if (!useWorkspaceGraphics()) return legacyrenderLoad(load, target, unit, visualState);
+  const fragment = document.createDocumentFragment();
+  const components = [["Fx", load.fx_N, 1, 0], ["Fy", load.fy_N, 0, 1]];
+  for (const [axis, value, basisX, basisY] of components) {
+    if (!value) continue;
+    const sign = value > 0 ? 1 : -1;
+    const dirX = basisX * sign; const dirY = basisY * sign;
+    const tailX = target.x - dirX * 32 * unit; const tailY = target.y - dirY * 32 * unit;
+    const baseX = target.x - dirX * 8 * unit; const baseY = target.y - dirY * 8 * unit;
+    const normalX = -dirY; const normalY = dirX;
+    if (!visualState.preview) for (const [attribute, color, width] of [["data-hover-outline", "var(--accent, #0c6672)", 7], ["data-selection-outline", "var(--focus, #076dcb)", 10]]) {
+      fragment.append(element("line", { [attribute]: "true", x1: tailX, y1: tailY, x2: target.x, y2: target.y, stroke: color, "stroke-width": width * unit, "pointer-events": "none" }));
+    }
+    const part = element("g", { "data-structural-symbol": "load", "data-load-component": axis, "pointer-events": "none" });
+    part.append(element("line", { "data-load-stem": "true", x1: tailX, y1: tailY, x2: target.x, y2: target.y, stroke: "var(--load, #b45309)", "stroke-width": 1.8 * unit, "pointer-events": "none" }));
+    part.append(element("polygon", { "data-load-arrowhead": "true", points: `${target.x},${target.y} ${baseX + normalX * 3.2 * unit},${baseY + normalY * 3.2 * unit} ${baseX - normalX * 3.2 * unit},${baseY - normalY * 3.2 * unit}`, fill: "var(--load, #b45309)", "pointer-events": "none" }));
+    const labelX = axis === "Fx" ? (tailX + target.x) / 2 : target.x + 14 * unit;
+    const labelY = axis === "Fx" ? target.y + 15 * unit : (tailY + target.y) / 2;
+    if (visualState.showLabels !== false) {
+      const label = element("text", { "data-load-label": "true", x: labelX, y: -labelY, transform: "scale(1 -1)", fill: "var(--load, #b45309)", "font-size": 11 * unit, "text-anchor": axis === "Fx" ? "middle" : "start", "pointer-events": "none" });
+      label.textContent = `${Math.abs(value)} N`;
+      part.append(label);
+    }
+    fragment.append(part);
+    if (!visualState.preview) fragment.append(element("path", { "data-symbol-hit": "true", d: `M ${target.x - dirX * 48 * unit} ${target.y - dirY * 48 * unit} L ${target.x - dirX * 10 * unit} ${target.y - dirY * 10 * unit}`, fill: "none", stroke: "transparent", "stroke-width": 15 * unit, "pointer-events": "stroke" }));
+  }
+  if (!components.some(([, value]) => value)) {
+    if (!visualState.preview) {
+      fragment.append(element("circle", { "data-hover-outline": "true", cx: target.x, cy: target.y, r: 26 * unit, fill: "none", stroke: "var(--accent, #0c6672)", "stroke-width": 2 * unit, "pointer-events": "none" }));
+      fragment.append(element("circle", { "data-selection-outline": "true", cx: target.x, cy: target.y, r: 29 * unit, fill: "none", stroke: "var(--focus, #076dcb)", "stroke-width": 1.8 * unit, "pointer-events": "none" }));
+    }
+    fragment.append(symbol("circle", "load", { cx: target.x, cy: target.y, r: 22 * unit, fill: "none", stroke: "var(--load, #b45309)", "stroke-width": 1.8 * unit, "pointer-events": visualState.preview ? "none" : "stroke" }));
+  }
+  return fragment;
+}
+
+export function renderNode(node, point, unit) {
+  if (!useWorkspaceGraphics()) return legacyrenderNode(node, point, unit);
+  const fragment = document.createDocumentFragment();
+  fragment.append(symbol("circle", "node", { "data-node-body": "true", cx: point.x, cy: point.y, r: 4 * unit, fill: "var(--surface, #fff)", stroke: "var(--brand, #183c51)", "stroke-width": 1.6 * unit, "pointer-events": "none" }));
+  const circle = (radius) => `M ${point.x + radius * unit} ${point.y} a ${radius * unit} ${radius * unit} 0 1 0 ${-2 * radius * unit} 0 a ${radius * unit} ${radius * unit} 0 1 0 ${2 * radius * unit} 0`;
+  fragment.append(element("path", { "data-hover-outline": "true", d: circle(10), fill: "none", stroke: "var(--accent, #0c6672)", "stroke-width": 2 * unit, "pointer-events": "none" }));
+  fragment.append(element("path", { "data-selection-outline": "true", d: circle(12), fill: "none", stroke: "var(--focus, #076dcb)", "stroke-width": 1.8 * unit, "pointer-events": "none" }));
+  fragment.append(element("rect", { "data-symbol-hit": "true", x: point.x - 11 * unit, y: point.y - 11 * unit, width: 22 * unit, height: 22 * unit, fill: "transparent", "pointer-events": "all" }));
+  return fragment;
+}
+
+export function renderConnection(connection, target, unit) {
+  if (!useWorkspaceGraphics()) return legacyrenderConnection(connection, target, unit);
+  const fragment = document.createDocumentFragment();
+  fragment.append(element("circle", { "data-hover-outline": "true", cx: target.x, cy: target.y, r: 18 * unit, fill: "none", stroke: "var(--accent, #0c6672)", "stroke-width": 2 * unit, "pointer-events": "none" }));
+  fragment.append(element("circle", { "data-selection-outline": "true", cx: target.x, cy: target.y, r: 21 * unit, fill: "none", stroke: "var(--focus, #076dcb)", "stroke-width": 1.8 * unit, "pointer-events": "none" }));
+  fragment.append(element("circle", { "data-symbol-hit": "true", cx: target.x, cy: target.y, r: 14 * unit, fill: "none", stroke: "transparent", "stroke-width": 6 * unit, "pointer-events": "stroke" }));
+  fragment.append(symbol("circle", "connection", { "data-connection-ring": "true", cx: target.x, cy: target.y, r: 14 * unit, fill: "none", stroke: "var(--brand, #183c51)", "stroke-width": 2 * unit, "pointer-events": "none" }));
+  fragment.append(element("rect", { x: target.x - 8 * unit, y: target.y - 8 * unit, width: 16 * unit, height: 16 * unit, fill: "transparent", "pointer-events": "none" }));
+  return fragment;
+}
+
+function legacystructuralSymbolDefs() {
   const defs = element("defs");
   const marker = element("marker", { id: "workspace-load-arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" });
   marker.append(element("path", { d: "M 0 0 L 8 4 L 0 8 z", fill: "currentColor" }));
@@ -21,7 +130,8 @@ export function structuralSymbolDefs() {
   return defs;
 }
 
-export function renderMember(member, start, end, unit, visualState = {}) {
+
+function legacyrenderMember(member, start, end, unit, visualState = {}) {
   const fragment = document.createDocumentFragment();
   const d = `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
   const dash = visualState.result?.dash || "none";
@@ -32,7 +142,8 @@ export function renderMember(member, start, end, unit, visualState = {}) {
   return fragment;
 }
 
-export function renderSupport(support, target, unit) {
+
+function legacyrenderSupport(support, target, unit) {
   const fragment = document.createDocumentFragment();
   const roller = support.support_type === "ROLLER";
   const transform = `translate(${target.x} ${target.y}) scale(${unit})${roller && support.restrained_axis === "X" ? " rotate(-90)" : ""}`;
@@ -52,7 +163,8 @@ export function renderSupport(support, target, unit) {
   return fragment;
 }
 
-export function renderLoad(load, target, unit, visualState = {}) {
+
+function legacyrenderLoad(load, target, unit, visualState = {}) {
   const fragment = document.createDocumentFragment();
   const components = [["Fx", load.fx_N, 1, 0], ["Fy", load.fy_N, 0, 1]];
   for (const [axis, value, basisX, basisY] of components) {
@@ -88,7 +200,8 @@ export function renderLoad(load, target, unit, visualState = {}) {
   return fragment;
 }
 
-export function renderNode(node, point, unit) {
+
+function legacyrenderNode(node, point, unit) {
   const fragment = document.createDocumentFragment();
   fragment.append(symbol("circle", "node", { "data-node-body": "true", cx: point.x, cy: point.y, r: 7 * unit, fill: "white", stroke: "#1f2937", "stroke-width": 2 * unit, "pointer-events": "none" }));
   const circle = (radius) => `M ${point.x + radius * unit} ${point.y} a ${radius * unit} ${radius * unit} 0 1 0 ${-2 * radius * unit} 0 a ${radius * unit} ${radius * unit} 0 1 0 ${2 * radius * unit} 0`;
@@ -98,7 +211,8 @@ export function renderNode(node, point, unit) {
   return fragment;
 }
 
-export function renderConnection(connection, target, unit) {
+
+function legacyrenderConnection(connection, target, unit) {
   const fragment = document.createDocumentFragment();
   fragment.append(element("circle", { "data-hover-outline": "true", cx: target.x, cy: target.y, r: 18 * unit, fill: "none", stroke: "#0f766e", "stroke-width": 2 * unit, "pointer-events": "none" }));
   fragment.append(element("circle", { "data-selection-outline": "true", cx: target.x, cy: target.y, r: 21 * unit, fill: "none", stroke: "#0759c7", "stroke-width": 2.5 * unit, "pointer-events": "none" }));

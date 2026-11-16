@@ -28,7 +28,7 @@ def test_copy_matches_actual_endpoint_combination(context, workspace_page, field
     page, _, result = open_check(context, workspace_page, missing_endpoints(*fields))
     actual = [issue['code'] for issue in result['issues'] if issue.get('physical_object') == {'kind': 'PHYSICAL_MEMBER', 'client_key': 'base'}]
     assert actual == codes
-    card = page.locator('[data-incomplete-check-card]').filter(has_text='构件 底杆')
+    card = page.locator('[data-incomplete-check-card]').filter(has_text='底杆 · 构件')
     expect(card).to_have_count(1)
     expect(card.locator('p').nth(0)).to_have_text(summary)
     EVIDENCE.mkdir(parents=True, exist_ok=True)
@@ -49,7 +49,7 @@ def test_copy_both_endpoint_recovery_keeps_focus_inventory_and_save_recheck(cont
     """RED-4 regression: copy composition must not alter the original recovery target/action."""
     page, project, _ = open_check(context, workspace_page, missing_endpoints('start_node_client_key', 'end_node_client_key'))
     before = read_draft(project)
-    page.locator('[data-incomplete-check-card]').filter(has_text='构件 底杆').get_by_role('button', name='重新指定').click()
+    page.locator('[data-incomplete-check-card]').filter(has_text='底杆 · 构件').get_by_role('button', name='重新指定').click()
     expect(page.locator('[data-incomplete-inventory]')).to_have_attribute('open', '')
     expect(page.locator('[data-property-start-node]')).to_be_focused()
     expect(page.locator('[data-property-identity]')).to_contain_text('底杆')
@@ -71,7 +71,7 @@ def test_copy_member_multiple_fields_not_only_first_material_issue(context, work
     def change(draft):
         draft['physical_members'][0].update(material_id=None, section_id=None)
     page, _, _ = open_check(context, workspace_page, change)
-    card = page.locator('[data-incomplete-check-card]').filter(has_text='构件 底杆')
+    card = page.locator('[data-incomplete-check-card]').filter(has_text='底杆 · 构件')
     expect(card.locator('p').nth(0)).to_have_text('缺少：材料、截面')
     expect(card.locator('p').nth(1)).to_contain_text('材料、截面')
     card.get_by_role('button', name='重新指定').click()

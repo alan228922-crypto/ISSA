@@ -1,22 +1,7 @@
-<!doctype html>
-<html lang="zh-Hans"><meta charset="utf-8"><title>材料与截面</title>
-<body>
-{% include "shared/product_header.html" %}
-<nav><a href="{% url 'projects:workspace' project.id %}">返回 {{ project.name }} 工作区</a></nav>
-<main>
-  <h1>材料与截面</h1>
-  {% if delete_feedback %}<p role="status">{{ delete_feedback }}</p>{% endif %}
-  <p>材料的弹性模量使用 MPa，密度使用 g/mm³；截面尺寸使用 mm。</p>
-  <section>
-    <h2>材料</h2><a href="{% url 'materials:material_create' project.id %}">新建材料</a>
-    <ul>{% for material in materials %}<li>{{ material.name }} · E={{ material.E_MPa }} MPa · <a href="{% url 'materials:material_edit' project.id material.id %}">编辑</a> · <a href="{% url 'materials:material_delete' project.id material.id %}">删除</a></li>{% empty %}<li>尚无材料</li>{% endfor %}</ul>
-  </section>
-  <section>
-    <h2>截面</h2><a href="{% url 'materials:section_create' project.id %}">新建矩形截面</a> · <a href="{% url 'materials:composite_section_create' project.id %}">新建组合截面</a>
-    <ul>{% for section in sections %}<li>{{ section.name }} · {% if section.section_type == 'COMPOSITE' %}组合截面{% elif section.section_type == 'RECTANGLE' %}矩形截面{% else %}{{ section.section_type }}{% endif %} · A={{ section.properties_json.A_mm2 }} mm² · <a href="{% url 'materials:section_edit' project.id section.id %}">编辑</a> · <a href="{% url 'materials:section_delete' project.id section.id %}">删除</a></li>{% empty %}<li>尚无截面</li>{% endfor %}</ul>
-  </section>
-  <section>
-    <h2>条材</h2>
-    <ul>{% for strip in strips %}<li>{{ strip.name }} · 材料：{% if strip.material %}{{ strip.material.name }}{% else %}未指定{% endif %} · <a href="{% url 'materials:strip_material' project.id strip.id %}">重新指定材料</a></li>{% empty %}<li>尚无条材</li>{% endfor %}</ul>
-  </section>
-</main></body></html>
+{% extends 'shared/base.html' %}{% block title %}材料与截面 · ISSA{% endblock %}
+{% block content %}<div class="ui-page-head"><div><p class="ui-eyebrow">PROJECT LIBRARY / 工程资源</p><h1>材料与截面</h1><p class="ui-lead">{{ project.name }} · 准备模型的工程参数。</p></div><a class="ui-button" href="{% url 'projects:workspace' project.id %}">返回 {{ project.name }} 工作区</a></div>
+{% if read_only %}<div class="ui-alert ui-alert--warning">当前项目只读，可查看材料与截面，不能修改。</div>{% endif %}{% if delete_feedback %}<div class="ui-alert ui-alert--success" role="status">{{ delete_feedback }}</div>{% endif %}
+<p class="ui-muted ui-management-note">材料的弹性模量使用 MPa，密度使用 g/mm³；截面尺寸使用 mm。</p>
+<div class="ui-stack"><section aria-labelledby="materials-title"><div class="ui-section-heading"><h2 id="materials-title">01　材料</h2>{% if not read_only %}<a class="ui-button" href="{% url 'materials:material_create' project.id %}">{% include 'shared/icon.html' with name='plus' %}新建材料</a>{% endif %}</div>{% if materials %}<div class="ui-table-scroll"><table><thead><tr><th scope="col">材料名称</th><th scope="col">弹性模量 E / MPa</th><th scope="col">密度 / g/mm³</th><th scope="col">数据来源</th>{% if not read_only %}<th scope="col">操作</th>{% endif %}</tr></thead><tbody>{% for material in materials %}<tr><td class="ui-table-name">{{ material.name }}</td><td class="ui-numeric">{{ material.E_MPa }}</td><td class="ui-numeric">{{ material.density_g_per_mm3 }}</td><td>{{ material.source_type }}</td>{% if not read_only %}<td><div class="ui-table-actions"><a href="{% url 'materials:material_edit' project.id material.id %}">编辑</a><a href="{% url 'materials:material_delete' project.id material.id %}">删除</a></div></td>{% endif %}</tr>{% endfor %}</tbody></table></div>{% else %}<div class="ui-empty"><h3>尚无材料</h3><p>先建立材料，再为构件选择工程参数。</p></div>{% endif %}</section>
+<section aria-labelledby="sections-title"><div class="ui-section-heading"><h2 id="sections-title">02　截面</h2>{% if not read_only %}<div class="ui-actions"><a class="ui-button" href="{% url 'materials:section_create' project.id %}">{% include 'shared/icon.html' with name='section' %}新建矩形截面</a><a class="ui-button" href="{% url 'materials:composite_section_create' project.id %}">新建组合截面</a></div>{% endif %}</div>{% if sections %}<div class="ui-table-scroll"><table><thead><tr><th scope="col">截面名称与形式</th><th scope="col">面积 A / mm²</th>{% if not read_only %}<th scope="col">操作</th>{% endif %}</tr></thead><tbody>{% for section in sections %}<tr><td class="ui-table-name">{{ section.name }} · {% if section.section_type == 'COMPOSITE' %}组合截面{% elif section.section_type == 'RECTANGLE' %}矩形截面{% else %}{{ section.section_type }}{% endif %}</td><td class="ui-numeric">{{ section.properties_json.A_mm2 }}</td>{% if not read_only %}<td><div class="ui-table-actions"><a href="{% url 'materials:section_edit' project.id section.id %}">编辑</a><a href="{% url 'materials:section_delete' project.id section.id %}">删除</a></div></td>{% endif %}</tr>{% endfor %}</tbody></table></div>{% else %}<div class="ui-empty"><h3>尚无截面</h3><p>可使用矩形，或由矩形组件建立组合截面。</p></div>{% endif %}</section>
+<section aria-labelledby="strips-title"><div class="ui-section-heading"><h2 id="strips-title">03　条材</h2><small>可重新指定条材材料</small></div>{% if strips %}<div class="ui-table-scroll"><table><thead><tr><th scope="col">条材名称</th><th scope="col">材料</th>{% if not read_only %}<th scope="col">操作</th>{% endif %}</tr></thead><tbody>{% for strip in strips %}<tr><td class="ui-table-name">{{ strip.name }}</td><td>{% if strip.material %}{{ strip.material.name }}{% else %}<span class="ui-badge ui-badge--warning">未指定</span>{% endif %}</td>{% if not read_only %}<td><a href="{% url 'materials:strip_material' project.id strip.id %}">重新指定材料</a></td>{% endif %}</tr>{% endfor %}</tbody></table></div>{% else %}<div class="ui-empty"><h3>尚无条材</h3></div>{% endif %}</section></div>{% endblock %}

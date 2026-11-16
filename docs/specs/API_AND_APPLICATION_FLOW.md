@@ -644,6 +644,8 @@ explicit Save Section form/action
 
 ## 17. Bulk Import Flow
 
+【Confirmed — M8, 2026-10-18】For the approved replacement, confirm accepts only an opaque server-side preview reference, never a signed credential-bearing payload. See `../superpowers/specs/2026-10-18-m8-event-participant-management-decisions.md`: actor/Event/operation/target/expiry-bound default-DB Session, hash immediately,600-second service cutoff, expired owned-state hash cleanup and clearsessions abandoned-row deletion. Fresh serialized confirm -> mutation + SUCCESS/NOOP audit + hash-free consumption in one transaction. No DENIED business receipts, no old-token fallback. DRAFT CSV stays supported; ACTIVE CSV stays denied; four approved single-entry operations are the only scoped ACTIVE extension. Existing M7 create/open API is unchanged.
+
 普通 form/page，不需要 general JSON API：
 
 ```text
@@ -651,7 +653,7 @@ GET/POST import page
   ↓
 preview table
   ↓
-POST confirm with signed/session batch reference
+POST confirm with opaque server-side preview reference
   ↓
 revalidate
   ↓
@@ -754,7 +756,13 @@ Prediction absence never blocks Analyze. A supplied Prediction must be completed
 
 ### OD-API-02 — FINISHED_GRACE User access（Master O-003）
 
-【Open Decision】read-only 僅為建議；view/edit/analyze 不得在 Master O-003 確認前定案。
+【Resolved — D-M7-003】FINISHED_GRACE = READ-ONLY HISTORY；历史 GET 可读，所有学生 authoring / Save / Check / Analyze / create 拒绝。PURGED residual operational GET 及 write 一律 fail closed。
+
+### M7 — Student Project create-or-open
+
+`GET/POST /events/<event_id>/projects/create/` (`event_projects:create`) uses an SSR name-only form and CSRF. Only authenticated active USER with exact Event active PARTICIPANT may POST, when ACTIVE and now < purge_at. Owner is always the actor. New = TRUSS_2D / physical-draft-v2 / empty draft_version 0; no resources, Snapshot or AnalysisRun precreation; success 302 directly to Workspace.
+
+Count all Event/owner Projects: zero creates; one valid existing Project reopens unchanged; multiple legacy Projects return a safe conflict without selection, merge or overwrite. Landing presentation: zero eligible → 创建项目; one → 继续建模; multiple → retain all valid cards and safe explanation, no Create CTA. No generic provisioning or migration; O-006 unchanged.
 
 ### Resolved — Roller orientation UI（Master O-002）
 

@@ -89,8 +89,10 @@ def test_core_offset_responsive_pointer_uses_one_adapter(context, workspace_page
     page.locator('[data-workspace-tool="NODE"]').click()
     page.locator('[data-cad-snap]').click()
     move_world(page, 12.4, 7.6)
-    assert float(page.locator('[data-cad-x]').input_value()) == pytest.approx(12.4, abs=1e-5)
-    assert float(page.locator('[data-cad-y]').input_value()) == pytest.approx(7.6, abs=1e-5)
+    # Chromium quantizes client pointer coordinates before SVG conversion;
+    # allow sub-pixel round-trip error, without rounding application values.
+    assert float(page.locator('[data-cad-x]').input_value()) == pytest.approx(12.4, abs=1e-4)
+    assert float(page.locator('[data-cad-y]').input_value()) == pytest.approx(7.6, abs=1e-4)
 
 
 def test_core_direct_node_click_cannot_bypass_ortho(context, workspace_page):

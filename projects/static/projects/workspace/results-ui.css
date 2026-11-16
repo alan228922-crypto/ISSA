@@ -1,0 +1,46 @@
+/* 正式Results呈现：沿用Workspace/SSR token，所有数据与事件保持原来源。 */
+#workspace-root[data-ux-stage="understanding"] .workspace-layout:has([data-av01-root]){height:0;min-height:0;flex:1;display:block;overflow:hidden}
+#workspace-root[data-ux-stage="understanding"] .workspace-layout:has([data-av01-root])>#workspace-workflow-panel{height:100%;padding:0;min-height:0;overflow:auto}
+#workspace-root[data-ux-stage="understanding"] #workspace-workflow-panel>:is([data-ux-panel-title],[data-ux-panel-guidance]){display:none}
+#workspace-root[data-ux-stage="understanding"] #workspace-status-bar{display:none}
+#workspace-root[data-ux-stage="understanding"] #workspace-results{display:flex;flex-direction:column;height:100%;min-height:0}
+#workspace-root[data-ux-stage="understanding"] .workspace-result-actions{display:flex;gap:0;flex-shrink:0;margin:0;border-bottom:1px solid var(--border)}
+#workspace-root[data-ux-stage="understanding"] .workspace-result-actions button{flex:1;min-height:34px;border:0;border-radius:0;background:var(--surface);font-size:12px;color:var(--muted)}
+#workspace-root[data-ux-stage="understanding"] .workspace-result-actions button[aria-selected=true]{box-shadow:inset 0 -2px var(--accent);color:var(--brand);background:var(--subtle)}
+#workspace-root[data-ux-stage="understanding"] [data-result-panel="conclusion"]{display:flex;flex-direction:column;gap:0;min-height:0;flex:1}
+#workspace-root[data-ux-stage="understanding"] [data-result-panel="conclusion"]>h2{font-size:13px;line-height:20px;margin:8px 12px 0}
+#workspace-root[data-ux-stage="understanding"] [data-result-context]{flex-shrink:0;font-size:11px;margin:2px 12px 6px;line-height:17px;color:var(--muted)}
+#workspace-root[data-ux-stage="understanding"] [data-av01-mount]{flex:1;min-height:0;padding:0 12px 8px;border:0;border-radius:0;display:flex;flex-direction:column}
+#workspace-root[data-ux-stage="understanding"] [data-av01-mount] .av01-header{flex-shrink:0;min-height:34px}
+#workspace-root[data-ux-stage="understanding"] [data-av01-mount] .av01-diagram{flex:1;min-height:0;gap:12px}
+#workspace-root[data-ux-stage="understanding"] [data-av01-mount] [data-av01-canvas]{height:100%;min-height:0}
+#workspace-root[data-ux-stage="understanding"] .av01-sidebar{height:100%;max-height:none;padding:8px 8px 8px 16px}
+#workspace-root[data-ux-stage="understanding"] .av01-sidebar p{font-size:11px;line-height:1.6}
+#workspace-root[data-ux-stage="understanding"] [data-result-overview]{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)}
+#workspace-root[data-ux-stage="understanding"] [data-result-overview]>p{margin:6px 0}
+#workspace-root[data-ux-stage="understanding"] [data-result-overview] button{width:100%;margin:3px 0;font-size:11px;padding:5px 8px;border-radius:4px}
+#workspace-root[data-ux-stage="understanding"] [data-result-panel]:not([data-result-panel="conclusion"]){padding:16px;overflow:auto}
+#workspace-root[data-ux-stage="understanding"] #workspace-engineering-details{overflow:auto;min-height:0;padding:16px}
+@media(max-width:900px),(max-height:650px){
+ .issa-workspace:has(#workspace-root[data-ux-stage="understanding"]){height:auto;overflow:auto}
+ #workspace-root[data-ux-stage="understanding"]{overflow:visible}
+ #workspace-root[data-ux-stage="understanding"] .workspace-layout:has([data-av01-root]){height:auto;min-height:600px;overflow:visible}
+ #workspace-root[data-ux-stage="understanding"] #workspace-results{height:auto}
+ #workspace-root[data-ux-stage="understanding"] [data-av01-mount] [data-av01-canvas]{height:360px}
+ #workspace-root[data-ux-stage="understanding"] .av01-sidebar{height:auto;max-height:none}
+}
+
+#workspace-root[data-ux-stage="understanding"] [data-result-overview] button{width:auto;display:inline-flex;min-height:28px;margin:2px;font-size:11px;padding:3px 6px}
+
+@media(max-width:900px),(max-height:650px){
+ #workspace-root[data-ux-stage="understanding"] .workspace-layout:has([data-av01-root])>#workspace-workflow-panel{height:auto;max-height:none;overflow:visible}
+ #workspace-root[data-ux-stage="understanding"] [data-av01-mount] .av01-diagram{grid-template-columns:minmax(0,1fr)}
+ #workspace-root[data-ux-stage="understanding"] .av01-sidebar{grid-column:1;grid-row:2;overflow:visible}
+}
+
+.ui-results-empty{display:none}
+#workspace-root[data-ux-stage="understanding"] :is(#workspace-modeling-panel,.workspace-center){display:none}
+#workspace-root[data-ux-stage="understanding"] #workspace-results:empty{display:none}
+#workspace-root[data-ux-stage="understanding"] #workspace-results:empty+.ui-results-empty{display:block;padding:24px;color:var(--muted)}
+#workspace-root[data-ux-stage="understanding"] .workspace-layout:not(:has([data-av01-root])){display:block;height:auto;min-height:280px;flex:1;overflow:auto}
+#workspace-root[data-ux-stage="understanding"] .workspace-layout:not(:has([data-av01-root]))>#workspace-workflow-panel{height:auto;max-height:none;overflow:visible}

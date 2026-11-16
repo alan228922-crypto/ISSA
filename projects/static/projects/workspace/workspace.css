@@ -1,3 +1,4 @@
+@import url("./analysis-visualization.css");
 :root { color-scheme: light; font-family: system-ui, sans-serif; }
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; background: #f4f7fb; color: #172033; }
@@ -42,7 +43,12 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 .workspace-drafting-status { display:flex; flex-wrap:wrap; gap:4px; width:100%; }
 .workspace-drafting-status button { border:1px solid #8193ad; border-radius:5px; padding:5px 8px; background:#26364e; color:#fff; cursor:pointer; }
 .workspace-drafting-status button[aria-pressed="true"] { background:#dceaff; color:#113f82; border-color:#9bbdf2; }
-[data-cad-dynamic-overlay] { position:absolute; z-index:5; min-width:140px; padding:8px; border:1px solid #9bbdf2; border-radius:7px; background:#fffffff2; box-shadow:0 4px 12px #17203326; font-size:12px; pointer-events:none; }
+#workspace-root .workspace-center { display:flex; flex-direction:column; }
+#workspace-root #workspace-canvas { flex:1; height:0; }
+[data-cad-input-reserve] { flex:0 0 64px; min-width:0; display:flex; align-items:flex-start; gap:8px; }
+[data-cad-input-reserve] > [data-cad-dynamic-overlay] { flex-shrink:0; }
+[data-cad-node-input-error] { flex:1; min-width:0; align-self:center; margin:0; color:#9a3412; font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+[data-cad-dynamic-overlay] { width:max-content; min-width:140px; padding:8px; border:1px solid #9bbdf2; border-radius:7px; background:#fffffff2; box-shadow:0 4px 12px #17203326; font-size:12px; }
 [data-cad-dynamic-overlay][hidden] { display:none; }
 [data-cad-dynamic-overlay] [data-cad-xy-fields] { display:flex; gap:5px; }
 [data-cad-dynamic-overlay] [data-cad-xy-fields][hidden] { display:none; }
@@ -51,6 +57,7 @@ body { margin: 0; background: #f4f7fb; color: #172033; }
 [data-cad-dynamic-overlay] label { display:grid; gap:2px; width:64px; }
 [data-cad-dynamic-overlay] input { width:100%; min-width:0; padding:3px; pointer-events:auto; }
 [data-cad-dynamic-overlay] span { display:block; }
+[data-cad-dynamic-overlay] [data-cad-direct-command] { width:200px; margin:0; font-weight:400; }
 [data-cad-overlap-chooser] { position:absolute; z-index:12; display:grid; gap:4px; width:max-content; min-width:130px; max-width:210px; padding:7px; border:1px solid #9bbdf2; border-radius:7px; background:#fff; box-shadow:0 8px 20px #17203333; }
 [data-cad-overlap-chooser] button { text-align:left; padding:6px 8px; border:0; border-radius:4px; background:#f2f6ff; color:#172033; cursor:pointer; }
 [data-cad-overlap-chooser] button:hover,[data-cad-overlap-chooser] button:focus-visible { background:#dceaff; }
@@ -80,3 +87,34 @@ button:disabled { cursor: not-allowed; opacity: .6; }
 .delete-impact-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
 .delete-impact-actions button { flex: 1 1 140px; padding: 10px; }
 [data-delete-impact-dialog] :focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+
+[data-cad-transform-toolbar] { display:flex; flex-wrap:wrap; gap:4px; margin:8px 0; }
+[data-cad-transform-toolbar][hidden], [data-transform-panel][hidden] { display:none; }
+[data-transform-status] { flex-basis:100%; margin:4px 0; font-size:13px; }
+[data-transform-panel] { min-width:0; padding:8px; border:1px solid #cbd5e1; border-radius:4px; }
+
+.cad-transform-command { display: block; flex-basis: 100%; font-size: 13px; }
+.cad-transform-command input { box-sizing: border-box; width: 100%; min-width: 0; }
+[data-cad-context-menu] { position: fixed; z-index: 2000; min-width: 160px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; box-sizing: border-box; padding: 4px; border: 1px solid #94a3b8; border-radius: 4px; background: white; }
+[data-cad-context-menu] button { display: block; width: 100%; text-align: left; padding: 7px 12px; border: 0; background: transparent; }
+[data-cad-context-menu] button:focus-visible, [data-cad-context-menu] button:hover:not(:disabled) { background: #e0ecff; outline: 1px solid #2563eb; }
+#workspace-root:not([data-ux-stage="build"]) [data-cad-node-grip] { display: none; pointer-events: none; }
+
+[data-cad-toolbar-tooltip] { position:fixed; z-index:80; box-sizing:border-box; max-width:min(320px,calc(100vw - 16px)); padding:8px 10px; white-space:pre-line; font-size:13px; line-height:1.5; color:#172033; background:#fff; border:1px solid #9aa9ba; border-radius:5px; box-shadow:0 2px 7px #17203322; pointer-events:none; }
+[data-cad-toolbar-tooltip][hidden] { display:none; }
+[data-cad-shortcuts-dialog] { box-sizing:border-box; width:min(560px,calc(100vw - 32px)); max-height:calc(100dvh - 40px); overflow:auto; border:1px solid #9aa9ba; border-radius:6px; padding:16px; color:#172033; }
+[data-cad-shortcuts-dialog]::backdrop { background:#17203344; }
+[data-cad-shortcuts-dialog] header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+[data-cad-shortcuts-dialog] h2 { margin:0; font-size:20px; }
+[data-cad-shortcuts-dialog] h3 { margin:14px 0 4px; font-size:16px; }
+[data-cad-shortcuts-dialog] p { margin:6px 0; font-size:13px; line-height:1.6; }
+[data-cad-shortcut-notice] { margin:6px 0; font-size:13px; color:#37465b; }
+
+/* Keep the expanded factual status within the existing Canvas edge clearance. */
+#workspace-status-bar { row-gap:4px; }
+
+/* Dedicated readonly Results area; editable build layout stays unchanged. */
+#workspace-root[data-ux-stage="understanding"] .workspace-layout:has([data-av01-root]) { grid-template-columns:minmax(0,1fr); height:auto; }
+#workspace-root[data-ux-stage="understanding"] .workspace-layout:has([data-av01-root]) > :is(#workspace-modeling-panel,.workspace-center) { display:none; }
+#workspace-root[data-ux-stage="understanding"] .workspace-layout:has([data-av01-root]) > #workspace-workflow-panel { grid-column:1 / -1; overflow:visible; }
+#workspace-results .av01-view button { padding:5px 10px; text-align:initial; }

@@ -1,3 +1,4 @@
+import { renderWorkspace } from "./renderer.js";
 const STAGES = Object.freeze({
   build: ["建模", "选择「构件」，点击起点，再点击终点，绘制第一根构件。"],
   check: ["检查", "检查已保存的模型"],
@@ -59,6 +60,8 @@ export function bindStudentShell({ root, canvasController }) {
       if (panel) panel.textContent = "当前任务";
       if (guidance) guidance.textContent = canvasController.getState().draft.physical_members.length ? "选择工具后，点击画布或已有对象继续。" : STAGES.build[1];
     }
+    const presentation = canvasController.getState();
+    renderWorkspace(root.querySelector("#workspace-canvas"), presentation.draft, presentation);
     for (const button of root.querySelectorAll("[data-ux-stage-target]")) {
       button.setAttribute("aria-current", button.dataset.uxStageTarget === stage ? "step" : "false");
     }

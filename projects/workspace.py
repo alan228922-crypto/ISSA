@@ -92,6 +92,7 @@ def _urls(project):
         "prediction_complete_template": f"{base}/predictions/{{prediction_id}}/complete/",
         "analyze": reverse("projects:analyze", kwargs={"project_id": project_id}),
         "analysis_runs": reverse("projects:analysis_runs", kwargs={"project_id": project_id}),
+        "visualization_template": f"{base}/analyses/{{run_id}}/visualization/",
         "result_template": f"{base}/analyses/{{run_id}}/data/",
         "report_template": f"{base}/analyses/{{run_id}}/report/",
         "reasoning_template": f"{base}/analyses/{{run_id}}/reasoning/",
@@ -142,7 +143,8 @@ def workspace(request, project_id):
     ):
         raise Http404
     blocked_audit = project.draft_migration_audits.filter(status="BLOCKED").order_by("-created_at", "-pk").first()
-    read_only = request.user.id != project.owner_user_id or blocked_audit is not None
+    from .services import can_modify_project
+    read_only = request.user.id != project.owner_user_id or not can_modify_project(request.user, project) or blocked_audit is not None
     bootstrap = {
         "schema_version": "workspace-bootstrap-v1",
         "project": {"id": project.id, "name": project.name, "analysis_type": project.analysis_type},

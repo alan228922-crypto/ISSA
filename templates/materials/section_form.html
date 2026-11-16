@@ -1,9 +1,4 @@
-{% load static %}
-<!doctype html>
-<html lang="zh-Hans"><meta charset="utf-8"><title>{% if editing %}编辑{% else %}新建{% endif %}矩形截面</title>
-<body>{% include "shared/product_header.html" %}<main data-section-designer="rectangle" data-preview-url="{% url 'projects:section_preview' project.id %}"><h1>{% if editing %}编辑{% else %}新建{% endif %}矩形截面</h1>
-<p>输入尺寸与密度后，可预览截面和计算属性；保存前不会修改项目。</p>
-{% if form.errors %}<p role="alert">请检查以下输入。</p>{% endif %}
-<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">保存截面</button></form>
-<section aria-label="截面预览"><h2>截面预览</h2><svg data-section-preview-svg viewBox="0 0 240 240" width="240" height="240" role="img" aria-label="截面几何预览"></svg><p data-section-preview-status role="status">输入有效尺寸后显示预览。</p><dl data-section-properties></dl></section>
-<a href="{% url 'materials:index' project.id %}">取消</a></main><script type="module" src="{% static 'materials/section-designer.js' %}"></script></body></html>
+{% extends 'shared/base.html' %}{% load static %}{% block title %}{% if editing %}编辑{% else %}新建{% endif %}矩形截面 · ISSA{% endblock %}
+{% block main_attributes %}data-section-designer="rectangle" data-preview-url="{% url 'projects:section_preview' project.id %}"{% endblock %}
+{% block content %}<div class="ui-page-head"><div><p class="ui-eyebrow">SECTION DESIGNER / 矩形</p><h1>{% if editing %}编辑{% else %}新建{% endif %}矩形截面</h1><p class="ui-lead">输入尺寸与密度后，可预览截面和计算属性；保存前不会修改项目。</p></div></div><div class="ui-form-layout"><form class="ui-card" method="post" data-ui-form>{% csrf_token %}{% include 'shared/form_errors.html' %}{% include 'shared/form_field.html' with field=form.name %}<div class="ui-field-grid">{% include 'shared/form_field.html' with field=form.width_mm %}{% include 'shared/form_field.html' with field=form.height_mm %}</div>{% include 'shared/form_field.html' with field=form.density_g_per_mm3 %}<div class="ui-form-footer"><button class="ui-primary" type="submit">保存截面</button><a href="{% url 'materials:index' project.id %}">取消</a></div></form>{% include 'materials/section_preview.html' %}</div>{% endblock %}
+{% block scripts %}<script type="module" src="{% static 'materials/section-designer.js' %}"></script>{% endblock %}

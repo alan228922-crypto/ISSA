@@ -1,0 +1,10 @@
+{% load static %}<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}ISSA · 结构分析与学习{% endblock %}</title>
+<link rel="stylesheet" href="{% static 'ui/tokens.css' %}"><link rel="stylesheet" href="{% static 'ui/product.css' %}"><link rel="stylesheet" href="{% static 'ui/header.css' %}">
+{% block extra_head %}{% endblock %}</head><body class="issa-ui {% block body_class %}{% endblock %}">
+<a class="ui-skip" href="#main-content">跳至主要内容</a>
+{% include 'shared/product_header.html' with ui_shell=True %}
+<main id="main-content" tabindex="-1" class="ui-page {% block main_class %}{% endblock %}" {% block main_attributes %}{% endblock %}>
+{% block content %}{% endblock %}</main>
+{% include 'shared/footer.html' %}<script src="{% static 'ui/forms.js' %}" defer></script>{% block scripts %}{% endblock %}</body></html>

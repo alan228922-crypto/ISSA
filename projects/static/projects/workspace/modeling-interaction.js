@@ -2,11 +2,12 @@ import { EditorActionError } from "./editor.js";
 import { pickAt, renderedObjectsFromSvg, worldPointFromEvent } from "./canvas-interaction.js";
 import { parseCadInput, parseDynamicPoint } from "./cad-input.js";
 import { resolvePointerPoint as resolveGeometry } from "./geometry.js";
-import { readCoordinateSpace,visibleSvgViewport,svgLocalToClient,worldToClient } from './coordinate-space.js';
+import { readCoordinateSpace,worldToClient } from './coordinate-space.js';
 import { createInteractionController } from './interaction-controller.js';
 import { renderCadPresentation } from "./renderer.js";
 import { applyWorkspaceEditorAction, undoWorkspaceEdit, redoWorkspaceEdit } from "./state.js";
 import { createStudentLabelResolver } from "./labels.js";
+import { presentWorkspaceError } from "./errors.js";
 import { candidateMembersAtNode, nodesOnMember, inspectEndpointCandidates } from "./joint-candidates.js";
 import { getSnapCandidateIndex,querySnapCandidates } from './snap-candidates.js';
 
@@ -60,7 +61,7 @@ const labelCache=new WeakMap();
 const drawingLabels=draft=>{if(!labelCache.has(draft))labelCache.set(draft,createStudentLabelResolver(draft));return labelCache.get(draft);};
 function cadStatus(root, cad, resolution = null) {
   const indicator = root.querySelector("#workspace-snap-indicator"); if (!indicator) return;
-  indicator.textContent = `ORTHO: ${effectiveOrtho(cad) ? "开" : "关"} · SNAP: ${cad.gridSnap ? "开" : "关"} (Grid) · 对象捕捉: ${cad.objectSnap === false ? "关" : "开"} · 当前: ${resolution?.snapType || "无"}`;
+  indicator.textContent = `ORTHO: ${effectiveOrtho(cad) ? "开" : "关"} · SNAP: ${cad.gridSnap ? "开" : "关"} (Grid) · 对象捕捉: ${cad.objectSnap === false ? "关" : "开"} · 网格: ${cad.gridVisible === false ? "关" : "开"} · 追踪: ${cad.tracking === false ? "关" : "开"} · 动态输入: ${cad.dynamicInput === false ? "关" : "开"} · 当前: ${resolution?.snapType || "无"}`;
   indicator.dataset.snapType = resolution?.snapType || "";
 }
 
@@ -80,6 +81,16 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   let supportChoice = "PINNED";
   const distanceInput = root.querySelector("[data-cad-distance]"); const angleInput = root.querySelector("[data-cad-angle]");
   const commandInput = root.querySelector("[data-cad-command-input]");
+  const commandLabel = commandInput?.parentElement;
+  const commandCaption = commandLabel?.querySelector('[data-cad-command-label]');
+  const legacyCommandCaption = commandCaption?.textContent;
+  const legacyCommandPlaceholder = commandInput?.getAttribute('placeholder');
+  const legacyCommandDescription = commandInput?.getAttribute('aria-describedby');
+  const nodeInputError = root.querySelector('[data-cad-node-input-error]');
+  const commandHome = commandLabel?.parentElement;
+  const commandNext = commandLabel?.nextSibling;
+  const directEntry = () => interaction.getState().dynamicInput?.entry;
+  let composing = false;
   const dynamicOverlay = root.querySelector("[data-cad-dynamic-overlay]");
   const xInput = dynamicOverlay?.querySelector("[data-cad-x]"); const yInput = dynamicOverlay?.querySelector("[data-cad-y]");
   const miniFields={x:xInput,y:yInput,length:dynamicOverlay?.querySelector('[data-cad-dynamic-length]'),angle:dynamicOverlay?.querySelector('[data-cad-dynamic-angle]'),dx:dynamicOverlay?.querySelector('[data-cad-dynamic-dx]'),dy:dynamicOverlay?.querySelector('[data-cad-dynamic-dy]')};
@@ -87,15 +98,57 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   function syncMini(){
     if(!dynamicOverlay)return;
     const mode=miniMode();
-    for(const [name,selector] of [['XY','xy'],['POLAR','polar'],['RELATIVE','relative']])dynamicOverlay.querySelector(`[data-cad-${selector}-fields]`).hidden=name!==mode;
+    for(const [name,selector] of [['XY','xy'],['POLAR','polar'],['RELATIVE','relative']])dynamicOverlay.querySelector(`[data-cad-${selector}-fields]`).hidden=name!==mode || directEntry()==='NODE_DIRECT_XY_ENTRY';
   }
   let acquiredSnap = null;
+  const clearNodeInputError = () => {
+    if (!nodeInputError) return;
+    nodeInputError.hidden = true;
+    if (nodeInputError.textContent) nodeInputError.textContent = '';
+    commandInput.removeAttribute('aria-invalid');
+    if (legacyCommandDescription === null) commandInput.removeAttribute('aria-describedby');
+    else commandInput.setAttribute('aria-describedby', legacyCommandDescription);
+  };
+  const showNodeInputError = (error) => {
+    if (!nodeInputError) { showError(error); return; }
+    const view = presentWorkspaceError(error);
+    if (nodeInputError.hidden) nodeInputError.hidden = false;
+    // Unchanged Enter must not reinsert live-region text or move focus.
+    if (nodeInputError.textContent !== view.why) nodeInputError.textContent = view.why;
+    commandInput.setAttribute('aria-invalid', 'true');
+    commandInput.setAttribute('aria-describedby', [legacyCommandDescription, nodeInputError.id].filter(Boolean).join(' '));
+  };
   const transientCad = (changes, notify = false) => {
     const current = canvasController.getState();
     const next = { ...current, cad: Object.freeze({ ...cadState(current), ...changes }) };
     canvasController.replaceState(next, notify, false);
     renderCadPresentation(svg, next.cad, next);
   };
+  // Only entry ownership is transient; parsing and geometry use the old paths.
+  const finishDirectEntry = (focusCanvas = false) => {
+    const entry = directEntry();
+    if (!entry) return;
+    clearNodeInputError();
+    if (entry === 'NODE_DIRECT_XY_ENTRY') {
+      commandInput.value = '';
+      if (commandCaption) commandCaption.textContent = legacyCommandCaption;
+      if (legacyCommandPlaceholder === null) commandInput.removeAttribute('placeholder');
+      else commandInput.setAttribute('placeholder', legacyCommandPlaceholder);
+      commandHome.insertBefore(commandLabel, commandNext);
+      delete commandLabel.dataset.cadDirectCommand;
+    } else {
+      for (const input of Object.values(miniFields)) input.value = '';
+    }
+    interaction.dispatch({type:'INPUT_CHANGE',input:{entry:null,values:{}}},{draft:canvasController.getState().draft});
+    pendingNumeric = null;
+    contextualInstruction = null;
+    transientCad({preview:null,snapFeedback:null,trackingGuide:null});
+    syncMini();
+    dynamicOverlay.hidden = !['NODE','MEMBER'].includes(tool) || cadState(canvasController.getState()).dynamicInput === false;
+    if (focusCanvas) svg.focus({preventScroll:true});
+  };
+  const plainInputKey = event => !composing && !event.isComposing && event.keyCode !== 229 && !event.altKey && !event.ctrlKey && !event.metaKey;
+  const safeNumericKey = event => plainInputKey(event) && !event.repeat && root.dataset.uxStage === 'build';
   const clearInputs = () => {
     if (commandInput) commandInput.value = "";
     if (distanceInput) distanceInput.value = "";
@@ -103,6 +156,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     for(const input of Object.values(miniFields))if(input)input.value='';
   };
   const cancelCommand = () => {
+    finishDirectEntry();
     interaction.dispatch({type:'CANCEL'},{draft:canvasController.getState().draft});
     pendingNumeric = null;
     acquiredSnap = null;
@@ -216,10 +270,12 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     return commit() ? "COMMITTED" : "INVALID";
   };
   const chooseTool = (nextTool) => {
+    finishDirectEntry();
     interaction.dispatch({type:'SELECT_TOOL',tool:nextTool},{draft:canvasController.getState().draft});
     tool = nextTool; acquiredSnap = null; contextualInstruction = null; pendingNumeric = null; clearInputs();
     const current = canvasController.getState(); canvasController.replaceState({ ...current, cad: Object.freeze({ ...cadState(current), activeCommand: nextTool, origin: null, preview: null, loadPreview: null, gripPreview: null, snapFeedback: null, trackingGuide: null, temporaryOrtho: false }) }); refreshUi();
     if (dynamicOverlay) dynamicOverlay.hidden = !['NODE','MEMBER'].includes(nextTool) || cadState(current).dynamicInput === false;
+    if (['NODE','MEMBER'].includes(nextTool)) svg.focus();
   };
   for (const button of root.querySelectorAll("[data-workspace-tool]")) button.addEventListener("click", () => chooseTool(button.dataset.workspaceTool));
   for (const button of root.querySelectorAll("[data-support-choice]")) button.addEventListener("click", () => {
@@ -236,24 +292,29 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   const dynamicPoint = () => { const origin = memberOrigin(); const distance = Number(distanceInput?.value); const angle = Number(angleInput?.value); if (!origin || distanceInput?.value === "" || angleInput?.value === "" || !Number.isFinite(distance) || distance <= 0 || !Number.isFinite(angle)) return null; const radians = angle * Math.PI / 180; return { x: origin.x + distance * Math.cos(radians), y: origin.y + distance * Math.sin(radians) }; };
   for (const input of [distanceInput, angleInput]) input?.addEventListener("input", () => updateDynamics(dynamicPoint()));
   for (const [input, field] of [[distanceInput, "DISTANCE"], [angleInput, "ANGLE"]]) input?.addEventListener("keydown", (event) => {
-    if (event.key === "Tab") {
+    if (event.key === "Tab" && plainInputKey(event)) {
       if (input === angleInput && !event.shiftKey) { event.preventDefault(); distanceInput.focus(); }
       return;
     }
-    if (event.key === "Enter") { event.preventDefault(); const point = dynamicPoint(); if (numericPlacement(point, () => completeMemberAt(point)) === "INVALID") showError({ code: "CAD_INPUT_MALFORMED", message: "请输入大于 0 的距离和有效角度。" }); }
+    if (event.key === "Enter" && safeNumericKey(event)) { event.preventDefault(); const point = dynamicPoint(); if (numericPlacement(point, () => completeMemberAt(point)) === "INVALID") showError({ code: "CAD_INPUT_MALFORMED", message: "请输入大于 0 的距离和有效角度。" }); }
   });
   commandInput?.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return; event.preventDefault();
+    if (event.key !== "Enter" || !safeNumericKey(event)) return; event.preventDefault();
     if (!['NODE','MEMBER'].includes(tool)) { showError({ code: "CAD_COMMAND_CONTEXT", message: "请先选择节点或构件工具。" }); return; }
     const current = canvasController.getState(); const parsed = parseCadInput(commandInput.value, tool === "MEMBER" ? memberOrigin() : cadState(current).origin);
-    if (!parsed.ok) { showError({ code: `CAD_INPUT_${parsed.code}`, message: "坐标格式无效，请输入 x,y、@dx,dy 或 长度<角度。" }); return; }
+    if (!parsed.ok || (directEntry()==='NODE_DIRECT_XY_ENTRY' && parsed.kind!=='ABSOLUTE')) {
+      const error = { code: "CAD_INPUT_MALFORMED", message: "坐标格式无效，请输入 x,y、@dx,dy 或 长度<角度。" };
+      if (directEntry()==='NODE_DIRECT_XY_ENTRY') showNodeInputError({ ...error, details: { input_context: directEntry() } });
+      else showError(error);
+      return;
+    }
     const point = resolvePointerPoint({ worldPointer: parsed.point, screenPointer: parsed.point, candidates: [], viewTransform: current.viewTransform, origin: (tool === "MEMBER" ? memberOrigin() : cadState(current).origin) || parsed.point, ortho: false, gridEnabled: false, explicitNumeric: true }).point;
     const result = numericPlacement(point, () => {
       if (tool === "MEMBER") return pendingStart()?completeMemberAt(point):exactPoint(point);
       const placed = apply({ type: "PLACE_JOINT_NODE", node: { client_key: nextKey(current.draft.nodes, "node"), x_mm: point.x, y_mm: point.y, label: "" } }, { origin: point });
       return placed;
     });
-    if (result === "COMMITTED") commandInput.value = "";
+    if (result === "COMMITTED") { commandInput.value = ""; finishDirectEntry(true); }
     cadStatus(root, cadState(canvasController.getState()));
   });
   const exactPoint = (point) => {
@@ -272,7 +333,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     }) !== "INVALID";
   };
   for (const input of [xInput, yInput]) input?.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
+    if (event.key !== "Enter" || !safeNumericKey(event)) return;
     event.preventDefault();
     const parsed=parseDynamicPoint({mode:'XY',values:{x:xInput.value,y:yInput.value}});
     if(!parsed.ok||!exactPoint(parsed.point))showError({ code: "CAD_INPUT_MALFORMED", message: "请输入有效的 X、Y 坐标。" });
@@ -291,21 +352,58 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
       }
     });
     input?.addEventListener('keydown',event=>{
-      if(event.key==='Tab'){
+      if(event.key==='Tab' && plainInputKey(event)){
         event.preventDefault();const order=pendingStart()?['length','angle','dx','dy']:['x','y'];
         const next=order[(order.indexOf(field)+(event.shiftKey?-1:1)+order.length)%order.length];
         interaction.dispatch({type:'INPUT_CHANGE',input:{mode:['dx','dy'].includes(next)?'RELATIVE':pendingStart()?'POLAR':'XY'}},{draft:canvasController.getState().draft});
         syncMini();miniFields[next].focus();
       }
-      if(event.key==='Enter'&&['length','angle','dx','dy'].includes(field)){
+      if(event.key==='Enter'&&safeNumericKey(event)&&['length','angle','dx','dy'].includes(field)){
         event.preventDefault();const mode=miniMode();
         const parsed=parseDynamicPoint({mode,values:Object.fromEntries(miniPair(mode).map(k=>[k,miniFields[k].value])),origin:memberOrigin()});
         if(!pendingStart()||!parsed.ok||!exactPoint(parsed.point))showError({code:'CAD_INPUT_MALFORMED',message:'请输入有效的长度/角度或 ΔX/ΔY。'});
-        else if(!pendingStart()){for(const key of ['length','angle','dx','dy'])miniFields[key].value='';svg.focus();}
+        else if(!pendingStart()){for(const key of ['length','angle','dx','dy'])miniFields[key].value='';dynamicOverlay.hidden=cadState(canvasController.getState()).dynamicInput===false;svg.focus();}
       }
     });
   }
-  for(const input of [commandInput,distanceInput,angleInput])input?.addEventListener('input',()=>{pendingNumeric=null;contextualInstruction=null;});
+  for(const input of [commandInput,distanceInput,angleInput])input?.addEventListener('input',()=>{pendingNumeric=null;contextualInstruction=null;if(input===commandInput&&directEntry()==='NODE_DIRECT_XY_ENTRY')clearNodeInputError();});
+  root.addEventListener('compositionstart', () => { composing = true; });
+  root.addEventListener('compositionend', () => { composing = false; });
+  root.addEventListener('focusout', () => {
+    // Composition belongs to its focused editor, including in-root transfers.
+    composing = false;
+    queueMicrotask(() => {
+      if (directEntry() && !dynamicOverlay.contains(document.activeElement)) finishDirectEntry();
+    });
+  });
+  root.addEventListener('keydown', event => {
+    if (event.defaultPrevented || !root.isConnected || !safeNumericKey(event) || !(event.target === svg || svg.contains(event.target))) return;
+    const nodeText = tool === 'NODE' && event.key?.length === 1 && /\S/.test(event.key);
+    const memberNumber = tool === 'MEMBER' && pendingStart() && /^[0-9+.\-]$/.test(event.key);
+    if (!nodeText && !memberNumber) return;
+    if (tool === 'NODE') {
+      event.preventDefault();
+      interaction.dispatch({type:'INPUT_CHANGE',input:{entry:'NODE_DIRECT_XY_ENTRY'}},{draft:canvasController.getState().draft});
+      if (commandCaption) commandCaption.textContent = '节点坐标 X,Y（mm）';
+      commandInput.setAttribute('placeholder', '120,350');
+      commandLabel.dataset.cadDirectCommand = '';
+      dynamicOverlay.append(commandLabel);
+      syncMini();
+      dynamicOverlay.hidden = false;
+      commandInput.value = event.key;
+      commandInput.focus({preventScroll:true});
+      commandInput.dispatchEvent(new Event('input', {bubbles:true}));
+    } else {
+      interaction.dispatch({type:'INPUT_CHANGE',input:{entry:'MEMBER_DIRECT_LENGTH_ENTRY',mode:'POLAR'}},{draft:canvasController.getState().draft});
+      syncMini();
+      dynamicOverlay.hidden = false;
+      miniFields.angle.value = '';
+      miniFields.length.value = '';
+      miniFields.length.focus({preventScroll:true});
+      // Keep the native keypress/input sequence: assigning '-' or '.' to a
+      // number input would discard the unfinished sign/decimal prefix.
+    }
+  });
   root.querySelector("[data-cad-relative-place]")?.addEventListener("click", () => {
     const origin = tool === "MEMBER" ? memberOrigin() : cadState(canvasController.getState()).origin;
     const dxText = root.querySelector("[data-cad-relative-x]")?.value; const dyText = root.querySelector("[data-cad-relative-y]")?.value;
@@ -317,6 +415,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     pendingNumeric = null;
     contextualInstruction = null;
     const current = canvasController.getState(); const target = targetAtClick(event, svg, ["GEOMETRY_NODE", "CONNECTION"]); if (tool === "SELECT") return;
+    if (['NODE','MEMBER'].includes(tool)) svg.focus({preventScroll:true});
     const screen = precisePoint || { x: event.clientX, y: event.clientY };
     const locationEvent = { clientX: screen.x, clientY: screen.y };
     if (tool === "NODE") {
@@ -408,17 +507,7 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
     if (dynamicOverlay) {
       dynamicOverlay.hidden = !['NODE','MEMBER'].includes(tool) || cad.dynamicInput === false;
       if (!dynamicOverlay.hidden) {
-        const center = svg.closest(".workspace-center").getBoundingClientRect();
         const focused=dynamicOverlay.contains(document.activeElement);
-        if(!focused){
-          const space=readCoordinateSpace(svg,state.viewTransform),viewport=visibleSvgViewport(svg,space);
-          const topLeft=svgLocalToClient({x:viewport.left,y:viewport.top},space),bottomRight=svgLocalToClient({x:viewport.left+viewport.width,y:viewport.top+viewport.height},space);
-          const width=dynamicOverlay.offsetWidth,height=dynamicOverlay.offsetHeight;
-          const left=screen.x+20+width<=bottomRight.x-8?screen.x+20:screen.x-20-width;
-          const top=screen.y+20+height<=bottomRight.y-8?screen.y+20:screen.y-20-height;
-          dynamicOverlay.style.left=`${Math.max(topLeft.x-center.left,Math.min(bottomRight.x-center.left-width-8,left-center.left))}px`;
-          dynamicOverlay.style.top=`${Math.max(topLeft.y-center.top,Math.min(bottomRight.y-center.top-height-8,top-center.top))}px`;
-        }
         if (document.activeElement !== xInput) xInput.value = String(resolution.point.x);
         if (document.activeElement !== yInput) yInput.value = String(resolution.point.y);
         const origin = memberOrigin();
@@ -445,13 +534,11 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   root.addEventListener('focusin',event=>{if(editableFocus(event.target)&&cadState(canvasController.getState()).temporaryOrtho)temporaryOrtho(false);});
   const repeatLastTool = () => { if (tool === "SELECT" && lastCompletedTool && root.dataset.uxStage === "build") chooseTool(lastCompletedTool); };
   document.addEventListener("keydown", (event) => {
-    const fkeys={F7:'grid-visible',F8:'ortho',F9:'snap',F3:'object-snap'};
-    if(fkeys[event.key]&&event.target===svg&&!editableFocus(event.target)){event.preventDefault();root.querySelector(`[data-cad-${fkeys[event.key]}]`)?.click();svg.focus();}
     if (event.key === "Shift" && tool !== "SELECT" && !editableFocus(event.target) && !event.repeat) temporaryOrtho(true);
     if (event.key === "Enter" && !event.repeat && (event.target === svg || event.target === document.body) && !event.altKey && !event.ctrlKey && !event.metaKey && tool === "SELECT" && lastCompletedTool) { event.preventDefault(); repeatLastTool(); }
   });
   document.addEventListener("keyup", (event) => { if (event.key === "Shift")temporaryOrtho(false); });
-  window.addEventListener('blur',()=>temporaryOrtho(false));
+  window.addEventListener('blur',()=>{temporaryOrtho(false);finishDirectEntry();composing=false;});
   svg.addEventListener('cad-gesture-cancel',()=>{temporaryOrtho(false);canvasController.refreshPointerPresentation();});
   document.addEventListener("cad-space-tap", repeatLastTool);
   const undoButton = root.querySelector("[data-cad-undo]"); const redoButton = root.querySelector("[data-cad-redo]");
@@ -468,11 +555,6 @@ export function bindModelingInteractions({ root, svg, canvasController, showErro
   };
   undoButton?.addEventListener("click", () => travelHistory("UNDO"));
   redoButton?.addEventListener("click", () => travelHistory("REDO"));
-  document.addEventListener("keydown", (event) => {
-    if (event.defaultPrevented || !["z", "y"].includes(event.key.toLowerCase()) || !(event.ctrlKey || event.metaKey) || event.altKey || editableFocus(event.target) || root.dataset.uxStage !== "build") return;
-    const direction = event.key.toLowerCase() === "y" || event.shiftKey ? "REDO" : "UNDO";
-    event.preventDefault(); travelHistory(direction);
-  });
   svg.addEventListener("pointerleave", () => {if(!dynamicOverlay?.contains(document.activeElement)&&!pendingNumeric)transientCad({ preview: null, loadPreview: null, snapFeedback: null, trackingGuide: null });});
   let observedDraft=canvasController.getState().draft;
   canvasController.subscribeStateChange(state=>{

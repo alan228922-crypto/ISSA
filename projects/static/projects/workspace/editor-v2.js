@@ -1,3 +1,4 @@
+import { pasteMemberGroup, transformMemberGroup, resizeMember } from './transform-geometry.js';
 import { candidateMembersAtNode, nodesOnMember, segmentParameter, inspectEndpointCandidates } from "./joint-candidates.js";
 import { memberParticipationByNode } from "./draft-topology.js";
 
@@ -141,6 +142,9 @@ function remove(draft, targets) {
 export function applyEditorActionV2(draft, action) {
   let next;
   switch (action?.type) {
+    case "RESIZE_MEMBER": next = resizeMember(draft, action); break;
+    case "TRANSFORM_MEMBER_GROUP": next = transformMemberGroup(draft, action.memberKeys, action.transform); break;
+    case "PASTE_MEMBER_GROUP": next = pasteMemberGroup(draft, action.group, action.offset, action.resources); break;
     case "CREATE_NODE": case "PLACE_JOINT_NODE": next = placeNode(draft, action.node); break;
     case "CONNECT_NODE": next = authorAtNode(draft, action.nodeClientKey); break;
     case "CREATE_MEMBER": next = createMember(draft, action.member); break;
